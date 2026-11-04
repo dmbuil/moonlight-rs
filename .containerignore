@@ -1,0 +1,23 @@
+# Build context for `podman build` (podman reads .containerignore, Docker .dockerignore).
+# Build outputs and caches.
+target/
+.rumdl_cache/
+.git/
+
+# Local configuration and logs: the cookie key and the cloud's endpoints never enter an image.
+moonlight.conf
+moonlight.conf.*
+!moonlight.conf.example
+moonlight.conf.d/
+.env
+.env.*
+*.log
+moonlight.log*
+*.bak
+*.orig
+*~
+*.swp
+
+# Not needed to build.
+.claude/
+doc/

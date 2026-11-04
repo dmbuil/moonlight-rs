@@ -9,5 +9,5 @@ code-blocks = false
 tables = false
 
 [MD033]
-# The README logo needs a size, which Markdown image syntax can't give.
-allowed-elements = ["img"]
+# The README header: a centred block (div) and a logo with a size, which Markdown can't give.
+allowed-elements = ["div", "img"]
