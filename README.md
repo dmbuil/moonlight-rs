@@ -1,8 +1,32 @@
+<!-- rumdl-disable MD033 -->
+<!-- markdownlint-disable MD033 -->
+
 # Moonlight
+
+<div align="center">
 
 <img src="./doc/moonlight-logo.png" alt="Moonlight logo" width="200" height="200">
 
-*Leaving Horizon behind.* Moonlight is a fast OpenStack dashboard written in Rust:
+[![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdmbuil%2Fmoonlight-rs%2FHEAD%2FCargo.toml&query=%24.package.version&label=version)](Cargo.toml)
+[![Rust](https://img.shields.io/badge/rust-1.91%2B-blue)](https://www.rust-lang.org/)
+[![Leptos](https://img.shields.io/badge/leptos-0.8-blue)](https://leptos.dev)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey)
+[![Last commit](https://img.shields.io/github/last-commit/dmbuil/moonlight-rs)](https://github.com/dmbuil/moonlight-rs/commits)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE.md)
+
+*Leaving Horizon behind:* a fast, stateless OpenStack dashboard that keeps Horizon's layout
+and modernises its controls.
+
+| [**Quick start**](#quick-start)
+| [**Configuration**](CONFIGURATION.md)
+| [**Container**](#container-image-podman)
+| [**Architecture**](ARCHITECTURE.md)
+| [**Roadmap**](ROADMAP.md)
+| [**License**](LICENSE.md) |
+
+</div>
+
+Moonlight is a fast OpenStack dashboard written in Rust:
 [Leptos](https://leptos.dev) (server-side rendering + WASM hydration) on Axum, talking to
 OpenStack through gtema's [`openstack_sdk`](https://github.com/gtema/openstack).
 
@@ -128,6 +152,31 @@ Real writes (`[writes] mode = "on"`) must only target a non-production cloud. Op
 
 A good habit is one file per target, e.g. `prod.conf` (dry-run) and `devstack.conf` (on),
 passed with `--config-file`.
+
+## Container image (Podman)
+
+The [`Dockerfile`](Dockerfile) builds in two stages: a Rust image compiles the server and the
+WASM front end with `cargo leptos build --release`, then a slim Debian image keeps only the
+binary, `target/site/` and the CA certificates, and runs as an unprivileged user. Docker works
+the same way (`docker build`).
+
+```bash
+podman build -t moonlight .
+podman run --rm -p 3000:3000 \
+  -v ./moonlight.conf:/etc/moonlight/moonlight.conf:ro,Z \
+  moonlight
+```
+
+- **Configuration is mounted, never built in:** `moonlight.conf` holds the cookie key, and
+  [`.containerignore`](.containerignore) keeps it, the logs and `target/` out of the build
+  context. `/etc/moonlight/moonlight.conf` is a default path, so no `--config-file` is needed;
+  `MOONLIGHT_*` variables (`-e`) override it as usual.
+- **TLS:** session cookies are `Secure` by default, so put the container behind an
+  HTTPS proxy, or set `[session] secure_cookies = false` for a local test over plain HTTP.
+- **Private CA:** mount the CA bundle and point `[tls] ca_file` at it.
+- **Rebuilds** reuse the Cargo registry and `target/` through cache mounts. Build arguments
+  `RUST_VERSION`, `DEBIAN_RELEASE` and `CARGO_LEPTOS_VERSION` change the toolchain
+  (`--build-arg RUST_VERSION=1.91`).
 
 ## Configuration
 
