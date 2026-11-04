@@ -1,0 +1,28 @@
+/target
+
+# Local configuration: holds the cookie key and the cloud's URLs.
+moonlight.conf
+moonlight.conf.*
+!moonlight.conf.example
+moonlight.conf.d/
+.env
+.env.*
+
+# Backups and editor leftovers can be copies of the files above.
+*.bak
+*.orig
+*~
+*.swp
+
+# Per-user Claude Code settings.
+.claude/settings.local.json
+
+# Server logs ([log] in moonlight.conf): they name the cloud's endpoints and users.
+*.log
+moonlight.log*
+
+# Tool caches.
+.rumdl_cache/
+
+# IA local config
+.claude

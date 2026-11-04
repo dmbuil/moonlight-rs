@@ -1,0 +1,16 @@
+clouds:
+  {{ cloud_name | yaml }}:
+{% if profile %}
+    profile: {{ profile | yaml }}
+{% endif %}
+    auth:
+      auth_url: {{ auth_url | yaml }}
+      username: {{ user.username | yaml }}
+      project_id: {{ tenant_id | yaml }}
+      project_name: {{ tenant_name | yaml }}
+      user_domain_name: {{ user_domain_name | yaml }}
+{% if region %}
+    region_name: {{ region | yaml }}
+{% endif %}
+    interface: {{ interface | yaml }}
+    identity_api_version: {{ os_identity_api_version }}

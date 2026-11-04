@@ -1,0 +1,271 @@
+# Moonlight configuration (TOML). Copy to one of these, the first found wins:
+#   ~/.moonlight/moonlight.conf, ~/moonlight.conf, /etc/moonlight/moonlight.conf, /etc/moonlight.conf
+# or pass --config-file PATH (repeatable). Every *.conf of moonlight.conf.d/ (or --config-dir DIR)
+# is read afterwards in alphabetical order; later values win, key by key. MOONLIGHT_* environment
+# variables override all files (see CONFIGURATION.md).
+#
+# Only [keystone] url is required. Every key below is set to its default, and a missing key or
+# section gets the same value, so delete what you do not change if you prefer. Names in parentheses are Horizon's equivalent setting.
+
+[keystone]
+# Public endpoint, without /v3 (the SDK runs version discovery). Required.
+# (OPENSTACK_KEYSTONE_URL) Env: MOONLIGHT_KEYSTONE_URL
+url = "https://keystone.example.com"
+# Pre-filled domain on the login form. (OPENSTACK_KEYSTONE_DEFAULT_DOMAIN)
+# Env: MOONLIGHT_DEFAULT_DOMAIN
+default_domain = "Default"
+# Region selected right after login (default: the first region in the catalog).
+# (DEFAULT_SERVICE_REGIONS) Env: MOONLIGHT_DEFAULT_REGION
+#default_region = "RegionOne"
+# Several domains in use: admins get Identity > Domains and "Set Domain Context".
+# (OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT) Env: MOONLIGHT_MULTIDOMAIN
+multidomain = false
+# Catalog interface for every service: public | internal | admin. (OPENSTACK_ENDPOINT_TYPE)
+interface = "public"
+
+[tls]
+# PEM bundle for a cloud signed by a private CA. (OPENSTACK_SSL_CACERT)
+# e.g. "/etc/pki/tls/certs/cloud-ca.pem"; "" = the system store.
+ca_file = ""
+# false disables certificate checks: test clouds only. (OPENSTACK_SSL_NO_VERIFY, inverted)
+verify = true
+
+[session]
+# 64+ random bytes, base64. If unset, a random key is generated at start-up (sessions end on
+# restart). Generate with: openssl rand -base64 64 | tr -d '\n'
+# Keep it in a file readable only by the service, e.g. moonlight.conf.d/90-secrets.conf.
+# Env: MOONLIGHT_COOKIE_KEY
+cookie_key = ""
+# Secure session cookie (__Host-ml_session) and HSTS: keep true behind HTTPS. Set false only
+# for plain-HTTP development (http://127.0.0.1). Env: MOONLIGHT_SECURE_COOKIES
+secure_cookies = true
+# On logout, Keystone revokes the session's token (sent only with [writes] mode = "on"; the
+# server forgets the token in every mode). (TOKEN_DELETION_DISABLED, inverted)
+revoke_on_logout = true
+# A sign-in lasts at most this long, even if the Keystone token lives longer. (SESSION_TIMEOUT)
+timeout_minutes = 60
+# A token this close to expiring counts as expired. (TOKEN_TIMEOUT_MARGIN)
+token_margin_seconds = 60
+# The URL users open, e.g. "https://cloud.example.com". Writes must come from this origin
+# (cross-site requests get 403). Unset: the request's Host header, which is right unless a
+# reverse proxy rewrites it. Env: MOONLIGHT_PUBLIC_URL
+#public_url = ""
+# Warn this many days before the user's password expires; unset = never.
+# (PASSWORD_EXPIRES_WARNING_THRESHOLD_DAYS)
+# Leave commented to disable; e.g.:
+#password_expiry_warning_days = 7
+
+[writes]
+# off | dry-run | on. dry-run builds every request with the SDK but never sends it.
+# Keep dry-run against a production cloud. Env: MOONLIGHT_WRITES
+mode = "dry-run"
+
+[login]
+# Domains offered as a dropdown; empty = a free text field. (OPENSTACK_KEYSTONE_DOMAIN_CHOICES)
+domain_choices = []
+# No domain field: everyone signs in to [keystone] default_domain. Not with domain_choices.
+domain_hidden = false
+# Let the browser remember the password. (HORIZON_CONFIG["password_autocomplete"])
+password_autocomplete = false
+# Show the button that reveals the password. (HORIZON_CONFIG["disable_password_reveal"], inverted)
+password_reveal = true
+# Text file shown above the form, e.g. a maintenance notice. (MESSAGES_PATH)
+# e.g. "/etc/moonlight/login-message.txt"; "" = none.
+message_file = ""
+# Failed sign-ins per username (and per address, with [log] client_ip_header) before Moonlight
+# stops asking Keystone for lockout_seconds after the last failure. 0 = off. Per process.
+max_failures = 5
+lockout_seconds = 300
+
+[websso]
+# Sign in through the identity provider Keystone federates with (OIDC, SAML): an "Authenticate
+# using" select on the login page. (WEBSSO_ENABLED) Needs [session] public_url: Keystone sends
+# the token back to "<public_url origin>/auth/websso", which must be listed byte for byte in
+# Keystone's [federation] trusted_dashboard.
+enabled = false
+# Options, in order (WEBSSO_CHOICES). "credentials" is the password form; any other ID is a
+# Keystone federation protocol, or a key of idp_mapping. label = "" shows the ID (or "Keystone
+# Credentials", translated).
+#choices = [
+#  { id = "credentials", label = "" },
+#  { id = "oidc", label = "OpenID Connect" },
+#  { id = "saml2", label = "Security Assertion Markup Language" },
+#]
+# Preselected choice; unset = the first. (WEBSSO_INITIAL_CHOICE)
+#initial_choice = "oidc"
+# Keystone as the browser reaches it, when not [keystone] url. (WEBSSO_KEYSTONE_URL)
+#keystone_url = ""
+# Where logout sends a user who signed in through WebSSO, e.g. the IdP's logout page; unset =
+# /login, and the IdP's session survives. With mod_auth_openidc: its redirect URI with
+# "?logout=<URL-encoded return URL>". (WEBSSO_DEFAULT_REDIRECT_LOGOUT)
+#logout_url = ""
+# Choice ID -> identity provider and protocol, for Keystone's per-provider URL.
+# (WEBSSO_IDP_MAPPING)
+#[websso.idp_mapping]
+#acme = { idp = "acme", protocol = "oidc" }
+
+[ui]
+# Optional user-menu links to the cloud's own portal (hidden when unset). (HORIZON_CONFIG
+# ["help_url"], ["bug_url"]) Env: MOONLIGHT_HELP_URL, MOONLIGHT_CHANGE_PASSWORD_URL
+# e.g. "https://help.example.com"; "" = hidden.
+help_url = ""
+change_password_url = ""
+bug_url = ""
+# Until a user picks one: system | light | dark. (DEFAULT_THEME)
+default_theme = "system"
+# Until a user picks one: en | es; unset = the browser's language.
+# "" = the browser's language.
+default_language = ""
+# How often resources in transition (building, resizing…) are refreshed, at least 1000.
+# (HORIZON_CONFIG["ajax_poll_interval"])
+poll_interval_ms = 5000
+# Send OpenStack's full error text (it names internal endpoints) to the browser. Off: the
+# error page shows the kind, the service and the request ID; the log has the full text.
+show_error_details = false
+# Show the REST requests an action sent (method, path, body) in its result, and in dry-run
+# the requests it would send. Off: only "Done" or the errors; dry-run says nothing was sent.
+show_requests = false
+# A bulk action (delete, start, release…) with this many items or more runs in the
+# background: the dialog closes and a card in the corner shows the progress. 0 = always in
+# the dialog.
+background_batch_from = 10
+# Rows per page of the big lists (Admin: Instances, Volumes…). Filters and sorting run on the
+# server, so a page costs the same on any cloud. 1-1000; 0 = every row at once.
+# (API_RESULT_PAGE_SIZE; Horizon uses 20)
+page_size = 100
+# Which lists are paged: "admin" (the Admin lists) or "all" (the Project panels too).
+paged_lists = "admin"
+
+[launch]
+# Launch Instance defaults. (LAUNCH_INSTANCE_DEFAULTS, OPENSTACK_HYPERVISOR_FEATURES)
+# Image sources boot from a new volume.
+create_volume = true
+config_drive = false
+# Boot sources hidden from the wizard (at least one must stay).
+disable_image = false
+disable_instance_snapshot = false
+disable_volume = false
+disable_volume_snapshot = false
+# A key pair must be chosen.
+requires_keypair = false
+# Offer an admin password field (hypervisors that support it).
+can_set_password = false
+# Flavor order: id | name | ram | disk | vcpus. (CREATE_INSTANCE_FLAVOR_SORT)
+flavor_sort = "ram"
+flavor_sort_reverse = false
+
+[network]
+# Prefilled DNS servers when creating a subnet. (OPENSTACK_NEUTRON_NETWORK)
+default_dns_nameservers = []
+# Offer IPv6 when creating subnets.
+enable_ipv6 = true
+# Associate Floating IP only offers ports a router with an external gateway reaches.
+fip_topology_check = true
+# Admin > Create Network's provider types, in this order; "*" = local, flat, vlan, gre, vxlan,
+# geneve. (OPENSTACK_NEUTRON_NETWORK supported_provider_types)
+supported_provider_types = ["*"]
+# Per type, the [min, max] segmentation IDs admins may pick, within the type's own range
+# (vlan 1-4094; gre 1-4294967295; vxlan, geneve 1-16777215). (segmentation_id_range)
+[network.segmentation_id_range]
+# e.g. vlan = [1000, 1999]
+# Subnets users may create; empty = anything. Checked by the server. (ALLOWED_PRIVATE_SUBNET_CIDR)
+[network.allowed_private_subnet_cidr]
+# e.g. ipv4 = ["10.0.0.0/8", "192.168.0.0/16"]
+ipv4 = []
+ipv6 = []
+
+[images]
+# Disk formats offered (Upload to Image keeps those Cinder supports). (OPENSTACK_IMAGE_BACKEND)
+disk_formats = ["raw", "qcow2", "vdi", "vhd", "vmdk", "iso", "aki", "ami", "ari", "docker", "ploop"]
+# Preselected visibility of new images: private | shared | community | public.
+# (CREATE_IMAGE_DEFAULTS["image_visibility"])
+default_visibility = "private"
+# Offer URL as an image source in Create Image: the image service downloads the image from an http(s) address
+# (Glance web-download import). Off by default. (IMAGES_ALLOW_LOCATION)
+allow_location = false
+# Offer File as an image source in Create Image: off | proxy | direct. proxy streams the file
+# through Moonlight (nothing is stored); direct has the browser send it to the image service
+# with a scoped token, which needs CORS on Glance. Both only with [writes] mode = on.
+# (HORIZON_IMAGES_UPLOAD_MODE)
+upload = "off"
+# Largest file accepted, in GiB.
+max_upload_gb = 10
+# Image property keys the metadata editor hides and Moonlight never writes. os_glance_* (Glance's
+# own) is always reserved. (IMAGE_RESERVED_CUSTOM_PROPERTIES)
+reserved_properties = []
+
+[console]
+# Instance Log and Console tabs. Both are Nova POSTs that don't change the instance (each
+# console call makes a console token); sent only when this is true AND [writes] mode = "on".
+enabled = false
+# Remote console: auto (VNC, then SPICE) | vnc | spice. (CONSOLE_TYPE)
+type = "auto"
+# Lines the Log tab shows first. (INSTANCE_LOG_LENGTH)
+log_length = 35
+
+[api_access]
+# Entry name and vendor profile in the downloaded clouds.yaml.
+# (OPENSTACK_CLOUDS_YAML_NAME, OPENSTACK_CLOUDS_YAML_PROFILE)
+clouds_yaml_name = "openstack"
+# os-client-config vendor profile; "" = none.
+clouds_yaml_profile = ""
+# Jinja templates replacing the built-in openrc / clouds.yaml downloads (API Access, and a new
+# application credential's). Horizon's templates work unchanged; see CONFIGURATION.md.
+# (OPENRC_CUSTOM_TEMPLATE, OPENSTACK_CLOUDS_YAML_CUSTOM_TEMPLATE)
+#openrc_template = "/etc/moonlight/openrc.sh.j2"
+#clouds_yaml_template = "/etc/moonlight/clouds.yaml.j2"
+#app_credential_openrc_template = "/etc/moonlight/app_credential_openrc.sh.j2"
+#app_credential_clouds_yaml_template = "/etc/moonlight/app_credential_clouds.yaml.j2"
+# API Access's clouds.yaml for users who signed in through [websso]: auth_type v3websso
+# (keystoneauth-websso), with identity_provider and protocol from their sign-in.
+#websso_clouds_yaml_template = "/etc/moonlight/websso_clouds.yaml.j2"
+
+[plugins]
+# Opt-in panels. Each one shows only when it is listed here AND the cloud offers it (the
+# service in the catalog, or the Neutron extension). None when unset. Known: load-balancer
+# (Octavia), orchestration (Heat), qos (Network QoS; QoS policy of router gateways and floating
+# IPs), trunk (Trunks), key-manager (Barbican: Secrets, Containers), alarming (Aodh: Monitoring ›
+# Alarms), backup (Cinder backups: Volumes › Backups; enable it only where cinder-backup runs, the
+# catalog can't tell). Env: MOONLIGHT_PLUGINS="load-balancer,orchestration,qos,trunk,key-manager,alarming,backup"
+enabled = ["load-balancer", "orchestration", "qos", "trunk"]
+
+[key_manager]
+# Show Payload on a secret's page: the secret material reaches the browser (fetched on click
+# only, never cached). Off by default.
+allow_payload = false
+
+[cache]
+# Seconds the flavors, images, networks and volumes a page fetches only to show names are
+# reused (per token, project and region). A write through Moonlight clears them on the replica
+# that served it; changes made elsewhere (or through another replica) show within this time.
+# 0 = off.
+lookup_seconds = 30
+
+[log]
+# tracing filter. Env: RUST_LOG
+filter = "moonlight=info,openstack_sdk=warn"
+# Log file instead of stdout; the directory must exist. Created 0640. (LOGGING)
+# e.g. "/var/log/moonlight/moonlight.log"; "" = stdout only. Env: MOONLIGHT_LOG_FILE
+file = ""
+# daily | hourly: a new file per period, named moonlight.log.<date> (UTC); never: the file
+# itself, for logrotate with copytruncate (it is not reopened on SIGHUP).
+rotation = "daily"
+# On restart, append to the current file (true | yes | enabled | on), or start it empty
+# (false | no | disabled | off). A number here is the old meaning, now max_files.
+keep = true
+# Log files kept, the current one included; older ones are deleted at start-up and hourly.
+# 0 = all. (backupCount)
+max_files = 7
+# Also write to stdout when file is set.
+stdout = false
+# text | json (one object per line, for log shippers).
+format = "text"
+# Header holding the client's address behind a proxy, logged with sign-ins and writes.
+# (SECURE_PROXY_ADDR_HEADER)
+# Also counted by [login] max_failures.
+# e.g. "X-Forwarded-For"; "" = not logged.
+client_ip_header = ""
+# Proxies that append to that header: the client is the entry this many places from the
+# right (entries further left come from the client and can be forged). 2 = CDN + balancer;
+# 0 = the leftmost entry (spoofable). Env: MOONLIGHT_TRUSTED_PROXIES
+trusted_proxies = 1

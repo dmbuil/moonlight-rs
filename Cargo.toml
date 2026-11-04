@@ -1,0 +1,92 @@
+[package]
+name = "moonlight"
+version = "0.1.0"
+edition = "2024"
+description = "Moonlight: a fast, read-only OpenStack dashboard (Horizon replacement PoC) in Rust + Leptos"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { version = "0.8" }
+leptos_router = { version = "0.8" }
+leptos_meta = { version = "0.8" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Secret payloads are wiped from memory when dropped (roadmap 55).
+zeroize = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "wasmbind", "std"] }
+
+# client (hydrate) only
+console_error_panic_hook = { version = "0.1", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", features = ["HtmlDocument", "Location", "Window", "HtmlDetailsElement", "DomRect", "Element", "NodeList", "Node", "Navigator", "Clipboard", "HtmlTextAreaElement", "CssStyleDeclaration", "HtmlInputElement", "FileList", "File", "Blob", "XmlHttpRequest", "XmlHttpRequestUpload", "XmlHttpRequestResponseType", "ProgressEvent", "EventTarget", "Event"] }
+
+# server (ssr) only
+axum = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"], optional = true }
+leptos_axum = { version = "0.8", optional = true }
+openstack_sdk = { version = "0.22.8", default-features = false, features = ["async", "compute", "network", "block_storage", "image", "identity", "load_balancer"], optional = true }
+secrecy = { version = "0.10", optional = true }
+# Image file uploads are streamed to Glance, which the SDK (whole `Vec<u8>` bodies) can't do
+# (roadmap 45). Same TLS stack and features as the SDK's own client.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream"], optional = true }
+futures-util = { version = "0.3", default-features = false, optional = true }
+moka = { version = "0.12", features = ["future"], optional = true }
+cookie = { version = "0.18", features = ["private", "percent-encode"], optional = true }
+sha2 = { version = "0.10", optional = true }
+hex = { version = "0.4", optional = true }
+base64 = { version = "0.22", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
+http = { version = "1", optional = true }
+json-patch = { version = "4", optional = true }
+ssh-key = { version = "0.6", default-features = false, features = ["std", "ed25519", "getrandom"], optional = true }
+toml = { version = "1", optional = true }
+# openrc / clouds.yaml downloads from Jinja templates an operator can replace (roadmap 57).
+minijinja = { version = "2", optional = true }
+# Application credential access rules, typed as JSON or YAML like Horizon (roadmap 57).
+yaml-rust2 = { version = "0.11", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+url = { version = "2", optional = true }
+# `[log] file`: rotated log files behind a background writer (roadmap 81); rustix sets the
+# umask so they are created 0640.
+tracing-appender = { version = "0.2", optional = true }
+rustix = { version = "1", default-features = false, features = ["std", "fs", "process"], optional = true }
+
+[dev-dependencies]
+
+[features]
+hydrate = ["leptos/hydrate", "dep:console_error_panic_hook", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
+ssr = [
+  "dep:axum", "dep:tokio", "dep:reqwest", "dep:futures-util", "dep:leptos_axum", "dep:openstack_sdk", "dep:secrecy", "dep:moka",
+  "dep:cookie", "dep:sha2", "dep:hex", "dep:base64", "dep:tracing",
+  "dep:tracing-subscriber", "dep:http", "dep:json-patch", "dep:ssh-key", "dep:toml", "dep:clap", "dep:url", "dep:minijinja", "dep:yaml-rust2",
+  "dep:tracing-appender", "dep:rustix",
+  "leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr",
+]
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.leptos]
+output-name = "moonlight"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "style/main.css"
+assets-dir = "public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+browserquery = "defaults"
+env = "DEV"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
+lib-profile-release = "wasm-release"

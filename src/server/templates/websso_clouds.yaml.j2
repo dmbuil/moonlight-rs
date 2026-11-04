@@ -1,0 +1,21 @@
+# Signs in through your identity provider in a browser, like the dashboard.
+# Needs the keystoneauth-websso plugin: pip install keystoneauth-websso
+clouds:
+  {{ cloud_name | yaml }}:
+{% if profile %}
+    profile: {{ profile | yaml }}
+{% endif %}
+    auth_type: "v3websso"
+    auth:
+      auth_url: {{ auth_url | yaml }}
+{% if identity_provider %}
+      identity_provider: {{ identity_provider | yaml }}
+{% endif %}
+      protocol: {{ protocol | yaml }}
+      project_id: {{ tenant_id | yaml }}
+      project_name: {{ tenant_name | yaml }}
+{% if region %}
+    region_name: {{ region | yaml }}
+{% endif %}
+    interface: {{ interface | yaml }}
+    identity_api_version: {{ os_identity_api_version }}

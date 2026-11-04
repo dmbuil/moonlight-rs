@@ -1,0 +1,13 @@
+# Markdown lint/format config for rumdl (`rumdl check .`, `rumdl fmt .`).
+[global]
+# LICENSE.md is the verbatim Apache 2.0 text: never reformat it.
+exclude = ["target", "LICENSE.md"]
+
+[MD013]
+line-length = 100
+code-blocks = false
+tables = false
+
+[MD033]
+# The README logo needs a size, which Markdown image syntax can't give.
+allowed-elements = ["img"]
