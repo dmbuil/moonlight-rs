@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Report a security vulnerability
+  - name: 🛡️ Report a security vulnerability
     url: https://github.com/dmbuil/moonlight-rs/security/advisories/new
     about: Privately report anything that could leak tokens or bypass the writes switch.
-  - name: Configuration reference
+  - name: 🧪 Configuration reference
     url: https://github.com/dmbuil/moonlight-rs/blob/main/CONFIGURATION.md
     about: Check the settings reference before reporting a configuration problem.

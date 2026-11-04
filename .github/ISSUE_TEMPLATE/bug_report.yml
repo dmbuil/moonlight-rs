@@ -1,4 +1,4 @@
-name: Bug report
+name: 🐞 Bug report
 description: Something in Moonlight is broken or behaves differently from Horizon.
 title: "[Bug]: "
 labels: ["bug", "triage"]
