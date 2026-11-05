@@ -37,7 +37,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 22  | ✅ Volume actions parity (retype, upload to image, transfer, tabs)                                | —        | M    | 19 (groups)                 |
 | 23  | ✅ Overview usage summary (date range + CSV)                                                      | —        | S    | —                           |
 | 24  | ✅ API Access: credentials, `openrc` and `clouds.yaml` downloads                                  | —        | S    | —                           |
-| 25  | 🚧 Metadata editor (instances, images, volumes, snapshots): editor ✅, catalog ✅, 403 message ✅                      | P3       | M    | —                           |
+| 25  | 🚧 Metadata editor (instances, images, volumes, snapshots): editor ✅, catalog ✅, 403 message ✅ ([#1])                      | P3       | M    | —                           |
 | 26  | ✅ Router static routes: add and delete                                                           | —        | S    | 19 (extension)              |
 | 27  | ✅ Small parity gaps: large projects (columns and links ✅)                                        | —        | S    | 3, 19                       |
 | 28  | ✅ Modal sizes fitted to their content (S / M / L)                                                | —        | S    | —                           |
@@ -57,7 +57,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 42  | ✅ Instance menu: *Edit Security Groups* (all the instance's ports)                               | —        | S    | —                           |
 | 43  | ✅ Security group pickers with a filter (*Allocated / Available*) when editing                    | —        | S    | 42                          |
 | 44  | ✅ Instance *Interfaces* tab: *Edit Security Groups* and *Edit Port*, as Horizon                  | —        | M    | 43                          |
-| 45  | 🚧 *Create Image* (from a file or a URL)                                                            | P2       | L    | 33, 41                      |
+| 45  | 🚧 *Create Image* (from a file or a URL) ([#2])                                                            | P2       | L    | 33, 41                      |
 | 46  | ✅ Refresh volumes and snapshots while they change state                                          | —        | S    | 11                          |
 | 47  | ✅ 🐞 FIX: long row menus (instances) run off the screen                                           | —        | XS   | 13                          |
 | 48  | ✅ 🔒 Request boundary: same-origin check and safe IDs in API paths                                | —        | M    | —                           |
@@ -70,8 +70,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 55  | ✅ Key Manager (Barbican): Secrets and Containers panels                                          | —        | M    | 19                          |
 | 56  | ✅ Images list: no *Owner* column; a row drawer with the image's metadata                         | —        | S    | 25                          |
 | 57  | ✅ Identity dashboard (Projects, Users, Groups, Roles, Application Credentials, Domains)          | —        | L    | 14, 19                      |
-| 58  | Key Manager: *Orders* (Barbican generates a key or an RSA key pair)                              | P3       | S    | 55                          |
-| 59  | Key Manager: the project's preferred secret store (multiple-store Barbican)                      | P3       | S    | 55                          |
+| 58  | Key Manager: *Orders* (Barbican generates a key or an RSA key pair) ([#3])                              | P3       | S    | 55                          |
+| 59  | Key Manager: the project's preferred secret store (multiple-store Barbican) ([#4])                      | P3       | S    | 55                          |
 | 60  | ✅ 🐞 FIX: *Usage Summary* shows `-0.00` for zero consumption                                      | —        | XS   | 23                          |
 | 61  | ✅ Security group *Add Rule*: help text under every field                                         | —        | XS   | —                           |
 | 62  | ✅ Orchestration (Heat): Stacks, Resource Types, Template Versions                                | —        | L    | 19                          |
@@ -80,10 +80,10 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 65  | ✅ `api.rs` server-function helper, automatic call counts, review cleanups                        | —        | M    | —                           |
 | 66  | ✅ Short per-project cache for name lookups (flavors, images, networks, volumes)                  | —        | M    | 64                          |
 | 67  | ✅ 🔒 Test that every `OsAction` path parameter goes through `check_id`                            | —        | S    | 48                          |
-| 68  | ⏸ DNS (Designate): zones, record sets, reverse DNS of floating IPs                                 | P3       | M    | 5, 19                       |
-| 69  | ⏸ Object Store (Swift): containers and objects                                                     | P3       | L    | 5, 19                       |
-| 70  | ⏸ Shares (Manila): shares, snapshots, share networks                                               | P3       | L    | 5, 19                       |
-| 71  | ⏸ Container Infra (Magnum): clusters and cluster templates                                         | P3       | M    | 5, 19                       |
+| 68  | ⏸ DNS (Designate): zones, record sets, reverse DNS of floating IPs ([#5])                                 | P3       | M    | 5, 19                       |
+| 69  | ⏸ Object Store (Swift): containers and objects ([#6])                                                     | P3       | L    | 5, 19                       |
+| 70  | ⏸ Shares (Manila): shares, snapshots, share networks ([#7])                                               | P3       | L    | 5, 19                       |
+| 71  | ⏸ Container Infra (Magnum): clusters and cluster templates ([#8])                                         | P3       | M    | 5, 19                       |
 | 72  | ✅ Instances list: the *Age* column wraps onto two lines so the table fits (Spanish)              | —        | XS   | —                           |
 | 73  | ✅ Networks list: no selection checkbox on networks the project can't change (external, shared)   | —        | XS   | —                           |
 | 74  | ✅ Network Topology: tell external and shared networks apart from the project's own               | —        | S    | 20                          |
@@ -91,7 +91,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 76  | ✅ Expired session: server function calls get their error, dialogs say so                         | —        | XS   | —                           |
 | 77  | Keep the session alive while the user is active (`[session] idle_minutes`)                       | P2       | M    | 49, 76                      |
 | 78  | ✅ Result dialog: requests without numbers, and `[ui] show_requests`                              | —        | S    | —                           |
-| 79  | ⏸ Alarming (Aodh): alarms list, detail, history, create/edit/delete                              | P3       | L    | 62                          |
+| 79  | ⏸ Alarming (Aodh): alarms list, detail, history, create/edit/delete ([#9])                              | P3       | L    | 62                          |
 | 80  | ✅ 🔒 WebSSO sign-in (OIDC/SAML via Keystone)                                                      | —        | L    | 48, 49, 57                  |
 | 81  | ✅ Write the server log to a file (`[log] file`, rotation)                                        | —        | S    | —                           |
 | 82  | ✅ Project › Quotas: every quota of the project, with usage, editable with permission             | —        | M    | 57                          |
@@ -100,11 +100,26 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 85  | ✅ Admin dashboard (Horizon's *Admin*: Compute, Volume, Network, System)                          | —        | L    | 19, 57, 82                  |
 | 86  | ✅ Usage Summary: localised thousands separators                                                  | —        | XS   | 23, 60                      |
 | 87  | ✅ Long bulk actions run in the background, with a progress notification                         | —        | M    | —                           |
-| 88  | 🚧 Server-side paging and filters for the big Admin lists (Instances, Volumes, Floating IPs…)     | P2       | L    | 85                          |
-| 89  | Admin dashboard refinements (item 85's leftovers)                                                 | P3       | M    | 85, 88                      |
-| 90  | Volume Backups leftovers (from item 5)                                                            | P3       | M    | 5                           |
-| 91  | Scheduler Hints step in Launch Instance (from item 5)                                            | P3       | S    | 5, 2                        |
-| 92  | Heat Template Generator (from item 62)                                                           | P3       | L    | 62                          |
+| 88  | 🚧 Server-side paging and filters for the big Admin lists (Instances, Volumes, Floating IPs…) ([#10])     | P2       | L    | 85                          |
+| 89  | Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
+| 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
+| 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
+| 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
+
+[#1]: https://github.com/dmbuil/moonlight-rs/issues/1
+[#2]: https://github.com/dmbuil/moonlight-rs/issues/2
+[#3]: https://github.com/dmbuil/moonlight-rs/issues/3
+[#4]: https://github.com/dmbuil/moonlight-rs/issues/4
+[#5]: https://github.com/dmbuil/moonlight-rs/issues/5
+[#6]: https://github.com/dmbuil/moonlight-rs/issues/6
+[#7]: https://github.com/dmbuil/moonlight-rs/issues/7
+[#8]: https://github.com/dmbuil/moonlight-rs/issues/8
+[#9]: https://github.com/dmbuil/moonlight-rs/issues/9
+[#10]: https://github.com/dmbuil/moonlight-rs/issues/10
+[#11]: https://github.com/dmbuil/moonlight-rs/issues/11
+[#12]: https://github.com/dmbuil/moonlight-rs/issues/12
+[#13]: https://github.com/dmbuil/moonlight-rs/issues/13
+[#14]: https://github.com/dmbuil/moonlight-rs/issues/14
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27,
 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 55,
@@ -909,6 +924,8 @@ built in the browser). Tests: neither file ever contains a token or password.
 
 ## 25. Metadata editor
 
+> 🔗 **Issue:** [#1]
+>
 > 🚧 **In progress: the editor is done, the metadata catalog is left.** *Update Metadata* is
 > in the row menu and detail header of instances (`Op::UpdateMetadata`, after *Edit
 > Instance*, not while a task runs), volumes and snapshots (before *Delete*), and images the
@@ -1676,6 +1693,8 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 
 ## 45. *Create Image* (from a file or a URL)
 
+> 🔗 **Issue:** [#2]
+>
 > 🚧 **In progress.** All four slices are built; what is left is trying uploads against a test
 > cloud (see the end of this note).
 >
@@ -2882,6 +2901,8 @@ Keep Horizon's panel order, columns, breadcrumbs (*Identity › Projects*) and a
 
 ## 58. Key Manager: *Orders* (Barbican generates a key or an RSA key pair)
 
+> 🔗 **Issue:** [#3]
+
 **Goal.** Let users ask Barbican to generate secret material instead of uploading it: an
 *Order Key* dialog for a symmetric key (`type: key`, stored as a secret) or an RSA key pair
 (`type: asymmetric`, stored as an `rsa` container with `public_key`, `private_key` and an
@@ -2917,6 +2938,8 @@ deprecated and rarely deployed: not offered.
   check that an asymmetric order's container shows its three roles on its page.
 
 ## 59. Key Manager: the project's preferred secret store (multiple-store Barbican)
+
+> 🔗 **Issue:** [#4]
 
 **Goal.** On a Barbican deployed with several secret stores (`[secretstore]
 enable_multiple_secret_stores = True`; e.g. an HSM through PKCS#11 next to the software
@@ -3411,6 +3434,8 @@ without any test failing.
 
 ## 68. DNS (Designate): zones, record sets, reverse DNS of floating IPs
 
+> 🔗 **Issue:** [#5]
+>
 > ⏸ **Postponed (2026-11-03).** The user said this cannot be implemented for now; no reason was
 > recorded beyond what the goal says (the service is not on the production cloud, so it could only
 > be tested on another cloud or with fixtures). Nothing is started. It stays out of `Next:` until
@@ -3445,6 +3470,8 @@ it on another cloud or with JSON fixtures only.
 
 ## 69. Object Store (Swift): containers and objects
 
+> 🔗 **Issue:** [#6]
+>
 > ⏸ **Postponed (2026-11-03).** The user said this cannot be implemented for now; no reason was
 > recorded beyond what the goal says (the service is not on the production cloud, so it could only
 > be tested on another cloud or with fixtures). Nothing is started. It stays out of `Next:` until
@@ -3478,6 +3505,8 @@ production cloud.
 
 ## 70. Shares (Manila): shares, snapshots, share networks
 
+> 🔗 **Issue:** [#7]
+>
 > ⏸ **Postponed (2026-11-03).** The user said this cannot be implemented for now; no reason was
 > recorded beyond what the goal says (the service is not on the production cloud, so it could only
 > be tested on another cloud or with fixtures). Nothing is started. It stays out of `Next:` until
@@ -3504,6 +3533,8 @@ The share detail shows its export locations. Not on the production cloud.
 
 ## 71. Container Infra (Magnum): clusters and cluster templates
 
+> 🔗 **Issue:** [#8]
+>
 > ⏸ **Postponed (2026-11-03).** The user said this cannot be implemented for now; no reason was
 > recorded beyond what the goal says (the service is not on the production cloud, so it could only
 > be tested on another cloud or with fixtures). Nothing is started. It stays out of `Next:` until
@@ -3877,6 +3908,8 @@ development cloud, where the requests are what is being checked).
 
 ## 79. Alarming (Aodh): alarms list, detail, history, create/edit/delete
 
+> 🔗 **Issue:** [#9]
+>
 > ⏸ **Postponed (2026-11-03).** The user said the rest of this cannot be implemented for now; no
 > reason was recorded. Built: slices 1 (read-only) and 3 (create/edit), described below. Left:
 > slice 2 (delete, enable/disable, set state) and 4 (Heat `OS::Aodh::*` links), plus the checks
@@ -4976,6 +5009,8 @@ Instances*, *Release Floating IPs*) follow the same rule (proposed: every `OsAct
 
 ## 88. Server-side paging and filters for the big Admin lists
 
+> 🔗 **Issue:** [#10]
+>
 > 🚧 **Slices A–C done (2026-11-03/04), slice D built (2026-11-05) but not yet tried in the
 > browser: every Admin list of the table below is paged, sorts on the server and counts on
 > request; slice E open.** The design
@@ -5330,6 +5365,8 @@ stay whole. Measure Project › Instances on the production cloud's size class i
 
 ## 89. Admin dashboard refinements
 
+> 🔗 **Issue:** [#11]
+
 **Goal.** Close the gaps item 85 left in the Admin dashboard, found by reading Horizon and the
 browser pass on ttcp-dev (2026-11-01). None blocks daily use; each is a place where Horizon shows
 or offers a bit more:
@@ -5394,6 +5431,8 @@ Tests next to each change; browser check on ttcp-dev with dialogs opened, never 
 
 ## 90. Volume Backups leftovers
 
+> 🔗 **Issue:** [#12]
+
 **Goal.** Finish what item 5's slice 5 left out of the `backup` plugin (Volumes › Backups), none
 of which Horizon's Project panel needs for daily use:
 
@@ -5423,6 +5462,8 @@ all.
 
 ## 91. Scheduler Hints step in Launch Instance
 
+> 🔗 **Issue:** [#13]
+
 **Goal.** Horizon's *Launch Instance* has a *Scheduler Hints* step when
 `LAUNCH_INSTANCE_DEFAULTS["enable_scheduler_hints"]` is on: the user picks hints from a
 catalog (`OS::Nova::...` metadata definitions with the `scheduler_hints` property target) and
@@ -5447,6 +5488,8 @@ gets them as `os:scheduler_hints`. Moonlight sends only the server group hint to
    test for the step's presence only when the setting is on.
 
 ## 92. Heat Template Generator
+
+> 🔗 **Issue:** [#14]
 
 **Goal.** Horizon's *Orchestration › Template Generator*: a drag-and-drop canvas where the
 user adds resources (from the *Resource Types* list), connects them, fills their properties and
