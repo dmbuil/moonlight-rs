@@ -301,6 +301,29 @@ Visibility is transitive: hiding a field hides fields that depend on it.
 - Verify polling/refresh with `read_network_requests` (`urlPattern: "/api/"`): it must show
   only `GET`s.
 
+### Remote development (Claude on a remote host, Brave on the Mac)
+
+The Claude in Chrome extension only reaches a Claude Code running on the same machine. When
+Claude and the dev server run on a remote host (`porygon`, the Rocky VM, over VPN; repo in
+`/home/rocky/moonlight-rs`), Claude drives the Mac's Brave with `chrome-devtools-mcp` through an
+SSH tunnel instead.
+
+- **Once, on the host:** `sudo dnf install -y nodejs tmux`, then
+  `claude mcp add chrome-devtools --scope user -- npx -y chrome-devtools-mcp@latest
+  --browser-url=http://127.0.0.1:9222`. The host needs only a `Host` entry in the Mac's
+  `~/.ssh/config`; the script passes the tunnels itself.
+- **Each session, on the Mac:** `scripts/moonlight-remote.sh` (local and git-ignored: it names
+  this setup's host and paths; it may not exist in another checkout) starts Brave with a separate
+  profile and its DevTools port (9222), opens the tunnels (host's 9222 → Brave, Mac's
+  3000/3001 → dev server and live reload) and attaches to the `moonlight` tmux session. There:
+  `scripts/dev.sh start`, then `claude`; `/mcp` must show `chrome-devtools` connected.
+- The user signs in in that Brave window (§1.5). Keep only Moonlight in its profile: whoever
+  reaches port 9222 controls the browser, so never expose it beyond the tunnel.
+- The tools are `mcp__chrome-devtools__*`, not `mcp__claude-in-chrome__*`; the tips above
+  (hydration, filling forms without focusing) still apply.
+- Over the tunnel the dev WASM (44 MB, `[profile.wasm-dev]`) arrives gzipped, about 4.5 MB
+  (`server::compression`).
+
 ---
 
 ## 7. Conventions

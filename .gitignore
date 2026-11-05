@@ -26,3 +26,8 @@ moonlight.log*
 
 # IA local config
 .claude
+
+# Personal remote-development launcher: names this machine's host, paths and browser.
+/scripts/moonlight-remote.sh
+# Personal container launcher (podman run with this machine's conf and log volume).
+/moon.sh
