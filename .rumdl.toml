@@ -1,7 +1,8 @@
 # Markdown lint/format config for rumdl (`rumdl check .`, `rumdl fmt .`).
 [global]
 # LICENSE.md is the verbatim Apache 2.0 text: never reformat it.
-exclude = ["target", "LICENSE.md"]
+# logs/ is the container's log volume (moon.sh), owned by its user: unreadable here.
+exclude = ["target", "logs", "LICENSE.md"]
 
 [MD013]
 line-length = 100

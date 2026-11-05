@@ -161,16 +161,31 @@ binary, `target/site/` and the CA certificates, and runs as an unprivileged user
 the same way (`docker build`).
 
 ```bash
-podman build -t moonlight .
+podman build -t localhost/moonlight .
 podman run --rm -p 3000:3000 \
   -v ./moonlight.conf:/etc/moonlight/moonlight.conf:ro,Z \
-  moonlight
+  localhost/moonlight
 ```
+
+Use the full name `localhost/moonlight`: given the short name `moonlight`, podman looks it up in
+the registries when it is not in local storage (a failed build, or one run as another user or
+in another `podman machine`), and asks which image to pull. `podman images localhost/moonlight`
+shows whether the build produced it.
 
 - **Configuration is mounted, never built in:** `moonlight.conf` holds the cookie key, and
   [`.containerignore`](.containerignore) keeps it, the logs and `target/` out of the build
   context. `/etc/moonlight/moonlight.conf` is a default path, so no `--config-file` is needed;
   `MOONLIGHT_*` variables (`-e`) override it as usual.
+- **Logs:** the container writes only to `/var/log/moonlight` (`/app` is read-only for its
+  user, so a relative `[log] file = "./moonlight.log"` fails with *Permission denied*). Either
+  log to stdout (`[log] file = ""`, read with `podman logs`) or pass
+  `-e MOONLIGHT_LOG_FILE=/var/log/moonlight/moonlight.log`, adding
+  `-v moonlight-logs:/var/log/moonlight` to keep the files. An empty `MOONLIGHT_LOG_FILE` is
+  ignored, so it can't switch a configured file off.
+- **Logs in a host folder** (`-v ./logs:/var/log/moonlight:Z`): the container user is uid
+  10001, which must be able to write there. With rootful podman (uids are the host's), run
+  `chown 10001:10001 logs` once; with rootless podman, add
+  `--userns=keep-id:uid=10001,gid=10001` so that uid is your own user.
 - **TLS:** session cookies are `Secure` by default, so put the container behind an
   HTTPS proxy, or set `[session] secure_cookies = false` for a local test over plain HTTP.
 - **Private CA:** mount the CA bundle and point `[tls] ca_file` at it.

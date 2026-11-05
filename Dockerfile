@@ -2,8 +2,11 @@
 #   1. build: compiles the server binary and the WASM front end with cargo-leptos.
 #   2. runtime: a slim Debian with only the binary, the site bundle and the CA store.
 #
-#   podman build -t moonlight .
-#   podman run --rm -p 3000:3000 -v ./moonlight.conf:/etc/moonlight/moonlight.conf:ro,Z moonlight
+#   podman build -t localhost/moonlight .
+#   podman run --rm -p 3000:3000 -v ./moonlight.conf:/etc/moonlight/moonlight.conf:ro,Z \
+#     localhost/moonlight
+#
+# The full name keeps podman from looking `moonlight` up in a registry (and prompting).
 #
 # No configuration is baked in: moonlight.conf holds the cookie key, so it is mounted at run time
 # (and .containerignore keeps it out of the build context).
@@ -41,7 +44,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin moonlight \
- && mkdir -p /etc/moonlight
+ && mkdir -p /etc/moonlight \
+ && install -d -o moonlight -g moonlight -m 0750 /var/log/moonlight
 
 WORKDIR /app
 COPY --from=build /out/moonlight /app/moonlight
@@ -56,6 +60,9 @@ ENV LEPTOS_OUTPUT_NAME=moonlight \
 
 USER moonlight
 EXPOSE 3000
+# The only directory the moonlight user can write: /app is root's, so a relative
+# `[log] file` such as "./moonlight.log" fails with "Permission denied".
+VOLUME /var/log/moonlight
 
 # /etc/moonlight/moonlight.conf is one of the default paths, so no --config-file is needed.
 ENTRYPOINT ["/app/moonlight"]
