@@ -95,9 +95,13 @@ To build once without watching: `cargo leptos build` then `cargo leptos serve`.
 > If it happens, stop everything and start `cargo leptos watch` again.
 
 ```bash
-cargo leptos build --release
+cargo leptos build --release --precompress
 ./target/release/moonlight          # run from the repository root
 ```
+
+`--precompress` writes brotli and gzip copies of the bundles (`target/site/pkg/*.br`, `*.gz`),
+which the server sends as they are. Without it the server gzips the WASM, JS and CSS on each
+request instead; pages and server-function responses are never compressed.
 
 The binary reads its Leptos settings from `Cargo.toml` when started from the repository
 root. To run it elsewhere (a container, another host), copy `target/release/moonlight` and
@@ -156,9 +160,9 @@ passed with `--config-file`.
 ## Container image (Podman)
 
 The [`Dockerfile`](Dockerfile) builds in two stages: a Rust image compiles the server and the
-WASM front end with `cargo leptos build --release`, then a slim Debian image keeps only the
-binary, `target/site/` and the CA certificates, and runs as an unprivileged user. Docker works
-the same way (`docker build`).
+WASM front end with `cargo leptos build --release --precompress`, then a slim Debian image keeps
+only the binary, `target/site/` and the CA certificates, and runs as an unprivileged user.
+Docker works the same way (`docker build`).
 
 ```bash
 podman build -t localhost/moonlight .

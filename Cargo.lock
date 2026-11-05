@@ -2370,6 +2370,7 @@ dependencies = [
  "ssh-key",
  "tokio",
  "toml",
+ "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

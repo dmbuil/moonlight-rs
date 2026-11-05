@@ -55,6 +55,9 @@ url = { version = "2", optional = true }
 # umask so they are created 0640.
 tracing-appender = { version = "0.2", optional = true }
 rustix = { version = "1", default-features = false, features = ["std", "fs", "process"], optional = true }
+# Gzips the WASM, JS and CSS bundles on the fly (`server::compression`): over Tailscale the dev
+# WASM took ~50 s to load uncompressed. Release builds ship precompressed files instead.
+tower-http = { version = "0.6", default-features = false, features = ["compression-gzip"], optional = true }
 
 [dev-dependencies]
 
@@ -64,7 +67,7 @@ ssr = [
   "dep:axum", "dep:tokio", "dep:reqwest", "dep:futures-util", "dep:leptos_axum", "dep:openstack_sdk", "dep:secrecy", "dep:moka",
   "dep:cookie", "dep:sha2", "dep:hex", "dep:base64", "dep:tracing",
   "dep:tracing-subscriber", "dep:http", "dep:json-patch", "dep:ssh-key", "dep:toml", "dep:clap", "dep:url", "dep:minijinja", "dep:yaml-rust2",
-  "dep:tracing-appender", "dep:rustix",
+  "dep:tracing-appender", "dep:rustix", "dep:tower-http",
   "leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr",
 ]
 
@@ -74,6 +77,20 @@ opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# The WASM that `cargo leptos watch` builds. Plain `dev` made a ~140 MB file (mostly DWARF) that
+# took ~50 s to load over Tailscale, so a remote dev server was unusable. No debug info and light
+# optimisation keep it small, while rebuilds stay incremental. Panics still print their message
+# and location (`console_error_panic_hook`); only the WASM stack frames lose their source lines.
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+debug = false
+
+# The dev server gzips the WASM on every load; unoptimised, the deflate encoder would add
+# seconds to each one.
+[profile.dev.package.miniz_oxide]
+opt-level = 3
 
 [package.metadata.leptos]
 output-name = "moonlight"
@@ -89,4 +106,5 @@ bin-features = ["ssr"]
 bin-default-features = false
 lib-features = ["hydrate"]
 lib-default-features = false
+lib-profile-dev = "wasm-dev"
 lib-profile-release = "wasm-release"

@@ -29,9 +29,11 @@ COPY . .
 
 # The cache mounts keep the registry and target/ between builds (podman/buildah support them).
 # Because target/ is a cache, the artifacts are copied out to /out in the same step.
+# --precompress writes .br/.gz next to each bundle at full quality; the server sends those
+# as they are, so it never compresses the release WASM per request.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo leptos build --release \
+    cargo leptos build --release --precompress \
  && mkdir -p /out \
  && cp target/release/moonlight /out/moonlight \
  && cp -r target/site /out/site

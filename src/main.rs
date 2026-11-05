@@ -78,6 +78,7 @@ async fn serve() {
         .fallback(leptos_axum::file_and_error_handler(shell))
         .layer(axum::middleware::from_fn(moonlight::server::same_origin_only))
         .layer(axum::middleware::map_response(moonlight::server::security_headers))
+        .layer(moonlight::server::compression())
         .with_state(leptos_options);
 
     let cfg = &moonlight::server::config::state().config;

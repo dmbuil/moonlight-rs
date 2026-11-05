@@ -51,6 +51,36 @@ pub fn add_security_headers(h: &mut http::HeaderMap, https: bool) {
     }
 }
 
+/// Gzip for the static bundles, on the fly; only [`compressible`] responses.
+/// A release build made with `cargo leptos build --precompress` has `.br`/`.gz`
+/// files that leptos_axum sends as they are, and this layer leaves a response
+/// that already has a `Content-Encoding` alone.
+///
+/// Gzip only, measured on the 44 MB dev WASM: gzip makes 4.5 MB in 0.28 s,
+/// brotli (quality 4) 4.0 MB in 2.8 s. Over Tailscale (~3 MB/s) brotli's
+/// encoder became the bottleneck, so it is slower overall.
+pub fn compression() -> tower_http::compression::CompressionLayer<CompressWhen> {
+    use tower_http::compression::CompressionLayer;
+    fn when(_: http::StatusCode, _: http::Version, h: &http::HeaderMap, _: &http::Extensions) -> bool {
+        compressible(h)
+    }
+    CompressionLayer::new().no_br().no_deflate().no_zstd().compress_when(when as CompressWhen)
+}
+
+/// The predicate type of [`compression`]: tower-http's signature, as a plain fn.
+pub type CompressWhen = fn(http::StatusCode, http::Version, &http::HeaderMap, &http::Extensions) -> bool;
+
+/// Whether a response may be compressed: only the WASM, JS and CSS bundles.
+/// Pages and server-function results stay plain. They can carry secrets (an
+/// application credential secret, a generated private key) next to text a
+/// user typed, and compressing both together leaks the secret through the
+/// response size (BREACH). Small files don't gain enough to be worth it either.
+pub fn compressible(h: &http::HeaderMap) -> bool {
+    let ty = h.get(http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let ty = ty.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    matches!(ty.as_str(), "application/wasm" | "text/javascript" | "application/javascript" | "text/css")
+}
+
 /// Refuses state-changing requests from another origin (roadmap 48): server
 /// functions are POSTs, and the session cookie's `SameSite=Lax` doesn't stop a
 /// sibling subdomain, nor login CSRF. Horizon uses Django's CSRF token.
@@ -130,6 +160,19 @@ mod tests {
         assert!(!ok(&Method::POST, &proxied, None), "a proxy rewrote Host…");
         assert!(ok(&Method::POST, &proxied, Some("https://cloud.example.com")), "…so [session] public_url is compared instead");
         assert!(!ok(&Method::DELETE, &[("origin", "https://evil.example"), ("host", "evil.example")], Some("https://cloud.example.com")));
+    }
+
+    #[test]
+    fn only_static_bundles_are_compressed() {
+        let ok = |ty: &str| super::compressible(&headers(&[("content-type", ty)]));
+        assert!(ok("application/wasm"), "the debug WASM is ~140 MB");
+        assert!(ok("text/javascript; charset=utf-8"));
+        assert!(ok("application/javascript"));
+        assert!(ok("Text/CSS"));
+        assert!(!ok("text/html; charset=utf-8"), "pages can hold secrets next to user input (BREACH)");
+        assert!(!ok("application/json"), "server function results, same reason");
+        assert!(!ok("image/png"));
+        assert!(!super::compressible(&http::HeaderMap::new()), "no Content-Type: left alone");
     }
 
     #[test]
