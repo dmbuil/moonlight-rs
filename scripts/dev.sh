@@ -70,7 +70,7 @@ wait_build() {
       return 1
     fi
     # Settled = no cargo build child and the log quiet for 2 s (wasm-bindgen runs in-process).
-    if ! building && [ $((now - $(stat -f %m "$LOG" 2>/dev/null || echo 0))) -ge 2 ]; then
+    if ! building && [ $((now - $(stat -c %Y "$LOG" 2>/dev/null || stat -f %m "$LOG" 2>/dev/null || echo 0))) -ge 2 ]; then
       new=$(tail -c +"$((off + 1))" "$LOG" | strip)
       # A build that finished before `wait` was called is still reported: if nothing new,
       # judge (and show errors of) the whole log's last outcome.
