@@ -105,6 +105,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
 | 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
+| 93  | Firewall (FWaaS v2): firewall groups, policies and rules | P2 | L | 19 |
+| 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules | P3 | M | 93, 85 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -5518,6 +5520,90 @@ side:
    Heat-shaped JSON.
 
 Split in two slices when started: the pure model plus the form first, the canvas after.
+
+## 93. Firewall (FWaaS v2): firewall groups, policies and rules
+
+Requested 2026-11-05. ttcp-dev has it: Neutron lists the `fwaas_v2` extension (checked that day
+through `get_session_info`, project *pokemon*, user `admin2`, GET only).
+
+**Goal.** A *Project › Network › Firewall* panel, for clouds that run FWaaS v2, with
+neutron-fwaas-dashboard's three tabs: *Firewall Groups*, *Firewall Policies* and *Firewall
+Rules*. The Admin side is item 94.
+
+- *Firewall Rules*: Name (linked), Protocol (`tcp`, `udp`, `icmp`, any), Source and Destination
+  IP / port, Action (`allow`, `deny`, `reject`), IP version, Enabled, Shared, and the policy that
+  uses it. *Add Rule*, *Edit Rule*, *Delete Rule* (bulk).
+- *Firewall Policies*: Name, the ordered rules, Audited, Shared. *Add Policy* (name,
+  description, rules picked and ordered), *Edit Policy*, *Insert Rule* (before or after a rule
+  already in it), *Remove Rule*, *Delete Policy*.
+- *Firewall Groups*: Name, Ingress and Egress policies (linked), Ports, Status (`ACTIVE`,
+  `INACTIVE`, `PENDING_CREATE` / `_UPDATE` / `_DELETE`, `ERROR`), Admin state, Shared.
+  *Create Firewall Group* (name, description, ingress and egress policy, ports, admin state),
+  *Edit*, *Add Port* / *Remove Port*, *Delete*.
+- A detail page per group, policy and rule, cross-linked; a router or instance port's page
+  could link to the group that protects it (later).
+
+**Implementation.**
+
+- Gating like trunks: `model::Plugin::Firewall` (`firewall` in `[plugins] enabled`, added to
+  `Plugin::ALL`, documented in `CONFIGURATION.md` and `moonlight.conf.example`),
+  `needs::FIREWALL = All[Plugin(Firewall), NetExt("fwaas_v2")]`, a panel in the Network group of
+  `components/nav.rs` (*Firewall*, `/project/firewall`, next to `K::Trunks`), `plugin_enabled` in
+  every server fn, the actions in `OsAction::plugins`.
+- **Not in the SDK** (`openstack-sdk-network` 0.22.8 has no `fwaas` module): raw requests with
+  `actions::JsonRequest` (`ServiceType::Network`) for writes and `fetch::get_json` for reads, as
+  `fetch::trunks` does. Paths under `fwaas/`: `firewall_groups`, `firewall_policies`,
+  `firewall_rules`, each filtered by `project_id` (AGENTS.md §6: Neutron returns every project's
+  rows to admins). Shared policies and rules of other projects are readable too: list them
+  with `shared=true` for the pickers.
+- Models `FirewallGroupRow`, `FirewallPolicyRow`, `FirewallRuleRow`; pure mappers in
+  `mapping.rs` tested with Neutron-shaped JSON (rule with `null` ports and IPs read as *any*,
+  policy rule order kept, group ports resolved to their device: router or instance).
+- Writes, one `OsAction` each with a dry-run test of the exact path and body:
+  `FirewallRuleCreate` / `Update` / `Delete`, `FirewallPolicyCreate` / `Update` / `Delete`,
+  `FirewallPolicyInsertRule { id, rule_id, before, after }` (`PUT
+  fwaas/firewall_policies/{id}/insert_rule`), `FirewallPolicyRemoveRule` (`…/remove_rule`),
+  `FirewallGroupCreate` / `Update` / `Delete` (ports are a full list in the update body, so *Add
+  Port* / *Remove Port* send the new list). Validation in `model`: protocol and port ranges
+  (`22`, `8000:8080`; none for `icmp` or any), CIDRs matching the IP version.
+- Groups move through `PENDING_*`: the list polls while any row is busy (`list_page!`'s `busy`,
+  roadmap 46).
+- Ports for a group: the project's router interface ports and instance ports, not ports already
+  in another group (Neutron refuses those); a new `ChoiceSet`, labelled by device name and IP.
+- *Shared* is admin-only by Neutron's default policy: show it with `needs::ADMIN`.
+- i18n for every label, status and action, both languages. Verify on ttcp-dev: read-only first,
+  then open each dialog (writes are allowed there, but do not submit unless the user asks).
+
+**Slices.** (1) the three tabs and detail pages, read-only; (2) rules and policies writes;
+(3) groups writes and ports.
+
+**Open questions.** Whether the production cloud runs FWaaS (only ttcp-dev is known). Whether the
+default group
+(`default`, created by Neutron per project when `auto_associate_default_firewall_group` is on)
+gets protection like the `default` security group (item 34).
+
+## 94. Admin › Network › Firewall
+
+Split from item 93 (2026-11-05): not for now.
+
+**Goal.** An *Admin › Network › Firewall* panel with the same three tabs as item 93 (*Firewall
+Groups*, *Firewall Policies*, *Firewall Rules*), listing every project's rows with a *Project*
+column and filter, so operators can see which ports a firewall group protects and clean up
+leftovers. neutron-fwaas-dashboard has no admin panel; this goes beyond Horizon.
+
+**Implementation.**
+
+- Reuses item 93's models, mappers, dialogs and `OsAction`s; the reads drop the `project_id`
+  filter (admin token) and resolve project names with `project_names`, as the other Admin lists.
+- A panel in `nav::ADMIN_NAV`'s Network group gated by `needs::ADMIN` and `needs::FIREWALL`;
+  `require_admin` in its server fns.
+- Paged like the other Admin lists (item 88): a `PagedList::FirewallGroups` (and policies,
+  rules) with Neutron's `sort_key` / `sort_dir` and `project`, `name`, `status` filters.
+- Writes: *Edit* and *Delete* across projects; *Shared* editable (admin-only by Neutron's
+  default policy). Dry-run tests as in item 93.
+
+**Open question.** Whether operators need it at all, or Project's panel with the admin's own
+project is enough.
 
 ## Also pending (from the PoC)
 
