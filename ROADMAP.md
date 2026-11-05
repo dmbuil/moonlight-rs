@@ -105,8 +105,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
 | 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
-| 93  | Firewall (FWaaS v2): firewall groups, policies and rules | P2 | L | 19 |
-| 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules | P3 | M | 93, 85 |
+| 93  | Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
+| 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -122,6 +122,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#12]: https://github.com/dmbuil/moonlight-rs/issues/12
 [#13]: https://github.com/dmbuil/moonlight-rs/issues/13
 [#14]: https://github.com/dmbuil/moonlight-rs/issues/14
+[#15]: https://github.com/dmbuil/moonlight-rs/issues/15
+[#16]: https://github.com/dmbuil/moonlight-rs/issues/16
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27,
 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 55,
@@ -5523,6 +5525,8 @@ Split in two slices when started: the pure model plus the form first, the canvas
 
 ## 93. Firewall (FWaaS v2): firewall groups, policies and rules
 
+> 🔗 **Issue:** [#15]
+
 Requested 2026-11-05. ttcp-dev has it: Neutron lists the `fwaas_v2` extension (checked that day
 through `get_session_info`, project *pokemon*, user `admin2`, GET only).
 
@@ -5583,6 +5587,8 @@ default group
 gets protection like the `default` security group (item 34).
 
 ## 94. Admin › Network › Firewall
+
+> 🔗 **Issue:** [#16]
 
 Split from item 93 (2026-11-05): not for now.
 
