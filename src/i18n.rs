@@ -241,11 +241,17 @@ translations! {
     FilterVolumeId => "Volume ID", "ID del volumen";
     FilterPoolId => "Pool ID", "ID del pool";
     FilterRouterId => "Router ID", "ID del router";
+    FilterPortId => "Parent port ID", "ID del puerto padre";
     FilterAny => "— Any —", "— Cualquiera —";
     FilterIp6 => "IPv6 Address", "Dirección IPv6";
     PagePrev => "Previous", "Anterior";
     PageFirst => "First page", "Primera página";
     PageNext => "Next page", "Página siguiente";
+    SortAllRows => "Sorts every row, on the server", "Ordena todas las filas, en el servidor";
+    SortThisPage => "Sorts only the rows on this page", "Ordena solo las filas de esta página";
+    CountAll => "Count all", "Contar todos";
+    Counting => "Counting…", "Contando…";
+    CountFailed => "Could not count", "No se pudo contar";
     NSelected => "selected", "seleccionados";
     NoItems => "No items to display.", "No hay elementos para mostrar.";
     Loading => "Loading…", "Cargando…";
@@ -1454,9 +1460,12 @@ pub fn t(lang: Lang, k: K) -> &'static str {
 /// "Displaying 3 items" / "Mostrando 3 elementos".
 /// "Items 101–200" (with "of 322" when the API counted them) for a page of a paged
 /// list, `from` being the 1-based number of its first row.
-pub fn page_range(lang: Lang, from: usize, shown: usize, count: Option<u64>) -> String {
+/// "Items 51–100", or "Items 51–100 of 346" with a total; `(n, true)` is a count
+/// that stopped early (*Count all*'s cap) and reads "of 100000+".
+pub fn page_range(lang: Lang, from: usize, shown: usize, count: Option<(u64, bool)>) -> String {
     let to = from + shown.saturating_sub(1);
     let range = if shown == 0 { "0".to_string() } else { format!("{from}–{to}") };
+    let count = count.map(|(n, more)| if more { format!("{n}+") } else { n.to_string() });
     match (lang, count) {
         (Lang::EnUs, None) => format!("Items {range}"),
         (Lang::EnUs, Some(n)) => format!("Items {range} of {n}"),
@@ -2027,9 +2036,10 @@ mod tests {
     #[test]
     fn page_range_numbers_rows_from_one_and_shows_the_total_when_known() {
         assert_eq!(page_range(Lang::EnUs, 101, 100, None), "Items 101–200");
-        assert_eq!(page_range(Lang::EnUs, 1, 86, Some(186)), "Items 1–86 of 186");
-        assert_eq!(page_range(Lang::EsEs, 1, 3, Some(3)), "Elementos 1–3 de 3");
+        assert_eq!(page_range(Lang::EnUs, 1, 86, Some((186, false))), "Items 1–86 of 186");
+        assert_eq!(page_range(Lang::EsEs, 1, 3, Some((3, false))), "Elementos 1–3 de 3");
         assert_eq!(page_range(Lang::EnUs, 1, 0, None), "Items 0");
+        assert_eq!(page_range(Lang::EnUs, 1, 50, Some((100_000, true))), "Items 1–50 of 100000+", "a capped count says so");
     }
 
     #[test]

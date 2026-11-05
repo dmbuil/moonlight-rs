@@ -1098,6 +1098,23 @@ pub async fn list_admin_instances(q: ListQuery) -> Result<Timed<Page<Owned<Insta
     .await
 }
 
+/// *Count all* on a paged Admin list (roadmap 88): how many rows match the
+/// filter `q` (its marker and sort are ignored), asked only on a click, since it
+/// costs what the whole list did before paging (`fetch::admin_count`). GETs
+/// only. Admins only; Trunks need the `trunk` plugin, as their list.
+#[server(input = GetUrl)]
+pub async fn count_admin(list: PagedList, q: ListQuery) -> Result<Timed<RowCount>, AppError> {
+    if list == PagedList::Trunks {
+        plugin_enabled(Plugin::Trunk)?;
+    }
+    scoped("count_admin", |s, c| async move {
+        require_admin(&c)?;
+        let mv = if list.is_cinder() { os::capabilities(&s, &c).await.volume_mv } else { None };
+        fetch::admin_count(&c, list, &q, mv).await
+    })
+    .await
+}
+
 /// The images of a paged Admin › Instances page's boot-from-volume rows, as
 /// `(server ID, image name)`, from the volumes in their `boot_volume_ids`
 /// (roadmap 88). Called after the table shows; at most
@@ -1124,12 +1141,17 @@ pub async fn list_admin_flavors() -> Result<Timed<Vec<FlavorRow>>, AppError> {
     .await
 }
 
-/// Admin › Compute › Images: every project's images. Admins only.
+/// Admin › Compute › Images: every project's images, one page of `[ui] page_size`
+/// filtered and sorted by `q` (roadmap 88); all of them when paging is off.
+/// Admins only.
 #[server(input = GetUrl)]
-pub async fn list_admin_images() -> Result<Timed<Vec<Owned<Image>>>, AppError> {
+pub async fn list_admin_images(q: ListQuery) -> Result<Timed<Page<Owned<Image>>>, AppError> {
     scoped("list_admin_images", |_s, c| async move {
         require_admin(&c)?;
-        fetch::admin_images(&c).await
+        match cfg().prefs.page_size_for(true) {
+            Some(size) => fetch::admin_images_page(&c, &q, size).await,
+            None => Ok(whole(fetch::admin_images(&c).await?)),
+        }
     })
     .await
 }
@@ -1196,22 +1218,30 @@ pub async fn get_admin_volume_types() -> Result<Timed<VolumeTypes>, AppError> {
     .await
 }
 
-/// Admin › Volume › Groups: every project's volume groups. Admins only.
+/// Admin › Volume › Groups: every project's volume groups, one page as
+/// [`list_admin_images`]. Admins only.
 #[server(input = GetUrl)]
-pub async fn list_admin_volume_groups() -> Result<Timed<Vec<Owned<VolumeGroupRow>>>, AppError> {
+pub async fn list_admin_volume_groups(q: ListQuery) -> Result<Timed<Page<Owned<VolumeGroupRow>>>, AppError> {
     scoped("list_admin_volume_groups", |_s, c| async move {
         require_admin(&c)?;
-        fetch::admin_volume_groups(&c).await
+        match cfg().prefs.page_size_for(true) {
+            Some(size) => fetch::admin_volume_groups_page(&c, &q, size).await,
+            None => Ok(whole(fetch::admin_volume_groups(&c).await?)),
+        }
     })
     .await
 }
 
-/// Admin › Volume › Group Snapshots: every project's. Admins only.
+/// Admin › Volume › Group Snapshots: every project's, one page as
+/// [`list_admin_images`]. Admins only.
 #[server(input = GetUrl)]
-pub async fn list_admin_group_snapshots() -> Result<Timed<Vec<Owned<GroupSnapshotRow>>>, AppError> {
+pub async fn list_admin_group_snapshots(q: ListQuery) -> Result<Timed<Page<Owned<GroupSnapshotRow>>>, AppError> {
     scoped("list_admin_group_snapshots", |_s, c| async move {
         require_admin(&c)?;
-        fetch::admin_group_snapshots(&c).await
+        match cfg().prefs.page_size_for(true) {
+            Some(size) => fetch::admin_group_snapshots_page(&c, &q, size).await,
+            None => Ok(whole(fetch::admin_group_snapshots(&c).await?)),
+        }
     })
     .await
 }
@@ -1226,23 +1256,31 @@ pub async fn list_admin_group_types() -> Result<Timed<Vec<GroupTypeRow>>, AppErr
     .await
 }
 
-/// Admin › Network › Networks: every network. Admins only.
+/// Admin › Network › Networks: every network, one page as [`list_admin_images`].
+/// Admins only.
 #[server(input = GetUrl)]
-pub async fn list_admin_networks() -> Result<Timed<Vec<Owned<NetworkRow>>>, AppError> {
+pub async fn list_admin_networks(q: ListQuery) -> Result<Timed<Page<Owned<NetworkRow>>>, AppError> {
     scoped("list_admin_networks", |s, c| async move {
         require_admin(&c)?;
         let dhcp = needs::DHCP_AGENTS.met(&os::capabilities(&s, &c).await);
-        fetch::admin_networks(&c, dhcp).await
+        match cfg().prefs.page_size_for(true) {
+            Some(size) => fetch::admin_networks_page(&c, &q, size, dhcp).await,
+            None => Ok(whole(fetch::admin_networks(&c, dhcp).await?)),
+        }
     })
     .await
 }
 
-/// Admin › Network › Routers: every project's routers. Admins only.
+/// Admin › Network › Routers: every project's routers, one page as
+/// [`list_admin_images`]. Admins only.
 #[server(input = GetUrl)]
-pub async fn list_admin_routers() -> Result<Timed<Vec<Owned<RouterRow>>>, AppError> {
+pub async fn list_admin_routers(q: ListQuery) -> Result<Timed<Page<Owned<RouterRow>>>, AppError> {
     scoped("list_admin_routers", |_s, c| async move {
         require_admin(&c)?;
-        fetch::admin_routers(&c).await
+        match cfg().prefs.page_size_for(true) {
+            Some(size) => fetch::admin_routers_page(&c, &q, size).await,
+            None => Ok(whole(fetch::admin_routers(&c).await?)),
+        }
     })
     .await
 }
@@ -1262,13 +1300,17 @@ pub async fn list_admin_floating_ips(q: ListQuery) -> Result<Timed<Page<Owned<Fl
     .await
 }
 
-/// Admin › Network › Trunks: every project's (`trunk` plugin). Admins only.
+/// Admin › Network › Trunks: every project's (`trunk` plugin), one page as
+/// [`list_admin_images`]. Admins only.
 #[server(input = GetUrl)]
-pub async fn list_admin_trunks() -> Result<Timed<Vec<Owned<TrunkRow>>>, AppError> {
+pub async fn list_admin_trunks(q: ListQuery) -> Result<Timed<Page<Owned<TrunkRow>>>, AppError> {
     plugin_enabled(Plugin::Trunk)?;
     scoped("list_admin_trunks", |_s, c| async move {
         require_admin(&c)?;
-        fetch::admin_trunks(&c).await
+        match cfg().prefs.page_size_for(true) {
+            Some(size) => fetch::admin_trunks_page(&c, &q, size).await,
+            None => Ok(whole(fetch::admin_trunks(&c).await?)),
+        }
     })
     .await
 }

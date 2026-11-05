@@ -1,5 +1,6 @@
 //! A generic, client-side filterable and sortable table, with Horizon's
-//! "Displaying N items" header and footer.
+//! "Displaying N items" header and footer. On a server-paged list (roadmap 88)
+//! the columns the API can sort by sort on the server instead ([`ServerSort`]).
 
 use std::sync::Arc;
 
@@ -27,11 +28,34 @@ pub struct Col<T> {
     pub class: &'static str,
     /// Shown only when the cloud offers it (e.g. a Neutron extension).
     pub requires: Requires,
+    /// Neutral sort key (`model::SortDef::key`) of this column on a server-paged
+    /// list; used only when the table's [`ServerSort`] lists it (roadmap 88).
+    pub server: Option<&'static str>,
 }
 
 impl<T> Clone for Col<T> {
     fn clone(&self) -> Self {
-        Self { header: self.header, cell: self.cell.clone(), sort: self.sort.clone(), class: self.class, requires: self.requires }
+        Self { header: self.header, cell: self.cell.clone(), sort: self.sort.clone(), class: self.class, requires: self.requires, server: self.server }
+    }
+}
+
+/// How a server-paged table sorts on the server (roadmap 88): the neutral keys
+/// the API sorts by, the URL's current sort (`(key, descending)`) and what a
+/// header click asks for (`None` = the API's default order).
+#[derive(Clone)]
+pub struct ServerSort {
+    pub keys: Vec<&'static str>,
+    pub current: Option<(String, bool)>,
+    pub on_sort: Callback<Option<(String, bool)>>,
+}
+
+/// The sort after a click on `key`'s header: ascending, then descending, then the
+/// API's default order, as the client-side headers cycle.
+pub fn next_server_sort(current: Option<(&str, bool)>, key: &str) -> Option<(String, bool)> {
+    match current {
+        Some((k, false)) if k == key => Some((key.to_string(), true)),
+        Some((k, true)) if k == key => None,
+        _ => Some((key.to_string(), false)),
     }
 }
 
@@ -40,7 +64,7 @@ pub fn col<T, V>(header: K, cell: impl Fn(&T, Lang) -> V + Send + Sync + 'static
 where
     V: IntoView + 'static,
 {
-    Col { header, cell: Arc::new(move |t, l| cell(t, l).into_any()), sort: None, class: "", requires: Requires::Always }
+    Col { header, cell: Arc::new(move |t, l| cell(t, l).into_any()), sort: None, class: "", requires: Requires::Always, server: None }
 }
 
 /// The columns the cloud offers; read `caps` reactively so they follow detection.
@@ -67,6 +91,12 @@ impl<T> Col<T> {
     /// Hidden when the cloud lacks `r` (roadmap 19).
     pub fn requires(mut self, r: Requires) -> Self {
         self.requires = r;
+        self
+    }
+    /// Sorts on the server under this neutral key on a paged list whose API can
+    /// (see [`ServerSort`]); elsewhere the column keeps its client-side sort.
+    pub fn server_sort(mut self, key: &'static str) -> Self {
+        self.server = Some(key);
         self
     }
 }
@@ -182,6 +212,10 @@ pub fn DataTable<T>(
     /// Under the table, in place of nothing: the page's *Previous* / *Next*.
     #[prop(optional)]
     footer: Option<AnyView>,
+    /// A server-paged list's sort: its columns with a key in `keys` sort every
+    /// record on the server; the other sortable ones sort the page, and say so.
+    #[prop(optional)]
+    server_sort: Option<ServerSort>,
 ) -> impl IntoView
 where
     T: Clone + Send + Sync + 'static,
@@ -259,6 +293,7 @@ where
         })
     };
 
+    let server_sort = StoredValue::new(server_sort);
     let header = move || {
         columns.with_value(|cols| {
             cols.iter()
@@ -266,6 +301,27 @@ where
                 .map(|(ci, c)| {
                     let sortable = c.sort.is_some();
                     let label = c.header;
+                    let on_server = server_sort.with_value(|ss| ss.as_ref().and_then(|ss| c.server.filter(|k| ss.keys.contains(k)).map(|k| (k, ss.current.clone(), ss.on_sort))));
+                    if let Some((key, current, on_sort)) = on_server {
+                        let (aria, ind) = match &current {
+                            Some((k, false)) if k == key => ("ascending", "▲"),
+                            Some((k, true)) if k == key => ("descending", "▼"),
+                            _ => ("none", "↕"),
+                        };
+                        return view! {
+                            <th class=c.class aria-sort=aria>
+                                <button class="th-sort" type="button" title=move || i18n.t(K::SortAllRows) on:click=move |_| {
+                                    on_sort.run(next_server_sort(current.as_ref().map(|(k, d)| (k.as_str(), *d)), key));
+                                }>
+                                    {move || i18n.t(label)}
+                                    <span class="sort-ind" aria-hidden="true">{ind}</span>
+                                </button>
+                            </th>
+                        }
+                        .into_any();
+                    }
+                    // On a paged list a client-side sort only reorders this page.
+                    let page_only = server_sort.with_value(Option::is_some);
                     let aria = move || match sort.get() {
                         Some((i, true)) if i == ci => "ascending",
                         Some((i, false)) if i == ci => "descending",
@@ -275,7 +331,7 @@ where
                     if sortable {
                         view! {
                             <th class=class aria-sort=aria>
-                                <button class="th-sort" type="button" on:click=move |_| {
+                                <button class="th-sort" type="button" title=move || page_only.then(|| i18n.t(K::SortThisPage)) on:click=move |_| {
                                     sort.update(|s| {
                                         *s = match *s {
                                             Some((i, true)) if i == ci => Some((ci, false)),
@@ -447,6 +503,15 @@ pub fn TimingChip(millis: u64, calls: u32) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_sorted_header_cycles_like_a_client_one() {
+        let first = next_server_sort(None, "name");
+        assert_eq!(first, Some(("name".into(), false)), "ascending first");
+        assert_eq!(next_server_sort(Some(("name", false)), "name"), Some(("name".into(), true)));
+        assert_eq!(next_server_sort(Some(("name", true)), "name"), None, "then the API's default order");
+        assert_eq!(next_server_sort(Some(("status", true)), "name"), Some(("name".into(), false)), "another column starts ascending");
+    }
 
     fn hay() -> Vec<String> {
         ["web-prod-01 10.0.0.1 active", "db-primary 10.0.0.5 active", "ci-runner error"]

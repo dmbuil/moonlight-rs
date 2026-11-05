@@ -1,7 +1,8 @@
 //! Controls of the server-paged lists (roadmap 88): the page's query string read into
 //! a [`ListQuery`], the filter bar and *Previous* / *Next*. The state lives in the URL
-//! (`?marker=…&f=…&q=…`), so a page and its filters can be linked and reloaded; the
-//! only thing kept outside it is the stack of markers *Previous* pops.
+//! (`?marker=…&f=…&q=…&sort=…&dir=…`), so a page, its filter and its sort can be
+//! linked and reloaded; kept outside it are only the stack of markers *Previous*
+//! pops and the result of *Count all* ([`PagerState`]).
 
 use leptos::prelude::*;
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
@@ -9,14 +10,61 @@ use leptos_router::params::ParamsMap;
 
 use std::collections::HashMap;
 
-use crate::api::{get_admin_names, get_choices};
+use crate::api::{count_admin, get_admin_names, get_choices};
+use crate::components::dialog::data_version;
 use crate::components::select::Combo;
+use crate::components::table::ServerSort;
 use crate::i18n::{page_range, use_i18n, K};
-use crate::model::{Choice, ChoiceSet, FilterKind, LateName, ListQuery, NameKind, PagedList, BOOT_IMAGE_CHUNK};
+use crate::model::{Choice, ChoiceSet, FilterKind, LateName, ListQuery, NameKind, PagedList, RowCount, BOOT_IMAGE_CHUNK};
 
-/// The markers of the pages walked so far, so *Previous* goes back without asking the
-/// API to page backwards; `None` is the first page. Empty on a deep link.
-pub type MarkerStack = RwSignal<Vec<Option<String>>>;
+/// What a *Count all* is for: the filter (field, value) and the page's
+/// `data_version` when it was asked. A new filter or a write makes it stale.
+pub type CountKey = (Option<String>, Option<String>, u64);
+
+/// Where a *Count all* is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Counting {
+    Running,
+    Done(RowCount),
+    Failed,
+}
+
+/// A paged page's state outside the URL, created once by the page (not by its
+/// table, which is rebuilt on every page): `markers` are the pages walked so far,
+/// so *Previous* goes back without asking the API to page backwards (`None` is the
+/// first page; empty on a deep link); `total` is the last *Count all*.
+#[derive(Clone, Copy)]
+pub struct PagerState {
+    pub markers: RwSignal<Vec<Option<String>>>,
+    pub total: RwSignal<Option<(CountKey, Counting)>>,
+}
+
+impl PagerState {
+    /// No history, nothing counted.
+    pub fn new() -> Self {
+        PagerState { markers: RwSignal::new(Vec::new()), total: RwSignal::new(None) }
+    }
+}
+
+impl Default for PagerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The *Count all* key of this query at this data version.
+pub fn count_key(q: &ListQuery, version: u64) -> CountKey {
+    (q.field.clone(), q.value.clone(), version)
+}
+
+/// The total the pager shows: the API's own (`api`, Cinder's), else a finished
+/// *Count all* for this very filter and data version; `(n, more)`.
+pub fn shown_total(api: Option<u64>, total: Option<&(CountKey, Counting)>, key: &CountKey) -> Option<(u64, bool)> {
+    api.map(|n| (n, false)).or_else(|| match total {
+        Some((k, Counting::Done(c))) if k == key => Some((c.count, c.more)),
+        _ => None,
+    })
+}
 
 /// Names a paged page fills in after its rows show (roadmap 88). `names` is by
 /// resource ID: absent = still loading, `None` = not found (the cell shows the ID).
@@ -137,6 +185,39 @@ pub fn with_filter(m: &ParamsMap, field: &str, value: &str) -> String {
     out.to_query_string()
 }
 
+/// The query string (with its `?`) of a new server-side sort over `m` (`None`:
+/// the API's default order). The filter survives; the marker doesn't, since the
+/// rows of page *N* change with the order.
+pub fn with_sort(m: &ParamsMap, sort: Option<(&str, bool)>) -> String {
+    let mut out = ParamsMap::new();
+    for k in ["f", "q"] {
+        if let Some(v) = m.get(k).filter(|v| !v.is_empty()) {
+            out.replace(k, v);
+        }
+    }
+    if let Some((key, desc)) = sort {
+        out.replace("sort", key.to_string());
+        if desc {
+            out.replace("dir", "desc".to_string());
+        }
+    }
+    out.to_query_string()
+}
+
+/// The [`ServerSort`] of `list`'s table on this page: the keys its API sorts by
+/// and the URL's sort; a header click navigates to the new sort.
+pub fn server_sort(list: PagedList) -> ServerSort {
+    let qmap = use_query_map();
+    let q = qmap.with_untracked(query_of);
+    ServerSort {
+        keys: list.sorts().iter().map(|d| d.key).collect(),
+        current: q.sort.map(|k| (k, q.desc)),
+        on_sort: Callback::new(move |sort: Option<(String, bool)>| {
+            go(qmap.with_untracked(|m| with_sort(m, sort.as_ref().map(|(k, d)| (k.as_str(), *d)))));
+        }),
+    }
+}
+
 /// 1-based number of a page's first row, or `None` when it can't be known: a page
 /// reached by a link with a marker and no history.
 pub fn first_row(has_marker: bool, depth: usize, page_size: u32) -> Option<usize> {
@@ -193,6 +274,11 @@ pub fn FilterBar(list: PagedList) -> impl IntoView {
         "fixed" => K::MappedFixedIp,
         "network" => K::FilterPoolId,
         "router" => K::FilterRouterId,
+        "shared" => K::Shared,
+        "external" => K::External,
+        "visibility" => K::Visibility,
+        "disk_format" => K::DiskFormat,
+        "port" => K::FilterPortId,
         _ => K::FilterSearch,
     };
     let now_sort = query.get_untracked();
@@ -251,14 +337,45 @@ pub fn FilterBar(list: PagedList) -> impl IntoView {
 }
 
 /// *Previous* / *Next page* and the range shown, under a paged table. `next` is the
-/// following page's marker (`None` on the last page); `stack` is the page's marker
-/// history. A deep link (a marker, no history) has no known row numbers, and its
-/// *Previous* reads *First page*.
+/// following page's marker (`None` on the last page); `stack` is the page's
+/// [`PagerState`]. A deep link (a marker, no history) has no known row numbers, and
+/// its *Previous* reads *First page*. Without the API's `count`, a *Count all*
+/// link asks `count_admin` for `list`'s total on a click (roadmap 88).
 #[component]
-pub fn Pager(next: Option<String>, shown: usize, count: Option<u64>, page_size: u32, stack: MarkerStack) -> impl IntoView {
+pub fn Pager(list: PagedList, next: Option<String>, shown: usize, count: Option<u64>, page_size: u32, stack: PagerState) -> impl IntoView {
     let i18n = use_i18n();
     let map = use_query_map();
     let marker = move || map.with(|m| m.get("marker").filter(|v| !v.is_empty()));
+    let key = move || count_key(&map.with(query_of), data_version());
+    let total = move || stack.total.with(|t| shown_total(count, t.as_ref(), &key()));
+    let counting = move || stack.total.with(|t| t.as_ref().filter(|(k, _)| *k == key()).map(|(_, c)| *c));
+    let count_all = move |_| {
+        let (q, k) = (map.with_untracked(query_of), key());
+        stack.total.set(Some((k.clone(), Counting::Running)));
+        leptos::task::spawn_local(async move {
+            let done = match count_admin(list, q).await {
+                Ok(t) => Counting::Done(t.data),
+                Err(_) => Counting::Failed,
+            };
+            // The page may be gone, or the filter changed meanwhile: keep only this count's.
+            let _ = stack.total.try_update(|t| {
+                if t.as_ref().is_some_and(|(key, _)| *key == k) {
+                    *t = Some((k, done));
+                }
+            });
+        });
+    };
+    let count_link = move || {
+        (total().is_none()).then(|| match counting() {
+            Some(Counting::Running) => view! { <span class="muted">{move || i18n.t(K::Counting)}</span> }.into_any(),
+            failed => view! {
+                {(failed == Some(Counting::Failed)).then(|| view! { <span class="muted">{move || i18n.t(K::CountFailed)}</span> " " })}
+                <button type="button" class="count-all" on:click=count_all>{move || i18n.t(K::CountAll)}</button>
+            }
+            .into_any(),
+        })
+    };
+    let stack = stack.markers;
     // Back on the first page (a new filter, the *Clear* link, the browser's back):
     // the history is stale.
     Effect::new(move |_| {
@@ -269,7 +386,7 @@ pub fn Pager(next: Option<String>, shown: usize, count: Option<u64>, page_size: 
     let range = move || {
         let lang = i18n.lang();
         match first_row(marker().is_some(), stack.with(Vec::len), page_size) {
-            Some(from) => page_range(lang, from, shown, count),
+            Some(from) => page_range(lang, from, shown, total()),
             None => crate::i18n::displaying(lang, shown),
         }
     };
@@ -288,6 +405,7 @@ pub fn Pager(next: Option<String>, shown: usize, count: Option<u64>, page_size: 
     view! {
         <div class="pager">
             <span class="range">{range}</span>
+            {count_link}
             <span class="spacer"></span>
             <button type="button" class="btn" disabled=move || marker().is_none() on:click=prev>
                 {move || i18n.t(if stack.with(|s| s.is_empty()) { K::PageFirst } else { K::PagePrev })}
@@ -365,6 +483,30 @@ mod tests {
             let (k, v) = kv.split_once('=').unwrap();
             (k.to_string(), url_decoded(v))
         }))
+    }
+
+    #[test]
+    fn a_new_sort_keeps_the_filter_and_drops_the_marker() {
+        let m = map(&[("marker", "m1"), ("f", "host"), ("q", "c1"), ("sort", "name")]);
+        let q = query_of(&parse(&with_sort(&m, Some(("created", true)))));
+        assert_eq!(q, ListQuery { marker: None, field: Some("host".into()), value: Some("c1".into()), sort: Some("created".into()), desc: true });
+        let q = query_of(&parse(&with_sort(&m, None)));
+        assert_eq!((q.sort, q.desc, q.value.as_deref()), (None, false, Some("c1")), "back to the API's order, still filtered");
+    }
+
+    #[test]
+    fn a_count_shows_only_for_its_own_filter_and_data() {
+        let q = ListQuery { field: Some("host".into()), value: Some("c1".into()), ..Default::default() };
+        let key = count_key(&q, 3);
+        let done = |k: CountKey| Some((k, Counting::Done(RowCount { count: 42, more: false })));
+        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &key), Some((42, false)));
+        assert_eq!(shown_total(Some(7), done(key.clone()).as_ref(), &key), Some((7, false)), "the API's own count wins");
+        let other_filter = count_key(&ListQuery { value: Some("c2".into()), ..q.clone() }, 3);
+        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &other_filter), None, "a new filter needs a new count");
+        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &count_key(&q, 4)), None, "a write makes it stale");
+        let paged_on = count_key(&ListQuery { marker: Some("m".into()), sort: Some("name".into()), ..q.clone() }, 3);
+        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &paged_on), Some((42, false)), "the next page or another sort keep it");
+        assert_eq!(shown_total(None, Some(&(key.clone(), Counting::Running)), &key), None);
     }
 
     #[test]

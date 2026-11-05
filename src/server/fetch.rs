@@ -1681,21 +1681,45 @@ struct RawPage {
 /// `Pagination::All`. `cinder_mv` is the cloud's Cinder microversion, which decides
 /// a Cinder list's name filter and count (`paging::cinder`).
 async fn page_raw(os: &AsyncOpenStack, list: PagedList, q: &ListQuery, page_size: u32, cinder_mv: Option<(u16, u16)>) -> R<RawPage> {
+    let params = super::paging::params(list, q, page_size + 1)?;
+    let (req, key, what) = list_request(list, params, cinder_mv, false);
+    let body = get_json(os, req, what).await?;
+    let count = body.get("count").and_then(Value::as_u64);
+    let rows = body.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let (rows, next) = super::paging::cut(rows, page_size as usize);
+    Ok(RawPage { rows, next, count })
+}
+
+/// The GET of one request of a paged list with these query `params`, the key of
+/// its rows in the answer, and what to call it in errors. `brief` asks for the
+/// lightest list the API has (Nova `servers`, Cinder without `/detail`), for
+/// *Count all*. Cinder volumes and snapshots adapt to `cinder_mv`
+/// (`paging::cinder`); groups always send volume 3.58, as the whole lists.
+fn list_request(list: PagedList, mut params: Vec<(&'static str, String)>, cinder_mv: Option<(u16, u16)>, brief: bool) -> (super::actions::JsonRequest, &'static str, &'static str) {
     use super::actions::JsonRequest;
     use openstack_sdk::types::ServiceType;
-    let (service, path, key, what) = match list {
-        PagedList::Instances => (ServiceType::Compute, "servers/detail", "servers", "GET servers/detail (page)"),
-        PagedList::Volumes => (ServiceType::BlockStorage, "volumes/detail", "volumes", "GET volumes/detail (page)"),
-        PagedList::Snapshots => (ServiceType::BlockStorage, "snapshots/detail", "snapshots", "GET snapshots/detail (page)"),
-        PagedList::FloatingIps => (ServiceType::Network, "floatingips", "floatingips", "GET floatingips (page)"),
+    let pick = |detail: &'static str, light: &'static str| if brief { light } else { detail };
+    let (service, path, key) = match list {
+        PagedList::Instances => (ServiceType::Compute, pick("servers/detail", "servers"), "servers"),
+        PagedList::Volumes => (ServiceType::BlockStorage, pick("volumes/detail", "volumes"), "volumes"),
+        PagedList::Snapshots => (ServiceType::BlockStorage, pick("snapshots/detail", "snapshots"), "snapshots"),
+        PagedList::FloatingIps => (ServiceType::Network, "floatingips", "floatingips"),
+        PagedList::Networks => (ServiceType::Network, "networks", "networks"),
+        PagedList::Routers => (ServiceType::Network, "routers", "routers"),
+        PagedList::Trunks => (ServiceType::Network, "trunks", "trunks"),
+        PagedList::Images => (ServiceType::Image, "images", "images"),
+        PagedList::VolumeGroups => (ServiceType::BlockStorage, pick("groups/detail", "groups"), "groups"),
+        PagedList::GroupSnapshots => (ServiceType::BlockStorage, pick("group_snapshots/detail", "group_snapshots"), "group_snapshots"),
     };
-    let mut params = super::paging::params(list, q, page_size + 1)?;
     let header = if list.is_cinder() {
         let (p, h) = super::paging::cinder(params, cinder_mv);
         params = p;
         h.map(volume_mv)
     } else if list == PagedList::Instances {
         Some(compute_mv())
+    } else if matches!(list, PagedList::VolumeGroups | PagedList::GroupSnapshots) {
+        // `project_id` on each row, as the whole lists ask.
+        Some(volume_mv(GROUP_PROJECT_MICROVERSION))
     } else {
         None
     };
@@ -1708,11 +1732,49 @@ async fn page_raw(os: &AsyncOpenStack, list: PagedList, q: &ListQuery, page_size
         h.insert(name, value);
         req.headers = Some(h);
     }
-    let body = get_json(os, req, what).await?;
-    let count = body.get("count").and_then(Value::as_u64);
-    let rows = body.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
-    let (rows, next) = super::paging::cut(rows, page_size as usize);
-    Ok(RawPage { rows, next, count })
+    (req, key, path)
+}
+
+/// Rows *Count all* asks for per request: the APIs' usual cap (Nova `max_limit`,
+/// Glance `api_limit_max`).
+const COUNT_PAGE: u32 = 1000;
+
+/// Most requests one *Count all* sends; past it the count reads "at least"
+/// (`RowCount::more`): 100 000 rows.
+pub const MAX_COUNT_PAGES: u32 = 100;
+
+/// Time *Count all* keeps asking for: the server function as a whole has
+/// `os::REQUEST_TIMEOUT` (20 s), and an "at least N" is more use than a timeout.
+const COUNT_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// *Count all* for a paged Admin list (roadmap 88): the rows matching `q`'s
+/// filter, asked only when the user clicks, never before the table shows. One
+/// request when Cinder gives `count` (volume 3.45), else the lightest list
+/// (`list_request` with `brief`, `fields=id` on Neutron) walked
+/// [`COUNT_PAGE`] rows at a time until an empty answer, at most
+/// [`MAX_COUNT_PAGES`] requests or [`COUNT_BUDGET`]. As costly as the whole list
+/// was before paging.
+pub async fn admin_count(os: &AsyncOpenStack, list: PagedList, q: &ListQuery, cinder_mv: Option<(u16, u16)>) -> R<Timed<RowCount>> {
+    let t = Instant::now();
+    let mut counted = 0;
+    let mut marker: Option<String> = None;
+    for _ in 0..MAX_COUNT_PAGES {
+        if t.elapsed() > COUNT_BUDGET {
+            break;
+        }
+        let params = super::paging::count_params(list, q, marker.as_deref(), COUNT_PAGE)?;
+        let (req, key, what) = list_request(list, params, cinder_mv, true);
+        let body = get_json(os, req, what).await?;
+        if let Some(n) = body.get("count").and_then(Value::as_u64) {
+            return Ok(timed(t, RowCount { count: n, more: false }));
+        }
+        let rows = body.get(key).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+        match super::paging::count_step(&mut counted, rows) {
+            Some(m) => marker = Some(m),
+            None => return Ok(timed(t, RowCount { count: counted, more: false })),
+        }
+    }
+    Ok(timed(t, RowCount { count: counted, more: true }))
 }
 
 /// Glance's images with these IDs (`images?id=in:a,b`), 50 per request: a page
@@ -1763,18 +1825,28 @@ async fn by_ids(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) -> R<Vec<
     Ok(tasks.join_all().await.into_iter().flatten().collect())
 }
 
-/// Neutron networks by ID in one GET (`networks?id=a&id=b`: a repeated filter
-/// is *any of*), 50 IDs a request so the URL stays short.
+/// Neutron networks by ID (`networks?id=a&id=b`), only their names.
 async fn networks_by_ids(os: &AsyncOpenStack, ids: Vec<String>) -> R<Vec<Value>> {
+    neutron_where(os, "networks", "id", ids, &["id", "name"]).await
+}
+
+/// Neutron's `path` rows whose `filter` is any of `values` (a repeated filter
+/// is *any of*), one GET per 50 values so the URL stays short, with only
+/// `fields`. Values that aren't IDs are dropped; none at all asks nothing.
+async fn neutron_where(os: &AsyncOpenStack, path: &'static str, filter: &'static str, values: Vec<String>, fields: &[&'static str]) -> R<Vec<Value>> {
     use super::actions::JsonRequest;
+    let values: Vec<String> = values.into_iter().filter(|v| check_id(v).is_ok()).collect();
     let mut out = Vec::new();
-    for chunk in ids.chunks(50) {
-        let mut req = JsonRequest::get(openstack_sdk::types::ServiceType::Network, "networks").param("fields", "id").param("fields", "name");
-        for id in chunk.iter().filter(|id| check_id(id).is_ok()) {
-            req = req.param("id", id.clone());
+    for chunk in values.chunks(50) {
+        let mut req = JsonRequest::get(openstack_sdk::types::ServiceType::Network, path);
+        for f in fields {
+            req = req.param("fields", *f);
         }
-        let body = get_json(os, req, "GET networks by ID").await?;
-        out.extend(body.get("networks").and_then(Value::as_array).cloned().unwrap_or_default());
+        for v in chunk {
+            req = req.param(filter, v.clone());
+        }
+        let body = get_json(os, req, path).await?;
+        out.extend(body.get(path).and_then(Value::as_array).cloned().unwrap_or_default());
     }
     Ok(out)
 }
@@ -1859,6 +1931,100 @@ pub async fn admin_floating_ips_page(os: &AsyncOpenStack, q: &ListQuery, page_si
     let ne = networks_by_ids(os, mapping::pool_ids(&fi)).await;
     let rows = mapping::owned(mapping::floating_ips_page(&fi, &soft(ne), &[]), |f| &f.id, &fi, "project_id", None, &names);
     Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+}
+
+/// Admin › Network › Networks, one page (roadmap 88): the page, its subnets
+/// (`subnets?network_id=…`, not every subnet of the cloud) and the project names.
+/// The DHCP-agent counts stay one call per agent, as [`admin_networks`].
+pub async fn admin_networks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32, dhcp: bool) -> R<Timed<Page<Owned<NetworkRow>>>> {
+    let t = Instant::now();
+    let (page, names, agents) = tokio::join!(
+        page_raw(os, PagedList::Networks, q, page_size, None),
+        project_names(os, &[]),
+        async { if dhcp { dhcp_agent_counts(os).await.ok() } else { None } }
+    );
+    let RawPage { rows: ne, next, .. } = page?;
+    let sub = neutron_where(os, "subnets", "network_id", mapping::row_ids(&ne), &["id", "name", "cidr"]).await;
+    let mut rows = mapping::networks_page(&ne, &soft(sub), "");
+    if let Some(counts) = &agents {
+        for r in &mut rows {
+            r.dhcp_agents = Some(counts.get(&r.id).copied().unwrap_or(0));
+        }
+    }
+    Ok(timed(t, Page { rows: mapping::owned(rows, |n| &n.id, &ne, "project_id", None, &names), next, count: None, paged: true, page_size }))
+}
+
+/// Admin › Network › Routers, one page (roadmap 88): the page, its external
+/// networks by ID and the project names, not every network of the cloud.
+pub async fn admin_routers_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<RouterRow>>>> {
+    let t = Instant::now();
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Routers, q, page_size, None), project_names(os, &[]));
+    let RawPage { rows: ro, next, .. } = page?;
+    let ne = networks_by_ids(os, mapping::gateway_ids(&ro)).await;
+    let rows = mapping::owned(mapping::routers_page(&ro, &soft(ne)), |r| &r.id, &ro, "project_id", None, &names);
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+}
+
+/// Admin › Network › Trunks, one page (roadmap 88): the page, its parent and
+/// sub-ports by ID (`ports?id=…`, only names) and the project names, instead of
+/// every port of the cloud.
+pub async fn admin_trunks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<TrunkRow>>>> {
+    let t = Instant::now();
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Trunks, q, page_size, None), project_names(os, &[]));
+    let RawPage { rows: tr, next, .. } = page?;
+    let po = neutron_where(os, "ports", "id", mapping::trunk_port_ids(&tr), &["id", "name"]).await;
+    let rows = mapping::owned(mapping::trunks_page(&tr, &soft(po)), |r| &r.id, &tr, "project_id", None, &names);
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+}
+
+/// Admin › Compute › Images, one page (roadmap 88): the page and the project names.
+pub async fn admin_images_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<Image>>>> {
+    let t = Instant::now();
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Images, q, page_size, None), project_names(os, &[]));
+    let RawPage { rows: im, next, .. } = page?;
+    let rows = mapping::owned(mapping::images_page(&im, "", &names), |i| &i.id, &im, "owner", None, &names);
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+}
+
+/// Admin › Volume › Groups, one page (roadmap 88). Group and volume types stay
+/// whole lists (a cloud has a handful), and so do the group snapshots that say
+/// whether a group has any: Cinder filters them by one `group_id` only.
+pub async fn admin_volume_groups_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<VolumeGroupRow>>>> {
+    use openstack_sdk::api::block_storage::v3::group_snapshot;
+    let t = Instant::now();
+    let (page, gt, vt, gs, names) = tokio::join!(
+        page_raw(os, PagedList::VolumeGroups, q, page_size, None),
+        group_types_raw(os),
+        volume_types_raw(os),
+        list_where!(os, group_snapshot::list_detailed_314, "group_snapshots/detail?all_tenants", |b| b.all_tenants(true)),
+        project_names(os, &[])
+    );
+    let RawPage { rows: g, next, .. } = page?;
+    let rows = mapping::volume_groups_page(&g, &soft(gt), &soft(vt), &soft(gs));
+    Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &g, "project_id", None, &names), next, count: None, paged: true, page_size }))
+}
+
+/// Admin › Volume › Group Snapshots, one page (roadmap 88): the page, the groups
+/// it names (`groups/{id}`, [`FAN_OUT`] at a time: Cinder has no *any of*
+/// filter), the group types and the project names.
+pub async fn admin_group_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<GroupSnapshotRow>>>> {
+    use super::actions::JsonRequest;
+    let t = Instant::now();
+    let (page, gt, names) = tokio::join!(page_raw(os, PagedList::GroupSnapshots, q, page_size, None), group_types_raw(os), project_names(os, &[]));
+    let RawPage { rows: gs, next, .. } = page?;
+    let mut tasks = Bounded::new(FAN_OUT);
+    for id in mapping::group_ids(&gs).into_iter().filter(|id| check_id(id).is_ok()) {
+        let os = os.clone();
+        tasks
+            .spawn(async move {
+                let req = JsonRequest::get(openstack_sdk::types::ServiceType::BlockStorage, format!("groups/{id}"));
+                get_json(&os, req, "GET group").await.ok().map(|v| unwrapped(v, "group"))
+            })
+            .await;
+    }
+    let groups: Vec<Value> = tasks.join_all().await.into_iter().flatten().collect();
+    let rows = mapping::group_snapshots_page(&gs, &groups, &soft(gt));
+    Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &gs, "project_id", None, &names), next, count: None, paged: true, page_size }))
 }
 
 /// Admin › Compute › Images: every image Glance shows an admin, with its owner.

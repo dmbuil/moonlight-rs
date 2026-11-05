@@ -4976,8 +4976,9 @@ Instances*, *Release Floating IPs*) follow the same rule (proposed: every `OsAct
 
 ## 88. Server-side paging and filters for the big Admin lists
 
-> 🚧 **Slices A and B done (2026-11-03/04): Admin › Instances, Volumes, Snapshots and Floating
-> IPs are paged; slices C–E open.** The design
+> 🚧 **Slices A–C done (2026-11-03/04), slice D built (2026-11-05) but not yet tried in the
+> browser: every Admin list of the table below is paged, sorts on the server and counts on
+> request; slice E open.** The design
 > (settled with the user): *Prev* uses a marker stack kept by the page (the URL holds only the
 > current marker); filtering runs on the server across every record (no "this page only" search
 > box on paged lists); `page_size` defaults to 100; paging covers the Admin lists by default and
@@ -5065,10 +5066,92 @@ Instances*, *Release Floating IPs*) follow the same rule (proposed: every `OsAct
 > status *DOWN* (23), project (5, all its own). *Next* / *Previous* on Volumes keep one marker
 > and "of 346".
 >
+> **Slice C (2026-11-04).** Tried by the user on ttcp-dev, who found it working (2026-11-05); no
+> timings were recorded. `PagedList::{Networks, Routers, Trunks, Images, VolumeGroups,
+> GroupSnapshots}` with their filter and sort tables (`model.rs`; Neutron's `NEUTRON_SORTS` are
+> name and status); `page_raw` arms (groups send `GROUP_PROJECT_MICROVERSION`, volume 3.58);
+> `fetch::admin_{networks,routers,trunks,images,volume_groups,group_snapshots}_page`;
+> `api::list_admin_*` of those six take `ListQuery` (whole lists through `whole` with
+> `page_size = 0`). Lookups bounded by the page, all on the server before answering (no late
+> names: each is one or two GETs):
+>
+> - Networks: subnets by `subnets?network_id=…&fields=id&fields=name&fields=cidr`; the DHCP
+>   counts stay one call per agent.
+> - Routers: gateways by `networks?id=…` (`mapping::gateway_ids`).
+> - Trunks: parent and sub-ports by `ports?id=…&fields=id&fields=name`
+>   (`mapping::trunk_port_ids`), instead of every port of the cloud.
+> - Group Snapshots: their groups by `groups/{id}`, `FAN_OUT` at a time.
+> - Groups: types stay whole, and so does `group_snapshots/detail?all_tenants` for *Has
+>   Snapshots* (Cinder filters group snapshots by one `group_id` only); it grows with the
+>   cloud's group snapshots, usually a handful.
+>
+> `fetch::neutron_where(path, filter, values, fields)` generalises the old `networks_by_ids`.
+> The pure mappers got order-keeping `_page` variants (`networks_page`, `routers_page`,
+> `trunks_page`, `images_page`, `volume_groups_page`, `group_snapshots_page`) and the ID helpers
+> above, sharing `mapping::distinct`. `pages/admin.rs`: Images, Networks and Routers use
+> `paged_table`; `admin_list!` (Trunks, Groups, Group Snapshots) is now the paged macro, and
+> `paged_table` takes `Option<Select>` so these lists still have no checkbox column. Filters:
+> Neutron's and Glance's names are exact (`FilterKind::Exact`), Glance's project is `owner`;
+> Cinder groups take `name`, `project_id`, `status` exact (an admin may filter on any column,
+> per `reject_invalid_filters`; unverified). New label `K::FilterPortId`.
+>
+> Tests: `paging::slice_c_lists_map_their_filters_and_sorts`,
+> `paging::every_list_names_by_its_first_filter_and_only_cinder_volumes_take_like` (also: no key
+> twice, every list sorts) and
+> `mapping::slice_c_pages_keep_the_apis_order_and_name_from_the_pages_lookups`. 529 tests pass.
+>
+> Not yet done for slice C: timings before and after (`page_size = 0` on a second port, as slice
+> B), and every filter tried one by one (drop any the cloud ignores, Cinder groups' especially).
+>
+> **Found while doing slice C, open:** at `page_size = 1000` the request asks for `limit=1001`,
+> but Nova and Glance cap a page at 1000 by default (`max_limit`, `api_limit_max`), so `cut` sees
+> no extra row and never offers *Next*. Either cap `page_size` at 999 or treat a full
+> 1000-row answer as "maybe more".
+>
+> **Slice D (2026-11-05), built and unit-tested, not yet checked in the browser** (no browser
+> tools in the session).
+>
+> - **Server-side sort.** `Col::server_sort(key)` and the `DataTable` prop `server_sort:
+>   ServerSort { keys, current, on_sort }` (`components/table.rs`). On a paged table, a header
+>   whose key is in `PagedList::sorts` sorts every record: the click cycles ascending,
+>   descending, the API's order (`table::next_server_sort`) and navigates with
+>   `pager::with_sort`, which keeps the filter and drops the marker (the stack resets when the
+>   marker goes). Its title says *Sorts every row, on the server*; the other sortable headers
+>   keep the client sort with *Sorts only the rows on this page*. The keys come from the headers
+>   (`pages/admin.rs::server_key`: *Name*, *Status*, *Size*, *Age* / *Created*, *Host*,
+>   *IP Address*), applied by `with_server_keys` in `paged_table` and on Admin › Instances; a
+>   key the list's API lacks is ignored, so e.g. Volumes' *Host* still sorts the page.
+> - ***Count all.*** `api::count_admin(list, q)` → `fetch::admin_count`: the filter of `q` (not
+>   its sort or marker, `paging::count_params`), the lightest list (`list_request` with
+>   `brief`: Nova `servers`, Cinder without `/detail`, Neutron `fields=id`), 1000 rows a request
+>   until an empty answer (`paging::count_step`: a short page may be the API's own cap), at most
+>   `MAX_COUNT_PAGES` = 100 requests or 15 s (`COUNT_BUDGET`, under the 20 s
+>   `REQUEST_TIMEOUT`); stopping early returns `RowCount { more: true }`, read "of 100000+".
+>   Cinder at 3.45 answers `count` in one request. `page_raw` and the count share
+>   `fetch::list_request`.
+> - The pager (`components/pager.rs`): `PagerState { markers, total }` replaces `MarkerStack`,
+>   created by the page so a count survives *Next* and a new sort. *Count all* shows only
+>   without the API's count; while running it reads *Counting…*, on failure *Could not count*
+>   and the link again. `shown_total` keeps a count only for its filter and `data_version` (a
+>   write makes it stale). Style `.pager .count-all` (`--accent`).
+>
+> Tests: `table::a_server_sorted_header_cycles_like_a_client_one`,
+> `pager::a_new_sort_keeps_the_filter_and_drops_the_marker`,
+> `pager::a_count_shows_only_for_its_own_filter_and_data`,
+> `paging::a_count_ignores_the_sort_and_asks_neutron_for_ids_only`,
+> `paging::a_count_goes_on_until_an_empty_answer`,
+> `admin::every_server_sort_key_comes_from_a_header`, and `page_range`'s "of N+". 535 pass.
+>
+> **Next for slice D:** in the browser (GET only), click each paged list's server-sorted headers
+> and check the order across *Next* / *Previous*; on Instances check that *Status* (Nova's
+> `vm_state`) orders sensibly. Time *Count all* on Instances and Volumes. Check whether Cinder's
+> brief `groups` / `group_snapshots` take `limit` / `marker`, and Neutron sorting on Trunks; drop
+> a sort the cloud refuses.
+>
 > Still open: slice A's untried Instances filters (`ip`, `ip6`, `flavor`, `image`, `zone`: drop
 > any Nova ignores), Snapshots' and Floating IPs' `volume` / `network` / `router` / `fixed`
-> filters (not tried), then slices C (Networks, Routers, Trunks, Images, Groups), D (server
-> sort, *Count all*) and E (Project panels). Item 89's `FILTER_DATA_FIRST` waits for this item.
+> filters (not tried), the checks of slices C and D above, the `page_size = 1000` bug, then
+> slice E (Project panels). Item 89's `FILTER_DATA_FIRST` waits for this item.
 
 **Goal.** Every Admin list loads every project's resources in one go (`Pagination::All` in
 `fetch::list_where!` / `list_all!`), so its load time grows with the cloud: on ttcp-dev Admin ›

@@ -82,6 +82,27 @@ pub fn cinder(mut params: Vec<(&'static str, String)>, mv: Option<(u16, u16)>) -
     (params, None)
 }
 
+/// The query of one request of *Count all* (roadmap 88): `q`'s filter (not its
+/// sort, which can't change a count), `limit` and `marker`, and on Neutron
+/// `fields=id`, so each row is only its ID.
+pub fn count_params(list: PagedList, q: &ListQuery, marker: Option<&str>, limit: u32) -> Result<Vec<(&'static str, String)>, AppError> {
+    let q = ListQuery { marker: marker.map(str::to_string), sort: None, desc: false, ..q.clone() };
+    let mut out = params(list, &q, limit)?;
+    if list.is_neutron() {
+        out.push(("fields", "id".to_string()));
+    }
+    Ok(out)
+}
+
+/// One step of *Count all*: adds this answer's `rows` to `counted` and returns
+/// the marker to go on from, or `None` when done. It stops on an empty answer,
+/// not a short one: an API whose own cap is below the `limit` asked for (Nova's
+/// `max_limit`, Neutron's `pagination_max_limit`) answers short pages too.
+pub fn count_step(counted: &mut u64, rows: &[Value]) -> Option<String> {
+    *counted += rows.len() as u64;
+    rows.last().and_then(|r| r.get("id")).and_then(Value::as_str).map(str::to_string)
+}
+
 /// Keeps the first `page_size` rows of an answer that asked for one more, and the
 /// marker of the next page (the last kept row's `id`) when that extra row came.
 pub fn cut(mut rows: Vec<Value>, page_size: usize) -> (Vec<Value>, Option<String>) {
@@ -177,6 +198,46 @@ mod tests {
     }
 
     #[test]
+    fn slice_c_lists_map_their_filters_and_sorts() {
+        // Neutron and Glance list every project's to an admin: no all_tenants.
+        let p = params(PagedList::Networks, &q("external", "true"), 11).unwrap();
+        assert_eq!(p, [("router:external", "true".to_string()), ("limit", "11".to_string())]);
+        assert_eq!(get(&params(PagedList::Trunks, &q("port", "p1"), 11).unwrap(), "port_id"), Some("p1"));
+        let by_owner = params(PagedList::Images, &q("project", "abc"), 11).unwrap();
+        assert_eq!((get(&by_owner, "owner"), get(&by_owner, "all_tenants")), (Some("abc"), None), "Glance's project is the owner");
+        let sorted = ListQuery { sort: Some("size".into()), desc: true, ..Default::default() };
+        let p = params(PagedList::Images, &sorted, 11).unwrap();
+        assert_eq!((get(&p, "sort_key"), get(&p, "sort_dir")), (Some("size"), Some("desc")));
+        assert!(params(PagedList::Routers, &sorted, 11).is_err(), "Neutron lists sort by name and status only");
+        // Cinder's groups: every project's, colon sort.
+        let s = ListQuery { sort: Some("created".into()), ..q("status", "available") };
+        for l in [PagedList::VolumeGroups, PagedList::GroupSnapshots] {
+            let p = params(l, &s, 11).unwrap();
+            assert_eq!((get(&p, "all_tenants"), get(&p, "status"), get(&p, "sort")), (Some("true"), Some("available"), Some("created_at:asc")), "{l:?}");
+        }
+    }
+
+    #[test]
+    fn every_list_names_by_its_first_filter_and_only_cinder_volumes_take_like() {
+        use crate::model::FilterKind;
+        let all = [PagedList::Instances, PagedList::Volumes, PagedList::Snapshots, PagedList::FloatingIps, PagedList::Networks, PagedList::Routers, PagedList::Trunks, PagedList::Images, PagedList::VolumeGroups, PagedList::GroupSnapshots];
+        for l in all {
+            let keys: Vec<_> = l.filters().iter().map(|d| d.key).collect();
+            let mut unique = keys.clone();
+            unique.sort();
+            unique.dedup();
+            assert_eq!(keys.len(), unique.len(), "{l:?}: a key twice");
+            assert!(!l.sorts().is_empty(), "{l:?}");
+            let name = l.filters().iter().find(|d| d.key == "name");
+            if let Some(d) = name {
+                // Only Nova (regex) and Cinder's volumes/snapshots (`name~`) match a part.
+                let partial = matches!(l, PagedList::Instances | PagedList::Volumes | PagedList::Snapshots);
+                assert_eq!(d.kind == FilterKind::Text, partial, "{l:?}");
+            }
+        }
+    }
+
+    #[test]
     fn cinder_parameters_follow_the_clouds_microversion() {
         let base = params(PagedList::Volumes, &q("name", "db"), 11).unwrap();
         let (p, h) = cinder(base.clone(), Some((3, 70)));
@@ -199,6 +260,31 @@ mod tests {
         }
         assert_eq!(kind(PagedList::Instances, "name"), FilterKind::Text, "Nova's name is a regex: a substring works");
         assert_eq!(kind(PagedList::Volumes, "name"), FilterKind::Text, "Cinder's name~ is like");
+    }
+
+    #[test]
+    fn a_count_ignores_the_sort_and_asks_neutron_for_ids_only() {
+        let sorted = ListQuery { sort: Some("name".into()), desc: true, marker: Some("old".into()), ..q("status", "ACTIVE") };
+        let p = count_params(PagedList::Networks, &sorted, Some("n9"), 1000).unwrap();
+        assert_eq!(
+            p,
+            [("status", "ACTIVE".to_string()), ("limit", "1000".to_string()), ("marker", "n9".to_string()), ("fields", "id".to_string())],
+            "the filter stays, the sort and the page's own marker don't"
+        );
+        let p = count_params(PagedList::Instances, &q("host", "c1"), None, 1000).unwrap();
+        assert_eq!((get(&p, "host"), get(&p, "all_tenants"), get(&p, "fields")), (Some("c1"), Some("true"), None));
+        assert!(count_params(PagedList::Images, &q("password", "x"), None, 1000).is_err(), "same validation as a page");
+        assert!(count_params(PagedList::Images, &ListQuery::default(), Some("a/b"), 1000).is_err());
+    }
+
+    #[test]
+    fn a_count_goes_on_until_an_empty_answer() {
+        let rows = |ids: &[&str]| ids.iter().map(|i| json!({"id": i})).collect::<Vec<_>>();
+        let mut n = 0;
+        assert_eq!(count_step(&mut n, &rows(&["a", "b"])).as_deref(), Some("b"), "a short page may be the API's own cap");
+        assert_eq!(count_step(&mut n, &rows(&["c"])).as_deref(), Some("c"));
+        assert_eq!(count_step(&mut n, &[]), None);
+        assert_eq!(n, 3);
     }
 
     #[test]

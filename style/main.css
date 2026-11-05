@@ -237,6 +237,11 @@ a.btn, a.btn:hover { text-decoration: none; }
 }
 .pager { display: flex; align-items: center; gap: 8px; padding: 4px 2px 10px; color: var(--ink-2); font-size: 13px; }
 .pager .spacer { flex: 1; }
+/* *Count all* (roadmap 88): reads as a link, is a button (it calls the server). */
+.pager .count-all {
+  padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer;
+}
+.pager .count-all:hover { text-decoration: underline; }
 .timing {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
   border-radius: 999px; background: var(--bg-soft); color: var(--ink-2);

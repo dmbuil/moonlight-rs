@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, RowActions};
 use crate::components::ops;
-use crate::components::pager::{late_host, late_label, late_text, load_late, use_list_query, FilterBar, LateNames, MarkerStack, Pager};
+use crate::components::pager::{late_host, late_label, late_text, load_late, server_sort, use_list_query, FilterBar, LateNames, Pager, PagerState};
 use crate::components::ops::quota_label;
 use crate::components::table::{available, col, Col, DataTable, Select, TimingChip};
 use crate::components::widgets::{age_cell_since, dash, render, ErrorBox, PageHeader, Pill, Skeleton, Tone, AzPill, AzPills, LockIcon};
@@ -205,6 +205,7 @@ fn lift<T: 'static>(c: Col<T>) -> Col<Owned<T>> {
         sort: sort.map(|f| std::sync::Arc::new(move |o: &Owned<T>| f(&o.row)) as std::sync::Arc<dyn Fn(&Owned<T>) -> crate::components::table::SortKey + Send + Sync>),
         class: c.class,
         requires: c.requires,
+        server: c.server,
     }
 }
 
@@ -223,6 +224,27 @@ fn owned_search<T>(o: &Owned<T>, row: String) -> String {
     format!("{} {} {row}", o.project, o.host.as_deref().unwrap_or(""))
 }
 
+/// The neutral server-side sort key of a paged Admin column, by its header: the
+/// same header means the same field on every Admin list. `DataTable` uses a key
+/// only when the list's API sorts by it (`PagedList::sorts`), so *IP Address*
+/// sorts Floating IPs on the server and an instance's addresses on the page.
+fn server_key(header: K) -> Option<&'static str> {
+    Some(match header {
+        K::Name => "name",
+        K::Status => "status",
+        K::Size => "size",
+        K::Age | K::Created => "created",
+        K::Host => "host",
+        K::IpAddress => "address",
+        _ => return None,
+    })
+}
+
+/// `cols` with their [`server_key`]s, for a paged table.
+fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
+    cols.into_iter().map(|c| match server_key(c.header) { Some(k) => c.server_sort(k), None => c }).collect()
+}
+
 /// The table of a paged Admin list (roadmap 88): one page with the filter bar and
 /// *Previous* / *Next*, or, when the server sent the whole list (`page_size = 0`),
 /// the client-side table and search box as before. Bulk actions act on the rows
@@ -232,40 +254,47 @@ fn paged_table<T: Clone + Send + Sync + 'static>(
     list: PagedList,
     cols: Vec<Col<T>>,
     search: fn(&T) -> String,
-    select: Select<T>,
-    stack: MarkerStack,
+    select: Option<Select<T>>,
+    stack: PagerState,
     refresh: Callback<()>,
 ) -> AnyView {
     let page = t.data;
+    let timing = (t.millis, t.calls);
+    // `select` is an optional prop that takes a `Select`, not an `Option`.
     if !page.paged {
-        return view! {
-            <DataTable rows=page.rows columns=cols search=search timing=(t.millis, t.calls) on_refresh=refresh select=select/>
+        return match select {
+            Some(select) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select/> }.into_any(),
+            None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh/> }.into_any(),
+        };
+    }
+    let footer = view! { <Pager list=list next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
+    let bar = view! { <FilterBar list=list/> }.into_any();
+    let sort = server_sort(list);
+    let cols = with_server_keys(cols);
+    match select {
+        Some(select) => view! {
+            <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select paged=true extra=bar footer=footer server_sort=sort/>
         }
-        .into_any();
+        .into_any(),
+        None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh paged=true extra=bar footer=footer server_sort=sort/> }.into_any(),
     }
-    let footer = view! { <Pager next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
-    view! {
-        <DataTable rows=page.rows columns=cols search=search timing=(t.millis, t.calls) on_refresh=refresh select=select
-            paged=true extra=view! { <FilterBar list=list/> }.into_any() footer=footer/>
-    }
-    .into_any()
 }
 
-/// An Admin list page: a server function, its columns (built once, outside
-/// `view!`, AGENTS.md §6) and search text.
+/// A paged Admin list page without actions (roadmap 88): a server function taking
+/// the URL's [`ListQuery`], its [`PagedList`], its columns (built once, outside
+/// `view!`, AGENTS.md §6) and search text (used when the whole list came back).
 macro_rules! admin_list {
-    ($page:ident, $fetch:ident, $row:ty, $columns:expr, $search:expr) => {
+    ($page:ident, $fetch:ident, $list:expr, $row:ty, $columns:expr, $search:expr) => {
         #[component]
         pub fn $page() -> impl IntoView {
-            let data = Resource::new(data_version, |_| $fetch());
+            let query = use_list_query();
+            let data = Resource::new(move || (query.get(), data_version()), |(q, _)| $fetch(q));
             let columns: StoredValue<Vec<Col<$row>>> = StoredValue::new($columns);
+            let stack = PagerState::new();
             view! {
                 <PageHeader/>
                 <Transition fallback=|| view! { <Skeleton/> }>
-                    {move || render(data.get(), move |t| view! {
-                        // `available`: columns that need an extension (DNS on Floating IPs).
-                        <DataTable rows=t.data columns=available(columns.get_value(), &caps()) search=$search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()/>
-                    })}
+                    {move || render(data.get(), move |t| paged_table(t, $list, available(columns.get_value(), &caps()), $search, None, stack, Callback::new(move |_| data.refetch())))}
                 </Transition>
             }
         }
@@ -344,7 +373,7 @@ pub fn AdminInstancesPage() -> impl IntoView {
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_instances(q));
     let boot: BootImages = RwSignal::new(HashMap::new());
     let columns = StoredValue::new(admin_instance_columns(boot));
-    let stack: MarkerStack = RwSignal::new(Vec::new());
+    let stack = PagerState::new();
     // Boot-from-volume rows name their image after the table shows, one chunk at a
     // time (the server reads FAN_OUT volumes at once): reading them before cost
     // ≈10 s a page on ttcp-dev, which boots every server from a volume.
@@ -375,10 +404,11 @@ pub fn AdminInstancesPage() -> impl IntoView {
                         <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()/>
                     }.into_any();
                 }
-                let footer = view! { <Pager next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
+                let cols = with_server_keys(cols);
+                let footer = view! { <Pager list=PagedList::Instances next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
                 view! {
                     <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()
-                        paged=true extra=view! { <FilterBar list=PagedList::Instances/> }.into_any() footer=footer/>
+                        paged=true extra=view! { <FilterBar list=PagedList::Instances/> }.into_any() footer=footer server_sort=server_sort(PagedList::Instances)/>
                 }.into_any()
             })}
         </Transition>
@@ -412,19 +442,18 @@ fn image_key(o: &Owned<Image>) -> Option<(String, String)> {
 /// and each row's *Edit Image*, *Update Metadata* and *Delete Image*.
 #[component]
 pub fn AdminImagesPage() -> impl IntoView {
-    let data = Resource::new(data_version, |_| list_admin_images());
+    let query = use_list_query();
+    let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_images(q));
     let columns = StoredValue::new(image_columns());
     let select = Select { key: image_key, picked: RwSignal::new(Vec::new()) };
+    let stack = PagerState::new();
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteImages picked=select.picked
                 open=Arc::new(move |l, items| ops::bulk_delete(l, K::DeleteImages, items, |id| OsAction::ImageDelete { id }))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| view! {
-                <DataTable rows=t.data columns=columns.get_value() search=image_search
-                    timing=(t.millis, t.calls) on_refresh=move |_| data.refetch() select=select/>
-            })}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Images, columns.get_value(), image_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -490,7 +519,7 @@ pub fn AdminVolumesPage() -> impl IntoView {
     let late = LateNames::new();
     let columns = StoredValue::new(volume_columns(late));
     let select = Select { key: volume_key, picked: RwSignal::new(Vec::new()) };
-    let stack: MarkerStack = RwSignal::new(Vec::new());
+    let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         late.active.set(t.data.paged);
@@ -507,7 +536,7 @@ pub fn AdminVolumesPage() -> impl IntoView {
                 open=Arc::new(move || ops::manage_volume_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Volumes, columns.get_value(), volume_search, select, stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Volumes, columns.get_value(), volume_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -554,7 +583,7 @@ pub fn AdminSnapshotsPage() -> impl IntoView {
     let late = LateNames::new();
     let columns = StoredValue::new(snapshot_columns(late));
     let select = Select { key: snapshot_key, picked: RwSignal::new(Vec::new()) };
-    let stack: MarkerStack = RwSignal::new(Vec::new());
+    let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         late.active.set(t.data.paged);
@@ -568,7 +597,7 @@ pub fn AdminSnapshotsPage() -> impl IntoView {
                 open=Arc::new(move |l, items| ops::bulk_delete(l, K::DeleteSnapshots, items, |id| OsAction::SnapshotDelete { id }))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Snapshots, columns.get_value(), snapshot_search, select, stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Snapshots, columns.get_value(), snapshot_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -576,6 +605,7 @@ pub fn AdminSnapshotsPage() -> impl IntoView {
 admin_list!(
     AdminVolumeGroupsPage,
     list_admin_volume_groups,
+    PagedList::VolumeGroups,
     Owned<VolumeGroupRow>,
     vec![
         project_col(),
@@ -592,6 +622,7 @@ admin_list!(
 admin_list!(
     AdminGroupSnapshotsPage,
     list_admin_group_snapshots,
+    PagedList::GroupSnapshots,
     Owned<GroupSnapshotRow>,
     vec![
         project_col(),
@@ -746,9 +777,11 @@ fn admin_network_key(o: &Owned<NetworkRow>) -> Option<(String, String)> {
 #[component]
 pub fn AdminNetworksPage() -> impl IntoView {
     let i18n = use_i18n();
-    let data = Resource::new(data_version, |_| list_admin_networks());
+    let query = use_list_query();
+    let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_networks(q));
     let columns = StoredValue::new(admin_network_columns());
     let select = Select { key: admin_network_key, picked: RwSignal::new(Vec::new()) };
+    let stack = PagerState::new();
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteNetworks picked=select.picked
@@ -757,10 +790,7 @@ pub fn AdminNetworksPage() -> impl IntoView {
                 open=Arc::new(move || ops::admin_create_network_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| view! {
-                <DataTable rows=t.data columns=available(columns.get_value(), &caps()) search=admin_network_search
-                    timing=(t.millis, t.calls) on_refresh=move |_| data.refetch() select=select/>
-            })}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Networks, available(columns.get_value(), &caps()), admin_network_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -794,9 +824,11 @@ fn admin_router_key(o: &Owned<RouterRow>) -> Option<(String, String)> {
 #[component]
 pub fn AdminRoutersPage() -> impl IntoView {
     let i18n = use_i18n();
-    let data = Resource::new(data_version, |_| list_admin_routers());
+    let query = use_list_query();
+    let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_routers(q));
     let columns = StoredValue::new(admin_router_columns());
     let select = Select { key: admin_router_key, picked: RwSignal::new(Vec::new()) };
+    let stack = PagerState::new();
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteRouters picked=select.picked
@@ -805,10 +837,7 @@ pub fn AdminRoutersPage() -> impl IntoView {
                 open=Arc::new(move || ops::admin_create_router_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| view! {
-                <DataTable rows=t.data columns=available(columns.get_value(), &caps()) search=admin_router_search
-                    timing=(t.millis, t.calls) on_refresh=move |_| data.refetch() select=select/>
-            })}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Routers, available(columns.get_value(), &caps()), admin_router_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -868,7 +897,7 @@ pub fn AdminFloatingIpsPage() -> impl IntoView {
     let late = LateNames::new();
     let columns = StoredValue::new(admin_floating_ip_columns(late));
     let select = Select { key: admin_floating_ip_key, picked: RwSignal::new(Vec::new()) };
-    let stack: MarkerStack = RwSignal::new(Vec::new());
+    let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         late.active.set(t.data.paged);
@@ -886,7 +915,7 @@ pub fn AdminFloatingIpsPage() -> impl IntoView {
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
             // `available`: columns that need an extension (DNS).
-            {move || render(data.get(), move |t| paged_table(t, PagedList::FloatingIps, available(columns.get_value(), &caps()), admin_floating_ip_search, select, stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::FloatingIps, available(columns.get_value(), &caps()), admin_floating_ip_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -894,6 +923,7 @@ pub fn AdminFloatingIpsPage() -> impl IntoView {
 admin_list!(
     AdminTrunksPage,
     list_admin_trunks,
+    PagedList::Trunks,
     Owned<TrunkRow>,
     vec![
         project_col(),
@@ -1424,6 +1454,20 @@ pub fn ModulesCard() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_server_sort_key_comes_from_a_header() {
+        use crate::model::PagedList;
+        let all = [PagedList::Instances, PagedList::Volumes, PagedList::Snapshots, PagedList::FloatingIps, PagedList::Networks, PagedList::Routers, PagedList::Trunks, PagedList::Images, PagedList::VolumeGroups, PagedList::GroupSnapshots];
+        let headers = [K::Name, K::Status, K::Size, K::Age, K::Created, K::Host, K::IpAddress];
+        let keys: Vec<_> = headers.iter().filter_map(|h| server_key(*h)).collect();
+        for l in all {
+            for d in l.sorts() {
+                assert!(keys.contains(&d.key), "{l:?}: no header sorts by {:?}", d.key);
+            }
+        }
+        assert_eq!(server_key(K::Actions), None);
+    }
 
     #[test]
     fn boot_volumes_go_in_chunks_without_splitting_a_server() {

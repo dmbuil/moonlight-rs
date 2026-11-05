@@ -430,6 +430,15 @@ pub struct Page<T> {
     pub page_size: u32,
 }
 
+/// What *Count all* found (roadmap 88): the rows matching a paged list's filter.
+/// `more` = the count stopped early (`fetch::MAX_COUNT_PAGES` requests, or its
+/// time budget), so there are at least `count`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RowCount {
+    pub count: u64,
+    pub more: bool,
+}
+
 /// How a filter's value is picked in the filter bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FilterKind {
@@ -522,6 +531,54 @@ const FLOATING_IP_FILTERS: &[FilterDef] = &[
     filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "ERROR"])),
 ];
 
+/// Neutron matches whole values (a name too); `shared` and `external` take `true` / `false`.
+const NETWORK_FILTERS: &[FilterDef] = &[
+    filter("name", "name", FilterKind::Exact),
+    filter("project", "project_id", FilterKind::Project),
+    filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "ERROR"])),
+    filter("shared", "shared", FilterKind::Choice(&["true", "false"])),
+    filter("external", "router:external", FilterKind::Choice(&["true", "false"])),
+];
+
+const ROUTER_FILTERS: &[FilterDef] = &[
+    filter("name", "name", FilterKind::Exact),
+    filter("project", "project_id", FilterKind::Project),
+    filter("status", "status", FilterKind::Choice(&["ACTIVE", "ALLOCATING", "DOWN", "ERROR"])),
+];
+
+/// `port` takes the parent port's ID.
+const TRUNK_FILTERS: &[FilterDef] = &[
+    filter("name", "name", FilterKind::Exact),
+    filter("project", "project_id", FilterKind::Project),
+    filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "DEGRADED", "ERROR"])),
+    filter("port", "port_id", FilterKind::Exact),
+];
+
+/// Glance matches the name whole; the project is the image's `owner`.
+const IMAGE_FILTERS: &[FilterDef] = &[
+    filter("name", "name", FilterKind::Exact),
+    filter("project", "owner", FilterKind::Project),
+    filter("visibility", "visibility", FilterKind::Choice(&["public", "private", "shared", "community"])),
+    filter("status", "status", FilterKind::Choice(&["active", "queued", "saving", "uploading", "importing", "killed", "deactivated", "pending_delete", "deleted"])),
+    filter("disk_format", "disk_format", FilterKind::Choice(&["raw", "qcow2", "vmdk", "vdi", "vhd", "vhdx", "iso", "ploop", "ami", "ari", "aki"])),
+];
+
+/// Cinder lets an admin filter groups by any column, matched whole.
+const VOLUME_GROUP_FILTERS: &[FilterDef] = &[
+    filter("name", "name", FilterKind::Exact),
+    filter("project", "project_id", FilterKind::Project),
+    filter("status", "status", FilterKind::Choice(&["available", "creating", "updating", "deleting", "error", "error_deleting"])),
+];
+
+const GROUP_SNAPSHOT_FILTERS: &[FilterDef] = &[
+    filter("name", "name", FilterKind::Exact),
+    filter("project", "project_id", FilterKind::Project),
+    filter("status", "status", FilterKind::Choice(&["available", "creating", "deleting", "error", "error_deleting"])),
+];
+
+/// Neutron's sorts for its lists (`allow_sorting`, on by default).
+const NEUTRON_SORTS: &[SortDef] = &[SortDef { key: "name", param: "name" }, SortDef { key: "status", param: "status" }];
+
 /// The big lists that load one page at a time (roadmap 88).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PagedList {
@@ -533,6 +590,18 @@ pub enum PagedList {
     Snapshots,
     /// Admin › Network › Floating IPs (Neutron `floatingips`; an admin sees every project's).
     FloatingIps,
+    /// Admin › Network › Networks (Neutron `networks`).
+    Networks,
+    /// Admin › Network › Routers (Neutron `routers`).
+    Routers,
+    /// Admin › Network › Trunks (Neutron `trunks`, `trunk` plugin).
+    Trunks,
+    /// Admin › Compute › Images (Glance `images`; an admin sees every project's).
+    Images,
+    /// Admin › Volume › Groups (Cinder `groups/detail?all_tenants`, volume 3.58).
+    VolumeGroups,
+    /// Admin › Volume › Group Snapshots (Cinder `group_snapshots/detail?all_tenants`).
+    GroupSnapshots,
 }
 
 impl PagedList {
@@ -543,6 +612,12 @@ impl PagedList {
             PagedList::Volumes => VOLUME_FILTERS,
             PagedList::Snapshots => SNAPSHOT_FILTERS,
             PagedList::FloatingIps => FLOATING_IP_FILTERS,
+            PagedList::Networks => NETWORK_FILTERS,
+            PagedList::Routers => ROUTER_FILTERS,
+            PagedList::Trunks => TRUNK_FILTERS,
+            PagedList::Images => IMAGE_FILTERS,
+            PagedList::VolumeGroups => VOLUME_GROUP_FILTERS,
+            PagedList::GroupSnapshots => GROUP_SNAPSHOT_FILTERS,
         }
     }
 
@@ -565,30 +640,48 @@ impl PagedList {
                 SortDef { key: "address", param: "floating_ip_address" },
                 SortDef { key: "status", param: "status" },
             ],
+            PagedList::Networks | PagedList::Routers | PagedList::Trunks => NEUTRON_SORTS,
+            PagedList::Images => &[
+                SortDef { key: "name", param: "name" },
+                SortDef { key: "created", param: "created_at" },
+                SortDef { key: "size", param: "size" },
+                SortDef { key: "status", param: "status" },
+            ],
+            PagedList::VolumeGroups | PagedList::GroupSnapshots => &[
+                SortDef { key: "name", param: "name" },
+                SortDef { key: "created", param: "created_at" },
+                SortDef { key: "status", param: "status" },
+            ],
         }
     }
 
     /// How the list's API takes a sort.
     pub fn sort_style(self) -> SortStyle {
         match self {
-            PagedList::Instances | PagedList::FloatingIps => SortStyle::KeyDir,
-            PagedList::Volumes | PagedList::Snapshots => SortStyle::Colon,
+            PagedList::Instances | PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks | PagedList::Images => SortStyle::KeyDir,
+            PagedList::Volumes | PagedList::Snapshots | PagedList::VolumeGroups | PagedList::GroupSnapshots => SortStyle::Colon,
         }
     }
 
     /// Query parameters every request of the list carries (cross-project listing).
-    /// Neutron needs none: an admin's `floatingips` already lists every project's.
+    /// Neutron and Glance need none: an admin's list already holds every project's.
     pub fn fixed(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            PagedList::Instances | PagedList::Volumes | PagedList::Snapshots => &[("all_tenants", "true")],
-            PagedList::FloatingIps => &[],
+            PagedList::Instances | PagedList::Volumes | PagedList::Snapshots | PagedList::VolumeGroups | PagedList::GroupSnapshots => &[("all_tenants", "true")],
+            PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks | PagedList::Images => &[],
         }
     }
 
-    /// The list is Cinder's: its name filter (`name~`) and total (`with_count`)
-    /// depend on the cloud's volume microversion (`paging::cinder`).
+    /// The list is Cinder's volumes or snapshots: its name filter (`name~`) and total
+    /// (`with_count`) depend on the cloud's volume microversion (`paging::cinder`).
+    /// Groups are Cinder's too but have neither: they always send volume 3.58.
     pub fn is_cinder(self) -> bool {
         matches!(self, PagedList::Volumes | PagedList::Snapshots)
+    }
+
+    /// The list is Neutron's, which can return only the fields asked for (`fields=id`).
+    pub fn is_neutron(self) -> bool {
+        matches!(self, PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks)
     }
 }
 

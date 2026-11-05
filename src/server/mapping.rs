@@ -39,6 +39,14 @@ fn name_or_id(v: &Value) -> String {
 fn index_by_id(items: &[Value]) -> HashMap<String, &Value> {
     items.iter().filter_map(|x| Some((s(x, "id")?, x))).collect()
 }
+/// These IDs sorted, each once, without blanks: the lookups a page asks for.
+fn distinct(ids: impl Iterator<Item = String>) -> Vec<String> {
+    let mut out: Vec<String> = ids.filter(|id| !id.is_empty()).collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 fn names_by_id(items: &[Value]) -> HashMap<String, String> {
     items.iter().filter_map(|x| Some((s(x, "id")?, name_or_id(x)))).collect()
 }
@@ -761,7 +769,20 @@ pub fn group_of(groups: &[Value], server_id: &str) -> Option<(String, String)> {
 /// Images with visibility and owner (`project_names` for owners other than
 /// `project_id`): the project's own first, then by name.
 pub fn images(raw: &[Value], project_id: &str, project_names: &HashMap<String, String>) -> Vec<Image> {
-    let mut out: Vec<_> = raw
+    let mut out = images_page(raw, project_id, project_names);
+    // Project images first, then alphabetical (Horizon groups them by tab)
+    out.sort_by(|a, b| {
+        b.owned_by_project
+            .cmp(&a.owned_by_project)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    out
+}
+
+/// [`images`] in Glance's order, for a paged list (roadmap 88): the next page's
+/// marker is the last row.
+pub fn images_page(raw: &[Value], project_id: &str, project_names: &HashMap<String, String>) -> Vec<Image> {
+    raw
         .iter()
         .map(|im| Image {
             id: s(im, "id").unwrap_or_default(),
@@ -780,14 +801,7 @@ pub fn images(raw: &[Value], project_id: &str, project_names: &HashMap<String, S
             min_ram_mb: i(im, "min_ram"),
             import_failed: s_ne(im, "os_glance_failed_import"),
         })
-        .collect();
-    // Project images first, then alphabetical (Horizon groups them by tab)
-    out.sort_by(|a, b| {
-        b.owned_by_project
-            .cmp(&a.owned_by_project)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    out
+        .collect()
 }
 
 // --- Block storage --------------------------------------------------------------
@@ -917,10 +931,15 @@ fn volume_group(g: &Value, group_types: &HashMap<String, String>, volume_types: 
 /// Volumes › Groups, sorted by name. Type names come from the group type and
 /// volume type lists; either may be empty (IDs shown instead).
 pub fn volume_groups(raw: &[Value], group_types: &[Value], volume_types: &[Value], group_snapshots: &[Value]) -> Vec<VolumeGroupRow> {
-    let (gt, vt) = (names_by_id(group_types), names_by_id(volume_types));
-    let mut out: Vec<_> = raw.iter().map(|g| volume_group(g, &gt, &vt, group_snapshots)).collect();
+    let mut out = volume_groups_page(raw, group_types, volume_types, group_snapshots);
     out.sort_by_key(|g| g.name.to_lowercase());
     out
+}
+
+/// [`volume_groups`] in Cinder's order, for a paged list (roadmap 88).
+pub fn volume_groups_page(raw: &[Value], group_types: &[Value], volume_types: &[Value], group_snapshots: &[Value]) -> Vec<VolumeGroupRow> {
+    let (gt, vt) = (names_by_id(group_types), names_by_id(volume_types));
+    raw.iter().map(|g| volume_group(g, &gt, &vt, group_snapshots)).collect()
 }
 
 /// The volume group detail: `volumes` and `group_snapshots` may hold the whole
@@ -937,8 +956,16 @@ pub fn volume_group_detail(g: &Value, group_types: &[Value], volume_types: &[Val
 
 /// Volumes › Group Snapshots, newest first, with their group's name.
 pub fn group_snapshots_rows(raw: &[Value], groups: &[Value], group_types: &[Value]) -> Vec<GroupSnapshotRow> {
+    let mut out = group_snapshots_page(raw, groups, group_types);
+    out.sort_by(|a, b| b.created.cmp(&a.created));
+    out
+}
+
+/// [`group_snapshots_rows`] in Cinder's order, for a paged list (roadmap 88);
+/// `groups` need only be the page's ([`group_ids`]).
+pub fn group_snapshots_page(raw: &[Value], groups: &[Value], group_types: &[Value]) -> Vec<GroupSnapshotRow> {
     let (gn, gt) = (names_by_id(groups), names_by_id(group_types));
-    let mut out: Vec<_> = raw
+    raw
         .iter()
         .map(|x| GroupSnapshotRow {
             id: s(x, "id").unwrap_or_default(),
@@ -949,9 +976,12 @@ pub fn group_snapshots_rows(raw: &[Value], groups: &[Value], group_types: &[Valu
             group_type: named_ref(s(x, "group_type_id").unwrap_or_default(), &gt),
             created: s(x, "created_at").unwrap_or_default(),
         })
-        .collect();
-    out.sort_by(|a, b| b.created.cmp(&a.created));
-    out
+        .collect()
+}
+
+/// The groups a page of group snapshots belongs to, each once (roadmap 88).
+pub fn group_ids(raw: &[Value]) -> Vec<String> {
+    distinct(raw.iter().filter_map(|x| s(x, "group_id")))
 }
 
 /// *Manage Volumes* choices: per group, its own volumes and those Cinder lets
@@ -992,6 +1022,14 @@ pub fn group_snapshot_detail(x: &Value, groups: &[Value], group_types: &[Value],
 /// Network rows with their subnets (name and CIDR) and whether the project owns them,
 /// sorted by name.
 pub fn networks(raw: &[Value], subnets: &[Value], project_id: &str) -> Vec<NetworkRow> {
+    let mut out = networks_page(raw, subnets, project_id);
+    out.sort_by_key(|n| n.name.to_lowercase());
+    out
+}
+
+/// [`networks`] in Neutron's order, for a paged list (roadmap 88); `subnets`
+/// need only be the page's (`subnets?network_id=…`).
+pub fn networks_page(raw: &[Value], subnets: &[Value], project_id: &str) -> Vec<NetworkRow> {
     let subnet_label: HashMap<String, String> = subnets
         .iter()
         .filter_map(|sn| {
@@ -1003,7 +1041,7 @@ pub fn networks(raw: &[Value], subnets: &[Value], project_id: &str) -> Vec<Netwo
             Some((s(sn, "id")?, label))
         })
         .collect();
-    let mut out: Vec<_> = raw
+    raw
         .iter()
         .map(|n| NetworkRow {
             id: s(n, "id").unwrap_or_default(),
@@ -1021,9 +1059,12 @@ pub fn networks(raw: &[Value], subnets: &[Value], project_id: &str) -> Vec<Netwo
             dhcp_agents: None,
             provider: provider_network(n),
         })
-        .collect();
-    out.sort_by_key(|n| n.name.to_lowercase());
-    out
+        .collect()
+}
+
+/// The IDs of a page's rows, each once: the networks whose subnets a page reads.
+pub fn row_ids(raw: &[Value]) -> Vec<String> {
+    distinct(raw.iter().filter_map(|x| s(x, "id")))
 }
 
 /// A network's `provider:*` attributes (admins see them); `None` without a
@@ -1115,8 +1156,21 @@ pub fn dhcp_agent_counts(per_agent: &[Value]) -> HashMap<String, usize> {
 
 /// Router rows with their external network's name.
 pub fn routers(raw: &[Value], networks: &[Value]) -> Vec<RouterRow> {
+    let mut out = routers_page(raw, networks);
+    out.sort_by_key(|r| r.name.to_lowercase());
+    out
+}
+
+/// The external networks of a page of routers, each once (roadmap 88).
+pub fn gateway_ids(raw: &[Value]) -> Vec<String> {
+    distinct(raw.iter().filter_map(|r| r.get("external_gateway_info").filter(|g| !g.is_null()).and_then(|g| s(g, "network_id"))))
+}
+
+/// [`routers`] in Neutron's order, for a paged list (roadmap 88); `networks`
+/// need only be the page's gateways ([`gateway_ids`]).
+pub fn routers_page(raw: &[Value], networks: &[Value]) -> Vec<RouterRow> {
     let net_names = names_by_id(networks);
-    let mut out: Vec<_> = raw
+    raw
         .iter()
         .map(|r| {
             let gw = r.get("external_gateway_info").filter(|g| !g.is_null());
@@ -1132,9 +1186,7 @@ pub fn routers(raw: &[Value], networks: &[Value]) -> Vec<RouterRow> {
                 availability_zones: strs(r, "availability_zones"),
             }
         })
-        .collect();
-    out.sort_by_key(|r| r.name.to_lowercase());
-    out
+        .collect()
 }
 
 /// Everything `topology` needs, fetched in parallel by `fetch::topology`.
@@ -1346,10 +1398,7 @@ pub fn floating_ips_page(raw: &[Value], networks: &[Value], servers: &[Value]) -
 /// The pools (external networks) a page of floating IPs names, each once: one
 /// `networks?id=…&id=…` request (Neutron takes a repeated filter as *any of*).
 pub fn pool_ids(raw: &[Value]) -> Vec<String> {
-    let mut ids: Vec<String> = raw.iter().filter_map(|f| s(f, "floating_network_id")).collect();
-    ids.sort();
-    ids.dedup();
-    ids
+    distinct(raw.iter().filter_map(|f| s(f, "floating_network_id")))
 }
 
 /// A server's or volume's name for `api::get_admin_names` (roadmap 88), from its
@@ -2348,9 +2397,22 @@ pub fn tenant_usages(raw: &[Value], names: &HashMap<String, String>) -> Vec<Proj
 
 /// Trunks with their parent port and sub-ports named from the project's ports.
 pub fn trunks(raw: &[Value], ports: &[Value]) -> Vec<TrunkRow> {
+    let mut out = trunks_page(raw, ports);
+    out.sort_by_key(|t| t.name.to_lowercase());
+    out
+}
+
+/// The ports a page of trunks names (parents and sub-ports), each once (roadmap 88).
+pub fn trunk_port_ids(raw: &[Value]) -> Vec<String> {
+    distinct(raw.iter().flat_map(|t| s(t, "port_id").into_iter().chain(arr(t, "sub_ports").iter().filter_map(|sp| s(sp, "port_id")))))
+}
+
+/// [`trunks`] in Neutron's order, for a paged list (roadmap 88); `ports` need
+/// only be the page's ([`trunk_port_ids`]).
+pub fn trunks_page(raw: &[Value], ports: &[Value]) -> Vec<TrunkRow> {
     let port_names = names_by_id(ports);
     let named = |id: String| Ref { name: port_names.get(&id).cloned().unwrap_or_else(|| id.clone()), id };
-    let mut out: Vec<_> = raw
+    raw
         .iter()
         .map(|t| {
             let mut subports: Vec<_> = arr(t, "sub_ports")
@@ -2371,9 +2433,7 @@ pub fn trunks(raw: &[Value], ports: &[Value]) -> Vec<TrunkRow> {
                 subports,
             }
         })
-        .collect();
-    out.sort_by_key(|t| t.name.to_lowercase());
-    out
+        .collect()
 }
 
 // --- Key Manager (Barbican, roadmap 55) ---------------------------------------
@@ -5616,6 +5676,43 @@ mod tests {
         assert_eq!(page.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["f2", "f1"]);
         assert_eq!((page[0].pool.as_str(), page[0].instance_id.as_deref(), page[0].instance_name.as_deref()), ("public", Some("s1"), None));
         assert_eq!(pool_ids(&fips), ["ext"], "one network lookup for the whole page");
+    }
+
+    #[test]
+    fn slice_c_pages_keep_the_apis_order_and_name_from_the_pages_lookups() {
+        let ids = |v: Vec<String>| v;
+        let nets = vec![json!({"id": "n2", "name": "zeta", "subnets": ["s1"]}), json!({"id": "n1", "name": "alpha", "subnets": ["gone"]})];
+        let page = networks_page(&nets, &[json!({"id": "s1", "name": "a", "cidr": "10.0.0.0/24"})], "");
+        assert_eq!(page.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(), ["n2", "n1"], "Neutron's order: the marker is the last row");
+        assert_eq!((page[0].subnets[0].as_str(), page[1].subnets[0].as_str()), ("a 10.0.0.0/24", "gone"), "a subnet not read stays an ID");
+        assert_eq!(row_ids(&nets), ["n1", "n2"]);
+
+        let routers = vec![
+            json!({"id": "r2", "name": "z", "external_gateway_info": {"network_id": "ext"}}),
+            json!({"id": "r1", "name": "a", "external_gateway_info": null}),
+            json!({"id": "r3", "name": "b", "external_gateway_info": {"network_id": "ext"}}),
+        ];
+        assert_eq!(gateway_ids(&routers), ["ext"], "one network lookup, null gateways skipped");
+        let page = routers_page(&routers, &[json!({"id": "ext", "name": "public"})]);
+        assert_eq!((page[0].id.as_str(), page[0].external_network.as_deref(), page[1].external_network.as_deref()), ("r2", Some("public"), None));
+
+        let trunks = vec![json!({"id": "t2", "name": "z", "port_id": "p1", "sub_ports": [{"port_id": "p2", "segmentation_type": "vlan", "segmentation_id": 10}, {"port_id": "p1"}]}), json!({"id": "t1", "name": "a", "port_id": "p3"})];
+        assert_eq!(ids(trunk_port_ids(&trunks)), ["p1", "p2", "p3"], "parents and sub-ports, each once");
+        let page = trunks_page(&trunks, &[json!({"id": "p1", "name": "parent"})]);
+        assert_eq!((page[0].id.as_str(), page[0].parent.name.as_str(), page[1].parent.name.as_str()), ("t2", "parent", "p3"), "a port not read stays an ID");
+
+        let images = vec![json!({"id": "i2", "name": "zeta", "owner": "p"}), json!({"id": "i1", "name": "alpha"})];
+        let names = HashMap::from([("p".to_string(), "proj".to_string())]);
+        let page = images_page(&images, "", &names);
+        assert_eq!((page[0].id.as_str(), page[0].owner_name.as_deref()), ("i2", Some("proj")), "Glance's order, not owned-first by name");
+
+        let groups = vec![json!({"id": "g2", "name": "z"}), json!({"id": "g1", "name": "a"})];
+        let page = volume_groups_page(&groups, &[], &[], &[json!({"id": "x", "group_id": "g1"})]);
+        assert_eq!((page[0].id.as_str(), page[0].has_snapshots, page[1].has_snapshots), ("g2", false, true));
+        let gs = vec![json!({"id": "a", "created_at": "2020", "group_id": "g1"}), json!({"id": "b", "created_at": "2026", "group_id": "g1"}), json!({"id": "c", "group_id": "g2"})];
+        assert_eq!(group_ids(&gs), ["g1", "g2"]);
+        let page = group_snapshots_page(&gs, &[json!({"id": "g1", "name": "db"})], &[]);
+        assert_eq!(page.iter().map(|x| (x.id.as_str(), x.group.name.as_str())).collect::<Vec<_>>(), [("a", "db"), ("b", "db"), ("c", "g2")], "Cinder's order, not newest first");
     }
 
     #[test]
