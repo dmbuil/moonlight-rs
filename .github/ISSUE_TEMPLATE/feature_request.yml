@@ -1,0 +1,157 @@
+name: ✨ Feature request
+description: A new panel, action or setting, a Horizon parity gap, or a roadmap item moved here.
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. This form follows the shape of the items in `ROADMAP.md`, so a
+        roadmap item can be moved here as is. Before you submit:
+
+        - **Redact secrets.** Never paste tokens, passwords, `cookie_key`, session cookies,
+          application-credential secrets or internal hostnames you can't share.
+        - **Security problems** (bypassing `[writes] mode`, token leaks, auth issues) must not
+          be filed here: use *Security › Report a vulnerability* instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues and `ROADMAP.md`, and this is not a duplicate.
+          required: true
+        - label: I removed tokens, passwords and other secrets from everything below.
+          required: true
+
+  - type: input
+    id: roadmap
+    attributes:
+      label: Roadmap item
+      description: If this comes from `ROADMAP.md`, its number. Leave empty for a new idea.
+      placeholder: "e.g. 35"
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: |
+        What is missing or should change, and who needs it. If Horizon has it, say where
+        (panel, dialog, field) and what it shows.
+      placeholder: |
+        On the dev cloud `admin2` has only the role `power_user`, so *Enable SNAT* never shows…
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation note
+      description: |
+        A brief plan so the work can be resumed in a fresh session: files, API calls,
+        settings, i18n strings, tests. Optional for a new idea.
+      placeholder: |
+        - A `[policy]` section in `moonlight.conf` mapping the rules to roles…
+        - The server still decides: a 403 surfaces as today.
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Done when
+      description: How to tell it works (what to check in the UI, in dry-run, on a test cloud).
+      placeholder: |
+        - [ ] The action shows for `power_user` on *pokemon*
+        - [ ] Dry-run test asserts the exact JSON
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sign-in / session (password, WebSSO, logout)
+        - Project › Compute
+        - Project › Volumes
+        - Project › Network
+        - Project › Orchestration / Key Manager / other plugins
+        - Admin dashboard
+        - Identity
+        - Dialogs / write actions
+        - Layout, styling or dark mode
+        - Translations (English / Spanish)
+        - Configuration / start-up
+        - Container image / deployment
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Horizon parity (Horizon has it, Moonlight doesn't)
+        - New feature (beyond Horizon)
+        - Improvement to something that exists
+        - Polish / UX
+        - Configuration setting
+        - Developer tooling / docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: writes
+    attributes:
+      label: Does it write to OpenStack?
+      description: |
+        Writes go through `OsAction` → `server::actions::apply` and need a dry-run test
+        asserting the exact JSON.
+      options:
+        - "No, read-only"
+        - "Yes, new write actions"
+        - Don't know
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: |
+        **P1** = used daily by operators, or blocks safe use; **P2** = Horizon parity users
+        will miss; **P3** = polish or rarely used.
+      options:
+        - P1
+        - P2
+        - P3
+        - Not sure
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      options:
+        - XS
+        - S
+        - M
+        - L
+        - Not sure
+
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      description: Roadmap items or issues this needs first.
+      placeholder: "e.g. roadmap 30, #12"
+
+  - type: input
+    id: openstack
+    attributes:
+      label: OpenStack release / service
+      description: If it depends on a service, extension or microversion.
+      placeholder: "e.g. Neutron ext-gw-mode, Nova 2.90, RHOSO 18"
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
+      description: Horizon screenshots, open questions, links. Drag images here.
