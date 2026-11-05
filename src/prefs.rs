@@ -369,7 +369,7 @@ impl Default for ImagePrefs {
             default_visibility: "private".into(),
             allow_location: false,
             upload: ImageUpload::Off,
-            max_upload_gb: 10,
+            max_upload_gb: 20,
             reserved_properties: Vec::new(),
         }
     }

@@ -189,7 +189,7 @@ allow_location = false
 # (HORIZON_IMAGES_UPLOAD_MODE)
 upload = "off"
 # Largest file accepted, in GiB.
-max_upload_gb = 10
+max_upload_gb = 20
 # Image property keys the metadata editor hides and Moonlight never writes. os_glance_* (Glance's
 # own) is always reserved. (IMAGE_RESERVED_CUSTOM_PROPERTIES)
 reserved_properties = []

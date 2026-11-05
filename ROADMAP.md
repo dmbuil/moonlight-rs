@@ -107,6 +107,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
 | 93  | Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
 | 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
+| 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -124,6 +125,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#14]: https://github.com/dmbuil/moonlight-rs/issues/14
 [#15]: https://github.com/dmbuil/moonlight-rs/issues/15
 [#16]: https://github.com/dmbuil/moonlight-rs/issues/16
+[#17]: https://github.com/dmbuil/moonlight-rs/issues/17
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
@@ -1703,8 +1705,9 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 
 > 🔗 **Issue:** [#2]
 >
-> 🚧 **In progress.** All four slices are built; what is left is trying uploads against a test
-> cloud (see the end of this note).
+> 🚧 **In progress.** All four slices are built and a `proxy` upload works against the test
+> cloud. What is left is a real `direct` upload, which needs CORS on a Glance (see the end of
+> this note).
 >
 > `OsAction::ImageCreate(ImageSpec)` (`model.rs`) creates the record (`POST /v2/images`, typed
 > SDK request) and, when the spec has a URL, the `web-download` import (`actions.rs`; formats,
@@ -1731,8 +1734,8 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 > `url_import_needs_glance_web_download`, `failed_import_reason_comes_from_os_glance_failed_import`,
 > `import_methods_read_glances_wrapped_list`.
 >
-> **Slice 3 built (File upload), not yet run against a cloud or in a browser.**
-> `[images] upload = off | proxy | direct` (default `off`) and `max_upload_gb` (default 10;
+> **Slice 3 built (File upload).**
+> `[images] upload = off | proxy | direct` (default `off`) and `max_upload_gb` (default 20;
 > `prefs::ImagePrefs`, validated in `settings.rs`, documented in `CONFIGURATION.md` and
 > `moonlight.conf.example`). The dialog (`ops::create_image_form`) offers *File* under *Image
 > Source* when the mode isn't `off`, with a file field (`Kind::File`, `components/upload.rs`):
@@ -1760,13 +1763,34 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 > ramdisk rows). The file field is an in-page *Choose a file…* button (`.file-load`), not the
 > browser's native control. Seen in the browser in dry-run, not submitted.
 >
-> Loose ends: the dialog scrolls inside the page (`.modal-backdrop`) rather than being capped to
-> the window height, so a window shorter than ~700 px still scrolls; an AMI image adds two rows;
-> `moonlight.conf` already had `[images] upload` enabled when the layout was checked.
+> **Dialog capped to the window** (2026-11-05). Every `.modal` is a flex column with
+> `max-height: calc(94dvh - 16px)` (the backdrop's padding); in a form only `.wizard-pane`
+> scrolls, so the title and Cancel / Next / submit stay in view. The wizard's steady
+> `min-height` becomes `min(380px, 100dvh - 240px)`. Seen in the browser at 1280×600 (pane
+> 414 px with 520 px of content, footer at 562 of 598 px, page not scrolling) and 400×640.
+> Popups in dialogs (combos, tooltips) are `position: fixed`, so the scroll box doesn't clip
+> them.
 >
-> Not done: running a real upload (a test cloud with `[writes] mode = on` and the browser) in
-> either mode; the CORS check of `direct` against the dev cloud's Glance; application
-> credentials with access rules to narrow the `direct` token (idea only).
+> **Real upload, `proxy`** (2026-11-05, test cloud, `[writes] mode = on`, user approved): a
+> 1 MiB raw file built in the page, *File* source. `POST /v2/images`, then
+> `PUT /upload/image/{id}` → 204; the row reached *Active* (RAW, 1 MB) and was then deleted with
+> *Delete Image*. `moonlight.conf` went back to `upload = "direct"`.
+>
+> **`direct` needs CORS the test cloud doesn't have.** A preflight
+> (`OPTIONS …/v2/images/{id}/file`, `Origin` Moonlight's, asking for `PUT` with `x-auth-token`
+> and `content-type`) answers 200 with no `Access-Control-Allow-*` header, for both the Tailscale
+> and the `localhost` origin, so a browser refuses the `PUT`. Operators of such a cloud should use
+> `proxy`.
+>
+> **`max_upload_gb` default: 20 GiB** (user's choice, "for now"; `prefs.rs`, `CONFIGURATION.md`,
+> `moonlight.conf.example`).
+>
+> **Kept open until the test cloud's Glance allows CORS** from Moonlight's origin
+> (`[cors] allowed_origin`, with `PUT`, `X-Auth-Token` and `Content-Type`); the user will add
+> it. Then: a real `direct` upload in the browser, and close #2.
+>
+> Narrowing the token `direct` hands the page (an application credential with one access rule)
+> moved to item 95 ([#17]).
 
 **Goal.** The Images panel has no *Create Image* button; Horizon's is a dialog with:
 
@@ -1818,7 +1842,7 @@ and `ImageChanges` rules) and item 41 (file input), the settings come from item 
      page, which Moonlight otherwise never does (AGENTS.md §1.5–6: tokens stay in the
      encrypted cookie). So: document the trade-off in CONFIGURATION.md, send the token only
      in the response of that call (never stored, never logged), and prefer a token restricted
-     to the image service if the cloud offers application credentials with access rules.
+     to the image service if the cloud offers application credentials with access rules (item 95).
      `[writes] mode` still applies: in dry-run the server returns the preview and no token.
    - Progress in both modes from the browser's upload events (`XMLHttpRequest.upload`), with
      a cancel button; a cancelled or failed upload leaves a `queued` image that the dialog
@@ -1827,10 +1851,10 @@ and `ImageChanges` rules) and item 41 (file input), the settings come from item 
    (`poll_while_busy`), and shows `os_glance_failed_import` when an import fails.
 
 Decided: both upload modes, selected in `moonlight.conf` (`[images] upload`), default `off`.
-Open questions: which `max_upload_gb` default; whether the dev cloud's Glance allows CORS for
-`direct`; "straight into Cinder" was read as straight into the image service (Glance): an
-upload into a Cinder volume would be a different feature (*Upload to Image* goes the other
-way).
+Settled on 2026-11-05: `max_upload_gb` defaults to 20, and the dev cloud's Glance has no CORS,
+so `direct` doesn't work there. "Straight into Cinder" was read as straight into the image
+service (Glance): an upload into a Cinder volume would be a different feature (*Upload to
+Image* goes the other way).
 
 **Settings that come with it** (moved from item 29): `[images] upload` = off | proxy | direct
 (`HORIZON_IMAGES_UPLOAD_MODE`), `max_upload_gb`, and `allow_location` (`IMAGES_ALLOW_LOCATION`, the
@@ -5614,6 +5638,61 @@ leftovers. neutron-fwaas-dashboard has no admin panel; this goes beyond Horizon.
 
 **Open question.** Whether operators need it at all, or Project's panel with the admin's own
 project is enough.
+
+## 95. *Create Image* › *File* (`direct`): a token that can only upload, not the session's
+
+> 🔗 **Issue:** [#17]
+
+**Goal.** With `[images] upload = direct` (item 45) the browser `PUT`s the file straight to
+Glance, and to sign that request `get_image_upload_ticket` hands the page the session's
+**scoped Keystone token**. Until it expires (about an hour) that token can do anything the user
+can do in the project, so a malicious browser extension or an XSS bug that reads it could
+delete instances, change networks, and so on. Everywhere else Moonlight keeps tokens on the
+server (AGENTS.md §1.5–6); this is the one exception (§1.3). Give the page a token that can only
+upload to that one image instead.
+
+This **improves on Horizon**, which does the same as Moonlight today:
+`openstack_dashboard/api/glance.py`, `ExternallyUploadedImage`, returns
+`token_id = request.user.token.id` (the full session token) with `upload_url` to the Angular
+client, with no restriction or shorter lifetime. Horizon has nothing like this item.
+
+**Implementation.** Keystone application credentials with access rules (Keystone and
+keystonemiddleware Train or later):
+
+1. On `get_image_upload_ticket` (`server/upload.rs::ticket`), create an application
+   credential for the session user on the current project with one access rule
+   `{"service": "image", "method": "PUT", "path": "/v2/images/<id>/file"}` (the image ID
+   literally, not a wildcard), `unrestricted: false`, the user's roles, a generated secret
+   and `expires_at` a few minutes ahead, sized from `bytes`. Item 57 already builds this
+   request: `OsAction::AppCredentialCreate(AppCredentialSpec)` with `access_rules`
+   (`actions.rs`, its dry-run test), so reuse it through `Exec`.
+2. Exchange it for a token (`POST /v3/auth/tokens`, method `application_credential`, `id` +
+   `secret`) and return that token in `UploadTicket` instead of the session's. The secret stays
+   on the server and is never logged.
+3. When the upload ends (success, failure or *Cancel upload*), the dialog calls a server fn
+   that deletes the credential (`OsAction::AppCredentialDelete`) and its access rule, which
+   Keystone keeps per user after the credential is gone
+   (`DELETE /v3/users/{user_id}/access_rules/{id}`; a new `OsAction`, with a dry-run test). The
+   short `expires_at` covers a closed tab.
+4. Dry-run: the ticket preview lists the credential request, the token request and the
+   eventual deletes, and returns no token (as today).
+5. Update AGENTS.md §1.3 (the token handed to the page becomes the restricted one) and the
+   `direct` paragraph of `CONFIGURATION.md`.
+6. Tests: the access rule names exactly this image's path; the secret and the token never
+   reach `Debug` or logs; the delete runs on every way the upload can end.
+
+Open questions:
+
+- **Fallback.** Keystone may forbid users from creating application credentials (policy), or
+  Glance's keystonemiddleware may not enforce access rules (it needs `service_type = image`
+  in `[keystone_authtoken]`; tokens with access rules are then refused rather than let
+  through). Choose between failing the upload with a clear message and falling back to the
+  session token, perhaps as a setting (`[images] direct_token = restricted | session`). This
+  is the user's decision.
+- Whether the test cloud's Keystone and Glance support it: check once its Glance has CORS for
+  `direct` (item 45).
+- Cost: three or four extra Keystone calls per upload, which is negligible next to a multi-GB
+  `PUT`.
 
 ## Also pending (from the PoC)
 

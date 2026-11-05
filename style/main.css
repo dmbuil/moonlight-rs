@@ -439,13 +439,21 @@ td.drawer-toggle, th.drawer-toggle { width: 1%; padding-right: 0; }
 .modal {
   width: 100%; max-width: 620px; background: var(--surface); border-radius: 12px;
   box-shadow: 0 24px 60px var(--shadow-strong);
+  /* Capped to the window (the backdrop's padding is 6vh + 16px): the body scrolls inside, the
+     title and the buttons stay in view (roadmap 45). */
+  display: flex; flex-direction: column; max-height: calc(94vh - 16px); max-height: calc(94dvh - 16px);
 }
+.modal-head { flex: none; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .modal-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
 .btn-close { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 4px 8px; border-radius: 6px; }
 .btn-close:hover { background: var(--bg-soft); color: var(--ink); }
-.modal-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
+.modal-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 20px; min-height: 0; overflow-y: auto; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; flex: none; }
+/* In a form only the fields scroll, so Cancel / Next / submit never leave the window. The side
+   padding (taken back by the margin) keeps focus rings from being clipped by the scroll box. */
+form.modal-body { overflow: hidden; }
+form.modal-body > .wizard-pane { overflow-y: auto; min-height: 0; flex: 1 1 auto; padding: 0 4px 4px; margin: 0 -4px; }
 .intro { margin: 0; }
 .intro.danger:last-of-type { color: var(--err); }
 /* Selected resources and the "I understand" box of destructive dialogs */
@@ -476,7 +484,7 @@ td.drawer-toggle, th.drawer-toggle { width: 1%; padding-right: 0; }
 /* Wizard (Launch Instance, Create Network) */
 .modal.s { max-width: 460px; }
 .modal.l { max-width: 1040px; }
-.modal-body.wizard { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 0 22px; padding-top: 0; }
+.modal-body.wizard { display: grid; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 0 22px; padding-top: 0; }
 .wizard-nav { grid-row: 1 / span 2; border-right: 1px solid var(--line); margin-right: 0; padding: 14px 14px 14px 0; }
 .wizard-nav ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .wizard-nav button {
@@ -500,13 +508,14 @@ td.drawer-toggle, th.drawer-toggle { width: 1%; padding-right: 0; }
 /* A checkbox beside a select lines up with the select's control, not its label. */
 .wizard-pane > .field.check.half { align-self: end; padding-bottom: 9px; }
 @media (max-width: 520px) { .wizard-pane > .field.short { grid-column: span 3; } .wizard-pane > .field.half { grid-column: 1 / -1; } }
-/* Only the wizard keeps a steady height while switching steps. */
-.modal-body.wizard .wizard-pane { padding-top: 16px; min-height: 380px; }
+/* Only the wizard keeps a steady height while switching steps, unless the window is too short
+   for it: then the `.modal` cap wins and the pane scrolls. */
+.modal-body.wizard .wizard-pane { padding-top: 16px; min-height: min(380px, calc(100dvh - 240px)); }
 .modal-body.wizard .modal-foot { grid-column: 2; border-top: 1px solid var(--line); padding-top: 12px; }
 .step-help { margin: 0; color: var(--ink-2); font-size: 13.5px; }
 .foot-spacer { flex: 1; }
 @media (max-width: 760px) {
-  .modal-body.wizard { grid-template-columns: 1fr; }
+  .modal-body.wizard { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
   .wizard-nav { grid-row: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px 0; }
   .wizard-nav ol { flex-direction: row; flex-wrap: wrap; }
   .wizard-nav button { width: auto; }
