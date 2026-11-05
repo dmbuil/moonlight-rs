@@ -37,7 +37,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 22  | ✅ Volume actions parity (retype, upload to image, transfer, tabs)                                | —        | M    | 19 (groups)                 |
 | 23  | ✅ Overview usage summary (date range + CSV)                                                      | —        | S    | —                           |
 | 24  | ✅ API Access: credentials, `openrc` and `clouds.yaml` downloads                                  | —        | S    | —                           |
-| 25  | 🚧 Metadata editor (instances, images, volumes, snapshots): editor ✅, catalog ✅, 403 message ✅ ([#1])                      | P3       | M    | —                           |
+| 25  | ✅ Metadata editor (instances, images, volumes, snapshots) ([#1]) | —        | M    | —                           |
 | 26  | ✅ Router static routes: add and delete                                                           | —        | S    | 19 (extension)              |
 | 27  | ✅ Small parity gaps: large projects (columns and links ✅)                                        | —        | S    | 3, 19                       |
 | 28  | ✅ Modal sizes fitted to their content (S / M / L)                                                | —        | S    | —                           |
@@ -125,10 +125,11 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#15]: https://github.com/dmbuil/moonlight-rs/issues/15
 [#16]: https://github.com/dmbuil/moonlight-rs/issues/16
 
-Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27,
-28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 55,
-54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84, 85, 86, 87**.
-Next: **25**.
+Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
+53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
+85, 86, 87**.
+Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
 
@@ -930,7 +931,7 @@ built in the browser). Tests: neither file ever contains a token or password.
 
 > 🔗 **Issue:** [#1]
 >
-> 🚧 **In progress: the editor is done, the metadata catalog is left.** *Update Metadata* is
+> ✅ **Done.** *Update Metadata* is
 > in the row menu and detail header of instances (`Op::UpdateMetadata`, after *Edit
 > Instance*, not while a task runs), volumes and snapshots (before *Delete*), and images the
 > project owns (after *Edit Image*; `os_glance_*` properties are hidden, as Glance manages
@@ -973,7 +974,8 @@ built in the browser). Tests: neither file ever contains a token or password.
 > Image, not submitted): 104 suggestions, none of the four dedicated keys, no `os_glance_*`,
 > objects such as `sw_database_cassandra_admin` present. 495 tests pass, clippy clean on both
 > targets. Decided to leave it so: *Update Metadata* stays on images the project owns; a Glance
-> 403 shows "no permission" (`MetadataForbidden`). Other projects' images wait for item 35.
+> 403 shows "no permission" (`MetadataForbidden`). *Update Metadata* on images
+> other projects own moved to item 35 (it needs the same role setting as *Edit Image*).
 
 **Goal.** Horizon's *Update Metadata* on instances, images, volumes and snapshots: a two-column
 editor (available namespaces from the Glance metadata catalog / existing metadata).
@@ -1362,7 +1364,9 @@ item 29); Moonlight mirrors the upstream defaults in `model::needs`.
   `&'static` slice today: keep the roles in `Capabilities` and check them against
   `prefs().policy` instead).
 - Images: show *Edit Image* / *Delete Image* when owned, or when the role list allows it;
-  `protected` images keep *Delete* hidden (Horizon does).
+  `protected` images keep *Delete* hidden (Horizon does). *Update Metadata* (item 25,
+  `ops::image_items`, today only when `owned_by_project`) follows the same rule as *Edit
+  Image*; a Glance 403 already shows `MetadataForbidden`.
 - The server still decides: a 403 surfaces as today.
 - Open questions: which rules does this cloud grant `power_user` (ask the cloud operators, or
   read the policy files Horizon is deployed with)? Is reading oslo.policy YAML files worth it
