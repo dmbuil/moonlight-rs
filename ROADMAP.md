@@ -100,7 +100,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 85  | ✅ Admin dashboard (Horizon's *Admin*: Compute, Volume, Network, System)                          | —        | L    | 19, 57, 82                  |
 | 86  | ✅ Usage Summary: localised thousands separators                                                  | —        | XS   | 23, 60                      |
 | 87  | ✅ Long bulk actions run in the background, with a progress notification                         | —        | M    | —                           |
-| 88  | 🚧 Server-side paging and filters for the big Admin lists (Instances, Volumes, Floating IPs…) ([#10])     | P2       | L    | 85                          |
+| 88  | ✅ Server-side paging and filters for the big Admin lists (Instances, Volumes, Floating IPs…) ([#10])     | —        | L    | 85                          |
 | 89  | Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
@@ -130,7 +130,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87**.
+85, 86, 87, 88**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -5043,9 +5043,9 @@ Instances*, *Release Floating IPs*) follow the same rule (proposed: every `OsAct
 
 > 🔗 **Issue:** [#10]
 >
-> 🚧 **Slices A–C done (2026-11-03/04), slice D built (2026-11-05) but not yet tried in the
-> browser: every Admin list of the table below is paged, sorts on the server and counts on
-> request; slice E open.** The design
+> ✅ **Done (2026-11-03/05), slices A–E: every Admin list of the table below is paged,
+> filters and sorts on the server and counts on request, and so are the big Project panels with
+> `[ui] paged_lists = "all"`; checked on ttcp-dev.** The design
 > (settled with the user): *Prev* uses a marker stack kept by the page (the URL holds only the
 > current marker); filtering runs on the server across every record (no "this page only" search
 > box on paged lists); `page_size` defaults to 100; paging covers the Admin lists by default and
@@ -5167,16 +5167,15 @@ Instances*, *Release Floating IPs*) follow the same rule (proposed: every `OsAct
 > twice, every list sorts) and
 > `mapping::slice_c_pages_keep_the_apis_order_and_name_from_the_pages_lookups`. 529 tests pass.
 >
-> Not yet done for slice C: timings before and after (`page_size = 0` on a second port, as slice
-> B), and every filter tried one by one (drop any the cloud ignores, Cinder groups' especially).
+> Slice C's filters were tried with slice D's checks below; no before/after timings (not
+> needed, the user's call, 2026-11-05).
 >
-> **Found while doing slice C, open:** at `page_size = 1000` the request asks for `limit=1001`,
-> but Nova and Glance cap a page at 1000 by default (`max_limit`, `api_limit_max`), so `cut` sees
-> no extra row and never offers *Next*. Either cap `page_size` at 999 or treat a full
-> 1000-row answer as "maybe more".
+> **Found while doing slice C, fixed 2026-11-05:** at `page_size = 1000` the request asked for
+> `limit=1001`, but Nova and Glance cap a page at 1000 by default (`max_limit`,
+> `api_limit_max`), so `cut` saw no extra row and never offered *Next*. `[ui] page_size` is now
+> 1–999 (`settings::MAX_PAGE_SIZE`, its test, `CONFIGURATION.md`, `moonlight.conf.example`).
 >
-> **Slice D (2026-11-05), built and unit-tested, not yet checked in the browser** (no browser
-> tools in the session).
+> **Slice D (2026-11-05).**
 >
 > - **Server-side sort.** `Col::server_sort(key)` and the `DataTable` prop `server_sort:
 >   ServerSort { keys, current, on_sort }` (`components/table.rs`). On a paged table, a header
@@ -5209,16 +5208,92 @@ Instances*, *Release Floating IPs*) follow the same rule (proposed: every `OsAct
 > `paging::a_count_goes_on_until_an_empty_answer`,
 > `admin::every_server_sort_key_comes_from_a_header`, and `page_range`'s "of N+". 535 pass.
 >
-> **Next for slice D:** in the browser (GET only), click each paged list's server-sorted headers
-> and check the order across *Next* / *Previous*; on Instances check that *Status* (Nova's
-> `vm_state`) orders sensibly. Time *Count all* on Instances and Volumes. Check whether Cinder's
-> brief `groups` / `group_snapshots` take `limit` / `marker`, and Neutron sorting on Trunks; drop
-> a sort the cloud refuses.
+> **Checked on ttcp-dev (2026-11-05, GET only, `page_size = 50`, session in an admin project).**
+> Every list × server sort × direction was fetched; two sorts the cloud refuses were dropped
+> from `PagedList::sorts` (their headers now sort the page, and a hand-made `?sort=` gets
+> *Invalid request* before OpenStack):
 >
-> Still open: slice A's untried Instances filters (`ip`, `ip6`, `flavor`, `image`, `zone`: drop
-> any Nova ignores), Snapshots' and Floating IPs' `volume` / `network` / `router` / `fixed`
-> filters (not tried), the checks of slices C and D above, the `page_size = 1000` bug, then
-> slice E (Project panels). Item 89's `FILTER_DATA_FIRST` waits for this item.
+> - Instances by *Host*: Nova answers `sort_key=host` with HTTP 500 (multi-cell listings merge
+>   the cells' rows in Python, and a server with no host can't be compared).
+> - Snapshots by *Size*: HTTP 400, a snapshot's column is `volume_size`.
+>
+> The rest order as expected: Instances by name across pages 1–3 and back (Nova uses the
+> database collation: case-insensitive, `_` after letters), by status (Nova's `vm_state`, so
+> *Error* and *Rebuild* rows, both `vm_state = error`, interleave), by age; Volumes by size and
+> name (unnamed volumes, shown by ID, first); Images by size and name; Networks, Routers by
+> name and status; Floating IPs by address (Neutron compares text: `192…`, `217…`, `80…`).
+> *Count all*: Instances 189 in 0.82 s, kept across *Next* and a new sort, dropped by a new
+> filter (name `lgr`: 35 in 0.41 s); Networks 115 in 0.72 s; Routers 64 in 0.41 s; Images 31,
+> Floating IPs 36, Trunks 1 in 0.2–0.3 s; Groups and Group Snapshots 0 (the brief Cinder
+> lists take `limit` / `marker` without error). `/api/` requests: GETs only.
+>
+> Filters tried one by one, all applied (a made-up value finds 0, not the whole list):
+> Instances `ip` (matches a part: `10.10.0.` 18 rows), `zone` (alh1, mad1), `ip6` (0 rows; the
+> cloud has no IPv6 to confirm a match); Volumes `zone`; Snapshots `volume`; Floating IPs
+> `fixed` (whole address only), `network` (28, 3 and 3 rows per pool, each its own), `router`
+> (4, among them the one whose detail names that router); Trunks `port`. Groups' `name` and
+> `status` answer without error but the cloud has no groups to match.
+>
+> **Instances' `flavor` and `image` take IDs only**: a typed *A3.4-16* or *cirros-0.6.3* found
+> 0. `FilterKind::Project` became `FilterKind::Pick(ChoiceSet)`: Project
+> (`AllProjects`), Flavor (`Flavors`) and Image (`Images`) are picked by name in a `Combo` that
+> sends the ID (`pager::FilterBar` loads the field's set on choosing it; a late answer for a
+> field left since is dropped). Checked: flavor *A3.4-16* → `?f=flavor&q=12003`, 9 rows, all
+> that flavor; image *cirros-0.6.3* → 1 row; the projects' list (140) still loads.
+>
+> Tests: `paging::sorts_the_test_cloud_refused_are_not_offered`,
+> `paging::nova_flavor_and_image_filters_are_picked_by_name_and_send_the_id`, the settings test
+> at 999. 538 pass.
+>
+> **Slice E (2026-11-05), built and checked on ttcp-dev.** With `[ui] paged_lists = "all"`,
+> Project › Instances, Volumes, Snapshots, Floating IPs, Routers and Images are paged as the
+> Admin lists;
+> with `"admin"` (the default) their server functions answer the whole list (`api::whole`) and
+> the page shows its search box as before.
+>
+> - **Server.** `paging::params_in(list, project, q, limit)`: in a project, Nova and Cinder drop
+>   `all_tenants` (a project token lists its own), Neutron adds `project_id` (AGENTS.md §6),
+>   Glance keeps the whole Project › Images query. `model::ListScope` and
+>   `PagedList::filters_in(scope)` drop *Project* and *Host* on a Project panel, and `params_in`
+>   refuses them there. `fetch::{instances,volumes,snapshots,floating_ips,routers,images}_page`;
+>   `page_raw` and `count_rows` (was `admin_count`) take the project.
+> - **API.** `list_instances`, `list_volumes`, `list_snapshots`, `list_floating_ips`,
+>   `list_routers`, `list_images` take the URL's `ListQuery` and answer a `Page`.
+>   `count_admin` became `count_rows(list, scope, q)` (Admin scope still requires the role);
+>   `get_admin_names` / `get_admin_boot_images` became `get_late_names` / `get_boot_images`
+>   without `require_admin`: they are `servers/{id}` / `volumes/{id}` GETs with the session's
+>   token, so OpenStack decides what each user may read.
+> - **Client.** `pager::paged_table`, `with_server_keys` and `server_key` moved from
+>   `pages/admin.rs` to `components/pager.rs` with a `scope` (and a row drawer, for Images);
+>   `FilterBar` and `Pager` take `scope` (default Admin). `lists::paged_page!` is `list_page!`
+>   on a `Page`, with an optional `late = (NameKind, ids)` for cells named after the table
+>   shows (Volumes' attachments, Snapshots' volumes, Floating IPs' instances: `late_attachments`
+>   moved to `lists.rs`). Project › Instances uses `paged_table` and the boot-image chunks
+>   (`late_image_cell`, `boot_chunks`, `load_boot_images`, moved to `pages/instances.rs`).
+> - **Left whole on purpose.** Project › Networks merges three Neutron lists (own, shared,
+>   external) that one marker can't page. There is no Project › Ports panel, so the Ports the
+>   plan named have nothing to page.
+>
+> Tests: `paging::a_project_panel_lists_its_own_project_only` (scoping, refused filters, a
+> count keeps the scope); `server_key`'s and `boot_chunks`' tests moved with them. Both clippy
+> runs clean, 539 pass.
+>
+> **Checked on ttcp-dev (2026-11-05, GET only, `paged_lists = "all"`, `page_size = 3`,
+> session in *pokemon*, a project without the admin role).** Instances: 7 servers in three
+> pages, *Next* / *Previous* with the right row numbers, *Count all* 7 (the Admin count is 189),
+> server sort by name both ways across pages, status `SHUTOFF` → the 2 stopped servers, the 7
+> boot-from-volume images filled in after the table; a hand-made `?f=project&q=…` gets *Invalid
+> request* before OpenStack. Volumes: Cinder's own total (8), attached instances named. Floating
+> IPs: 1 (the cloud has 36); Routers: the project's 3 (64 cloud-wide), external networks named;
+> Images: 23 visible in Glance's order, row drawers, *Next*. Filter fields have no *Project* /
+> *Host*. `/api/` requests: GETs only (`count_rows?…&scope=Project`), no console errors. Admin ›
+> Instances in *admin2* unchanged after the refactor (9 filter fields, count 189, boot images).
+>
+> Not checked: Snapshots' late volume names (*pokemon* has no snapshots), a floating IP's late
+> instance name (its only one is unassociated), and timings before and after on a large project
+> (the test cloud's biggest project has 7 servers).
+>
+> Item 89's `FILTER_DATA_FIRST` waits for this item.
 
 **Goal.** Every Admin list loads every project's resources in one go (`Pagination::All` in
 `fetch::list_where!` / `list_all!`), so its load time grows with the cloud: on ttcp-dev Admin ›

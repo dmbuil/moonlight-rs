@@ -815,7 +815,7 @@ pub fn volumes(raw: &[Value], servers: &[Value]) -> Vec<Volume> {
 
 /// [`volumes`] in Cinder's order, for a paged list (roadmap 88): the next page's
 /// marker is the last row. `servers` may be empty: the attachments then carry only
-/// the server IDs, named later (`api::get_admin_names`).
+/// the server IDs, named later (`api::get_late_names`).
 pub fn volumes_page(raw: &[Value], servers: &[Value]) -> Vec<Volume> {
     let server_names = names_by_id(servers);
     raw
@@ -854,7 +854,7 @@ pub fn snapshots(raw: &[Value], volumes: &[Value]) -> Vec<Snapshot> {
 }
 
 /// [`snapshots`] in Cinder's order, for a paged list (roadmap 88). `volumes` may be
-/// empty: the volume is then named later (`api::get_admin_names`).
+/// empty: the volume is then named later (`api::get_late_names`).
 pub fn snapshots_page(raw: &[Value], volumes: &[Value]) -> Vec<Snapshot> {
     let vol_names: HashMap<String, String> = volumes
         .iter()
@@ -1368,7 +1368,7 @@ pub fn floating_ips(raw: &[Value], networks: &[Value], servers: &[Value]) -> Vec
 }
 
 /// [`floating_ips`] in Neutron's order, for a paged list (roadmap 88). `servers`
-/// may be empty: instances are then named later (`api::get_admin_names`).
+/// may be empty: instances are then named later (`api::get_late_names`).
 pub fn floating_ips_page(raw: &[Value], networks: &[Value], servers: &[Value]) -> Vec<FloatingIpRow> {
     let net_names = names_by_id(networks);
     let server_names = names_by_id(servers);
@@ -1401,7 +1401,7 @@ pub fn pool_ids(raw: &[Value]) -> Vec<String> {
     distinct(raw.iter().filter_map(|f| s(f, "floating_network_id")))
 }
 
-/// A server's or volume's name for `api::get_admin_names` (roadmap 88), from its
+/// A server's or volume's name for `api::get_late_names` (roadmap 88), from its
 /// `GET servers/{id}` or `volumes/{id}` body (wrapped or not): unnamed → its ID;
 /// a volume also gives its host.
 pub fn late_name(v: &Value) -> Option<LateName> {

@@ -10,6 +10,7 @@ use leptos_router::components::A;
 use crate::api::*;
 use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, Dialog, RowActions};
 use crate::components::ops;
+use crate::components::pager::{late_label, late_text, load_late, paged_table, use_list_query, LateNames, PagerState};
 use crate::components::table::{available, col, Col, DataTable, Select};
 use crate::components::widgets::{
     dash, data_url, image_busy, poll_while_busy, render, short_time, snapshot_busy, volume_busy, AzPill, AzPills, Busy, Copyable, PageHeader, Pill, Skeleton, Tone,
@@ -81,6 +82,60 @@ macro_rules! list_page {
     };
 }
 
+/// A list panel the server can page (roadmap 88 slice E): as [`list_page!`], but the
+/// server function takes the URL's [`ListQuery`] and answers a [`Page`]: one page
+/// with the filter bar when `[ui] paged_lists = "all"`, the whole list and its
+/// search box otherwise. `$cols` is a closure over the page's [`LateNames`] (for
+/// cells named after the table shows); `late = (kind, ids)` says what to name.
+macro_rules! paged_page {
+    (@late) => { None };
+    (@late $late:expr) => { Some($late) };
+    ($name:ident, $fetch:ident, $list:expr, $ty:ty, $cols:expr, $search:expr, $create:expr, $bulk:expr $(, busy = $busy:expr)? $(, drawer = $drawer:expr)? $(, late = $late:expr)?) => {
+        #[component]
+        pub fn $name() -> impl IntoView {
+            let i18n = use_i18n();
+            let query = use_list_query();
+            let data = Resource::new(move || (query.get(), data_version()), |(q, _)| $fetch(q));
+            let busy: fn(&$ty) -> bool = list_page!(@busy $($busy)?);
+            let drawer: Option<fn(&$ty, Lang) -> AnyView> = list_page!(@drawer $($drawer)?);
+            let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if td.data.rows.iter().any(busy))));
+            let late = LateNames::new();
+            let names: Option<(NameKind, fn(&[$ty]) -> Vec<String>)> = paged_page!(@late $($late)?);
+            Effect::new(move |_| {
+                let Some(Ok(t)) = data.get() else { return };
+                late.active.set(t.data.paged);
+                if let (true, Some((kind, ids))) = (t.data.paged, names) {
+                    load_late(kind, ids(&t.data.rows), late);
+                }
+            });
+            let make_cols: fn(LateNames) -> Vec<Col<$ty>> = $cols;
+            let columns: StoredValue<Vec<Col<$ty>>> = StoredValue::new(make_cols(late));
+            let create: Opener = $create;
+            let (bulk_label, key, make): Bulk<$ty> = $bulk;
+            let select = Select { key, picked: RwSignal::new(Vec::new()) };
+            let stack = PagerState::new();
+            view! {
+                <PageHeader>
+                    {move || polling.get().then(|| view! { <span class="updating">{i18n.t(K::Updating)}</span> })}
+                    <BulkButton label=bulk_label picked=select.picked
+                        open=Arc::new(move |l, items| ops::bulk_delete(l, bulk_label, items, make))/>
+                    {create.iter().map(|&(label, open)| view! {
+                        <CreateButton
+                            label=Signal::derive(move || i18n.t(label).to_string())
+                            open=Arc::new(move || open(i18n.lang()))
+                        />
+                    }).collect_view()}
+                </PageHeader>
+                <Transition fallback=|| view! { <Skeleton/> }>
+                    {move || render(data.get(), move |td| {
+                        paged_table(td, $list, ListScope::Project, available(columns.get_value(), &caps()), $search, Some(select), drawer, stack, Callback::new(move |_| data.refetch()))
+                    })}
+                </Transition>
+            }
+        }
+    };
+}
+
 fn yes_no(l: Lang, b: bool) -> &'static str {
     t(l, if b { K::Yes } else { K::No })
 }
@@ -115,11 +170,12 @@ fn actions_col<T: 'static>(f: fn(Lang, &T) -> Vec<crate::components::dialog::Men
 
 // --- Compute ------------------------------------------------------------------
 
-list_page!(
+paged_page!(
     ImagesPage,
     list_images,
+    PagedList::Images,
     Image,
-    vec![
+    |_: LateNames| vec![
         col(K::Name, |i: &Image, _| link(format!("/project/images/{}", i.id), i.name.clone())).sort_text(|i| i.name.clone()),
         col(K::Type, |i: &Image, l| t(l, if i.is_snapshot { K::ImageTypeSnapshot } else { K::ImageTypeImage }))
             .sort_num(|i| i.is_snapshot as i64),
@@ -222,6 +278,31 @@ pub fn attachments(v: &Volume) -> AnyView {
     .into_any()
 }
 
+/// *Attached To* on a paged Volumes page (Admin or Project): the servers, named by
+/// Cinder's lookup on a whole list or later on a paged one ([`LateNames`]).
+pub fn late_attachments(v: &Volume, late: LateNames) -> AnyView {
+    if v.attachments.is_empty() || v.attachments.iter().all(|a| a.server_name.is_some()) {
+        return attachments(v);
+    }
+    view! {
+        <ul class="plain">
+            {v.attachments.iter().map(|a| {
+                let label = match &a.server_name {
+                    Some(n) => n.clone().into_any(),
+                    None => late_text(late, a.server_id.clone(), late_label, a.server_id.clone()),
+                };
+                view! {
+                    <li>
+                        <A href=format!("/project/instances/{}", a.server_id)>{label}</A>
+                        {a.device.clone().map(|d| view! { " " <span class="mono muted">{d}</span> })}
+                    </li>
+                }
+            }).collect_view()}
+        </ul>
+    }
+    .into_any()
+}
+
 /// Owner project name; unknown owners show a short id (full id on hover).
 pub fn owner_cell(i: &Image) -> AnyView {
     match (&i.owner_name, &i.owner_id) {
@@ -235,17 +316,18 @@ fn create_volume(l: Lang) -> Dialog {
     ops::create_volume_dialog(l, None)
 }
 
-list_page!(
+paged_page!(
     VolumesPage,
     list_volumes,
+    PagedList::Volumes,
     Volume,
-    vec![
+    |late: LateNames| vec![
         col(K::Name, |v: &Volume, _| link(format!("/project/volumes/{}", v.id), v.name.clone())).sort_text(|v| v.name.clone()),
         col(K::Description, |v: &Volume, _| dash(v.description.clone())),
         col(K::Size, |v: &Volume, _| format!("{} GiB", v.size_gb)).sort_num(|v| v.size_gb).class("num"),
         col(K::Status, |v: &Volume, l| moving_status(&v.status, l, volume_busy(&v.status))).sort_text(|v| v.status.clone()),
         col(K::Type, |v: &Volume, _| dash(v.volume_type.clone())).sort_text(|v| v.volume_type.clone().unwrap_or_default()),
-        col(K::AttachedTo, |v: &Volume, _| attachments(v)),
+        col(K::AttachedTo, move |v: &Volume, _| late_attachments(v, late)),
         col(K::AvailabilityZone, |v: &Volume, _| view! { <AzPill name=v.availability_zone.clone()/> }),
         col(K::Bootable, |v: &Volume, l| yes_no(l, v.bootable)),
         col(K::Encrypted, |v: &Volume, l| yes_no(l, v.encrypted)),
@@ -257,21 +339,27 @@ list_page!(
     },
     &[(K::AcceptTransfer, ops::accept_transfer_dialog), (K::CreateVolume, create_volume)],
     (K::DeleteVolumes, key!(id, name), |id| OsAction::VolumeDelete { id }),
-    busy = |v: &Volume| volume_busy(&v.status)
+    busy = |v: &Volume| volume_busy(&v.status),
+    late = (NameKind::Servers, |rows: &[Volume]| rows.iter().flat_map(|v| v.attachments.iter().filter(|a| a.server_name.is_none()).map(|a| a.server_id.clone())).collect())
 );
 
-list_page!(
+paged_page!(
     SnapshotsPage,
     list_snapshots,
+    PagedList::Snapshots,
     Snapshot,
-    vec![
+    |late: LateNames| vec![
         col(K::Name, |s: &Snapshot, _| link(format!("/project/snapshots/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone()),
         col(K::Description, |s: &Snapshot, _| dash(s.description.clone())),
         col(K::Size, |s: &Snapshot, _| format!("{} GiB", s.size_gb)).sort_num(|s| s.size_gb).class("num"),
         col(K::Status, |s: &Snapshot, l| moving_status(&s.status, l, snapshot_busy(&s.status))).sort_text(|s| s.status.clone()),
-        col(K::VolumeName, |s: &Snapshot, _| {
-            let name = s.volume_name.clone().unwrap_or_else(|| s.volume_id.clone());
-            view! { <A href=format!("/project/volumes/{}", s.volume_id)>{name}</A> }
+        col(K::VolumeName, move |s: &Snapshot, _| {
+            let (href, id) = (format!("/project/volumes/{}", s.volume_id), s.volume_id.clone());
+            let name = match s.volume_name.clone() {
+                Some(n) => n.into_any(),
+                None => late_text(late, id.clone(), late_label, id),
+            };
+            view! { <A href=href>{name}</A> }
         }),
         col(K::Created, |s: &Snapshot, _| short_time(&s.created)).sort_text(|s| s.created.clone()).class("nowrap"),
         actions_col(|l, s: &Snapshot| ops::snapshot_items(l, s)),
@@ -279,7 +367,8 @@ list_page!(
     |s: &Snapshot| format!("{} {} {} {}", s.name, s.id, s.status, s.volume_name.as_deref().unwrap_or("")),
     &[],
     (K::DeleteSnapshots, key!(id, name), |id| OsAction::SnapshotDelete { id }),
-    busy = |s: &Snapshot| snapshot_busy(&s.status)
+    busy = |s: &Snapshot| snapshot_busy(&s.status),
+    late = (NameKind::Volumes, |rows: &[Snapshot]| rows.iter().filter(|s| s.volume_name.is_none()).map(|s| s.volume_id.clone()).collect())
 );
 
 // Volume backups (roadmap 5, `backup` plugin). `creating`, `restoring` and `deleting`
@@ -379,11 +468,12 @@ list_page!(
     (K::DeleteNetworks, network_bulk_key, |id| OsAction::NetworkDelete { id })
 );
 
-list_page!(
+paged_page!(
     RoutersPage,
     list_routers,
+    PagedList::Routers,
     RouterRow,
-    vec![
+    |_: LateNames| vec![
         col(K::Name, |r: &RouterRow, _| link(format!("/project/routers/{}", r.id), r.name.clone())).sort_text(|r| r.name.clone()),
         col(K::Status, |r: &RouterRow, l| status_pill(&r.status, l)),
         col(K::ExternalNetwork, |r: &RouterRow, _| dash(r.external_network.clone())),
@@ -414,11 +504,12 @@ list_page!(
     (K::DeleteSecurityGroups, security_group_bulk_key, |id| OsAction::SecurityGroupDelete { id })
 );
 
-list_page!(
+paged_page!(
     FloatingIpsPage,
     list_floating_ips,
+    PagedList::FloatingIps,
     FloatingIpRow,
-    vec![
+    |late: LateNames| vec![
         col(K::IpAddress, |f: &FloatingIpRow, _| {
             let (href, ip) = (format!("/project/floating_ips/{}", f.id), f.ip.clone());
             view! { <A href=href attr:class="mono strong">{ip}</A> }
@@ -427,11 +518,14 @@ list_page!(
         col(K::Description, |f: &FloatingIpRow, _| dash(f.description.clone())),
         col(K::DnsName, |f: &FloatingIpRow, _| dash(f.dns_name.clone())).requires(needs::DNS),
         col(K::DnsDomain, |f: &FloatingIpRow, _| dash(f.dns_domain.clone())).requires(needs::DNS),
-        col(K::MappedFixedIp, |f: &FloatingIpRow, _| {
+        col(K::MappedFixedIp, move |f: &FloatingIpRow, _| {
             let fixed = dash(f.fixed_ip.clone());
             match (&f.instance_id, &f.instance_name) {
                 (Some(id), name) => {
-                    let label = name.clone().unwrap_or_else(|| id.clone());
+                    let label = match name {
+                        Some(n) => n.clone().into_any(),
+                        None => late_text(late, id.clone(), late_label, id.clone()),
+                    };
                     view! {
                         <A href=format!("/project/instances/{id}")>{label}</A>
                         " " <span class="mono muted">{fixed}</span>
@@ -450,7 +544,8 @@ list_page!(
         format!("{} {} {} {} {} {}", f.ip, o(&f.fixed_ip), o(&f.instance_name), f.pool, o(&f.description), o(&f.dns_name))
     },
     &[(K::AllocateIp, ops::allocate_ip_dialog)],
-    (K::ReleaseIps, key!(id, ip), |id| OsAction::FloatingIpRelease { id })
+    (K::ReleaseIps, key!(id, ip), |id| OsAction::FloatingIpRelease { id }),
+    late = (NameKind::Servers, |rows: &[FloatingIpRow]| rows.iter().filter(|f| f.instance_name.is_none()).filter_map(|f| f.instance_id.clone()).collect())
 );
 
 list_page!(

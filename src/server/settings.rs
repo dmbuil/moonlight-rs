@@ -210,7 +210,7 @@ pub struct Ui {
     pub show_requests: bool,
     /// Bulk actions with this many items or more run in the background (roadmap 87).
     pub background_batch_from: u32,
-    /// Rows per page of the paged lists, 1–1000; `0` = no paging (roadmap 88).
+    /// Rows per page of the paged lists, 1–999; `0` = no paging (roadmap 88).
     pub page_size: u32,
     /// `admin` (default) or `all`: which lists are paged (roadmap 88).
     pub paged_lists: String,
@@ -234,8 +234,10 @@ impl Default for Ui {
     }
 }
 
-/// Largest `[ui] page_size`: Nova, Cinder, Neutron and Glance cap `limit` at about 1000 (roadmap 88).
-const MAX_PAGE_SIZE: u32 = 1000;
+/// Largest `[ui] page_size` (roadmap 88). A page asks for `page_size + 1` rows, the extra one
+/// only saying whether there is a *Next*; Nova (`max_limit`) and Glance (`api_limit_max`) cap
+/// `limit` at 1000 by default, so at 1000 the extra row never came and *Next* never showed.
+const MAX_PAGE_SIZE: u32 = 999;
 
 /// `[api_access]`: the `clouds.yaml` download.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -941,9 +943,9 @@ mod tests {
 
     #[test]
     fn page_size_and_paged_lists_are_validated() {
-        assert_eq!(parse("[ui]\npage_size = 1000").unwrap().prefs.page_size, 1000);
+        assert_eq!(parse("[ui]\npage_size = 999").unwrap().prefs.page_size, 999);
         assert_eq!(parse("[ui]\npage_size = 0").unwrap().prefs.page_size_for(true), None, "0 = no paging");
-        assert!(parse("[ui]\npage_size = 1001").unwrap_err().contains("page_size"), "above the APIs' cap");
+        assert!(parse("[ui]\npage_size = 1000").unwrap_err().contains("page_size"), "limit = page_size + 1 must stay within the APIs' default cap of 1000");
         assert_eq!(parse("[ui]\npaged_lists = \"all\"").unwrap().prefs.paged_lists, PagedLists::All);
         assert!(parse("[ui]\npaged_lists = \"some\"").unwrap_err().contains("paged_lists"));
         let admin = parse("").unwrap().prefs;

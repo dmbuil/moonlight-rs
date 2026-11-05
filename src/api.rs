@@ -291,11 +291,15 @@ pub async fn get_usage(start: String, end: String) -> Result<Timed<UsageSummary>
     .await
 }
 
-/// Project › Compute › Instances.
+/// Project › Compute › Instances: one page of `[ui] page_size` filtered and sorted
+/// by `q` when `[ui] paged_lists = "all"` (roadmap 88 slice E), else every server.
 #[server(input = GetUrl)]
-pub async fn list_instances() -> Result<Timed<Vec<Instance>>, AppError> {
-    scoped("list_instances", |_, c| async move {
-        fetch::instances(&c).await
+pub async fn list_instances(q: ListQuery) -> Result<Timed<Page<Instance>>, AppError> {
+    scoped("list_instances", |s, c| async move {
+        match cfg().prefs.page_size_for(false) {
+            Some(size) => fetch::instances_page(&c, &s.project_id, &q, size).await,
+            None => Ok(whole(fetch::instances(&c).await?)),
+        }
     })
     .await
 }
@@ -309,12 +313,16 @@ pub async fn get_instance(id: String) -> Result<Timed<InstanceDetail>, AppError>
     .await
 }
 
-/// Project › Compute › Images: every image Glance shows the project, its own first.
+/// Project › Compute › Images: every image Glance shows the project, its own first;
+/// one page in Glance's order when the Project panels are paged (roadmap 88).
 #[server(input = GetUrl)]
-pub async fn list_images() -> Result<Timed<Vec<Image>>, AppError> {
+pub async fn list_images(q: ListQuery) -> Result<Timed<Page<Image>>, AppError> {
     scoped("list_images", |s, c| async move {
         let mine = os::projects(&s).await.unwrap_or_default();
-        fetch::images(&c, &s.project_id, &mine).await
+        match cfg().prefs.page_size_for(false) {
+            Some(size) => fetch::images_page(&c, &s.project_id, &mine, &q, size).await,
+            None => Ok(whole(fetch::images(&c, &s.project_id, &mine).await?)),
+        }
     })
     .await
 }
@@ -337,20 +345,33 @@ pub async fn list_server_groups() -> Result<Timed<Vec<ServerGroup>>, AppError> {
     .await
 }
 
-/// Project › Volumes › Volumes.
+/// Project › Volumes › Volumes; one page with Cinder's total when the Project
+/// panels are paged (roadmap 88).
 #[server(input = GetUrl)]
-pub async fn list_volumes() -> Result<Timed<Vec<Volume>>, AppError> {
-    scoped("list_volumes", |_, c| async move {
-        fetch::volumes(&c).await
+pub async fn list_volumes(q: ListQuery) -> Result<Timed<Page<Volume>>, AppError> {
+    scoped("list_volumes", |s, c| async move {
+        match cfg().prefs.page_size_for(false) {
+            Some(size) => {
+                let mv = os::capabilities(&s, &c).await.volume_mv;
+                fetch::volumes_page(&c, &s.project_id, &q, size, mv).await
+            }
+            None => Ok(whole(fetch::volumes(&c).await?)),
+        }
     })
     .await
 }
 
-/// Project › Volumes › Snapshots.
+/// Project › Volumes › Snapshots; one page as [`list_volumes`].
 #[server(input = GetUrl)]
-pub async fn list_snapshots() -> Result<Timed<Vec<Snapshot>>, AppError> {
-    scoped("list_snapshots", |_, c| async move {
-        fetch::snapshots(&c).await
+pub async fn list_snapshots(q: ListQuery) -> Result<Timed<Page<Snapshot>>, AppError> {
+    scoped("list_snapshots", |s, c| async move {
+        match cfg().prefs.page_size_for(false) {
+            Some(size) => {
+                let mv = os::capabilities(&s, &c).await.volume_mv;
+                fetch::snapshots_page(&c, &s.project_id, &q, size, mv).await
+            }
+            None => Ok(whole(fetch::snapshots(&c).await?)),
+        }
     })
     .await
 }
@@ -364,11 +385,15 @@ pub async fn list_networks() -> Result<Timed<Vec<NetworkRow>>, AppError> {
     .await
 }
 
-/// Project › Network › Routers.
+/// Project › Network › Routers; one page when the Project panels are paged
+/// (roadmap 88).
 #[server(input = GetUrl)]
-pub async fn list_routers() -> Result<Timed<Vec<RouterRow>>, AppError> {
+pub async fn list_routers(q: ListQuery) -> Result<Timed<Page<RouterRow>>, AppError> {
     scoped("list_routers", |s, c| async move {
-        fetch::routers(&c, &s.project_id).await
+        match cfg().prefs.page_size_for(false) {
+            Some(size) => fetch::routers_page(&c, &s.project_id, &q, size).await,
+            None => Ok(whole(fetch::routers(&c, &s.project_id).await?)),
+        }
     })
     .await
 }
@@ -382,11 +407,15 @@ pub async fn list_security_groups() -> Result<Timed<Vec<SecurityGroupRow>>, AppE
     .await
 }
 
-/// Project › Network › Floating IPs.
+/// Project › Network › Floating IPs; one page when the Project panels are paged
+/// (roadmap 88).
 #[server(input = GetUrl)]
-pub async fn list_floating_ips() -> Result<Timed<Vec<FloatingIpRow>>, AppError> {
+pub async fn list_floating_ips(q: ListQuery) -> Result<Timed<Page<FloatingIpRow>>, AppError> {
     scoped("list_floating_ips", |s, c| async move {
-        fetch::floating_ips(&c, &s.project_id).await
+        match cfg().prefs.page_size_for(false) {
+            Some(size) => fetch::floating_ips_page(&c, &s.project_id, &q, size).await,
+            None => Ok(whole(fetch::floating_ips(&c, &s.project_id).await?)),
+        }
     })
     .await
 }
@@ -1098,35 +1127,40 @@ pub async fn list_admin_instances(q: ListQuery) -> Result<Timed<Page<Owned<Insta
     .await
 }
 
-/// *Count all* on a paged Admin list (roadmap 88): how many rows match the
-/// filter `q` (its marker and sort are ignored), asked only on a click, since it
-/// costs what the whole list did before paging (`fetch::admin_count`). GETs
-/// only. Admins only; Trunks need the `trunk` plugin, as their list.
+/// *Count all* on a paged list (roadmap 88): how many rows match the filter `q`
+/// (its marker and sort are ignored), asked only on a click, since it costs what
+/// the whole list did before paging (`fetch::count_rows`). GETs only. An Admin
+/// list (`ListScope::Admin`) counts every project's rows and needs the role; a
+/// Project panel's counts the session project's. Trunks need the `trunk` plugin,
+/// as their list.
 #[server(input = GetUrl)]
-pub async fn count_admin(list: PagedList, q: ListQuery) -> Result<Timed<RowCount>, AppError> {
+pub async fn count_rows(list: PagedList, scope: ListScope, q: ListQuery) -> Result<Timed<RowCount>, AppError> {
     if list == PagedList::Trunks {
         plugin_enabled(Plugin::Trunk)?;
     }
-    scoped("count_admin", |s, c| async move {
-        require_admin(&c)?;
+    scoped("count_rows", |s, c| async move {
+        if scope == ListScope::Admin {
+            require_admin(&c)?;
+        }
+        let project = (scope == ListScope::Project).then_some(s.project_id.as_str());
         let mv = if list.is_cinder() { os::capabilities(&s, &c).await.volume_mv } else { None };
-        fetch::admin_count(&c, list, &q, mv).await
+        fetch::count_rows(&c, list, project, &q, mv).await
     })
     .await
 }
 
-/// The images of a paged Admin › Instances page's boot-from-volume rows, as
-/// `(server ID, image name)`, from the volumes in their `boot_volume_ids`
-/// (roadmap 88). Called after the table shows; at most
-/// `fetch::MAX_BOOT_VOLUMES` IDs. Admins only.
+/// The images of a paged Instances page's boot-from-volume rows, as `(server ID,
+/// image name)`, from the volumes in their `boot_volume_ids` (roadmap 88). Called
+/// after the table shows; at most `fetch::MAX_BOOT_VOLUMES` IDs. Plain
+/// `volumes/{id}` GETs with the session's token, so OpenStack decides which it may
+/// read: an admin's Admin › Instances, or a Project panel's own volumes.
 #[server(input = GetUrl)]
-pub async fn get_admin_boot_images(volume_ids: Vec<String>) -> Result<Timed<Vec<(String, String)>>, AppError> {
-    scoped("get_admin_boot_images", |_s, c| async move {
-        require_admin(&c)?;
+pub async fn get_boot_images(volume_ids: Vec<String>) -> Result<Timed<Vec<(String, String)>>, AppError> {
+    scoped("get_boot_images", |_s, c| async move {
         let mut ids = volume_ids;
         ids.sort();
         ids.dedup();
-        fetch::admin_boot_images(&c, ids).await
+        fetch::boot_images(&c, ids).await
     })
     .await
 }
@@ -1191,19 +1225,19 @@ pub async fn list_admin_snapshots(q: ListQuery) -> Result<Timed<Page<Owned<Snaps
     .await
 }
 
-/// The names of servers or volumes a paged Admin page points at (a volume's
+/// The names of servers or volumes a paged page points at (a volume's
 /// attachments, a floating IP's instance, a snapshot's volume and host), read after
 /// the table shows (roadmap 88): at most `fetch::MAX_LATE_NAMES` IDs, sent in
 /// chunks of [`BOOT_IMAGE_CHUNK`]. A resource that can't be read is left out.
-/// Admins only.
+/// `servers/{id}` / `volumes/{id}` GETs with the session's token, so OpenStack
+/// decides which it may read (an admin's any, a member's its project's).
 #[server(input = GetUrl)]
-pub async fn get_admin_names(kind: NameKind, ids: Vec<String>) -> Result<Timed<Vec<LateName>>, AppError> {
-    scoped("get_admin_names", |_s, c| async move {
-        require_admin(&c)?;
+pub async fn get_late_names(kind: NameKind, ids: Vec<String>) -> Result<Timed<Vec<LateName>>, AppError> {
+    scoped("get_late_names", |_s, c| async move {
         let mut ids = ids;
         ids.sort();
         ids.dedup();
-        fetch::admin_names(&c, kind, ids).await
+        fetch::late_names(&c, kind, ids).await
     })
     .await
 }

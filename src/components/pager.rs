@@ -10,12 +10,12 @@ use leptos_router::params::ParamsMap;
 
 use std::collections::HashMap;
 
-use crate::api::{count_admin, get_admin_names, get_choices};
+use crate::api::{count_rows, get_choices, get_late_names};
 use crate::components::dialog::data_version;
 use crate::components::select::Combo;
-use crate::components::table::ServerSort;
+use crate::components::table::{Col, DataTable, Select, ServerSort};
 use crate::i18n::{page_range, use_i18n, K};
-use crate::model::{Choice, ChoiceSet, FilterKind, LateName, ListQuery, NameKind, PagedList, RowCount, BOOT_IMAGE_CHUNK};
+use crate::model::{Choice, ChoiceSet, FilterKind, LateName, ListQuery, ListScope, NameKind, Page, PagedList, RowCount, Timed, BOOT_IMAGE_CHUNK};
 
 /// What a *Count all* is for: the filter (field, value) and the page's
 /// `data_version` when it was asked. A new filter or a write makes it stale.
@@ -92,7 +92,7 @@ impl Default for LateNames {
 }
 
 /// `ids` without blanks or repeats, in chunks of [`BOOT_IMAGE_CHUNK`]: one
-/// `get_admin_names` GET each, so the query string stays a few KiB.
+/// `get_late_names` GET each, so the query string stays a few KiB.
 pub fn late_chunks(mut ids: Vec<String>) -> Vec<Vec<String>> {
     ids.retain(|id| !id.is_empty());
     ids.sort();
@@ -112,7 +112,7 @@ pub fn load_late(kind: NameKind, ids: Vec<String>, late: LateNames) {
     }
     leptos::task::spawn_local(async move {
         for chunk in chunks {
-            let found: HashMap<String, LateName> = get_admin_names(kind, chunk.clone()).await.map(|t| t.data.into_iter().map(|n| (n.id.clone(), n)).collect()).unwrap_or_default();
+            let found: HashMap<String, LateName> = get_late_names(kind, chunk.clone()).await.map(|t| t.data.into_iter().map(|n| (n.id.clone(), n)).collect()).unwrap_or_default();
             // The page may be gone by now (navigated away): `try_update` then does nothing.
             let _ = names.try_update(|m| {
                 for id in chunk {
@@ -239,22 +239,34 @@ fn go(qs: String) {
 /// *Filter by* `[field] [value] [Filter]`: a GET form, so the router navigates to
 /// `?f=…&q=…` (no marker: a filter starts at the first page) and the server filters
 /// every record. The value is a text box, a list of the API's values, or a project
-/// picked by name, according to the field's [`FilterKind`].
+/// picked by name, according to the field's [`FilterKind`]. A Project panel
+/// (`scope`) offers no *Project* or *Host* field ([`PagedList::filters_in`]).
 #[component]
-pub fn FilterBar(list: PagedList) -> impl IntoView {
+pub fn FilterBar(list: PagedList, #[prop(optional)] scope: ListScope) -> impl IntoView {
     let i18n = use_i18n();
     let query = use_list_query();
     let qmap = use_query_map();
-    let defs = list.filters();
+    let defs = StoredValue::new(list.filters_in(scope));
     let now = query.get_untracked();
-    let field = RwSignal::new(now.field.filter(|f| defs.iter().any(|d| d.key == f)).unwrap_or_else(|| defs[0].key.to_string()));
+    let field = RwSignal::new(defs.with_value(|ds| now.field.filter(|f| ds.iter().any(|d| d.key == f)).unwrap_or_else(|| ds[0].key.to_string())));
     let value = RwSignal::new(now.value.unwrap_or_default());
-    let kind = move || defs.iter().find(|d| d.key == field.get()).map_or(FilterKind::Text, |d| d.kind);
-    let projects: RwSignal<Option<Vec<Choice>>> = RwSignal::new(None);
+    let kind = move || defs.with_value(|ds| ds.iter().find(|d| d.key == field.get()).map_or(FilterKind::Text, |d| d.kind));
+    // The picked field's choices, loaded when it is chosen; a different `Pick` field
+    // reloads them (projects, flavors, images).
+    let choices: RwSignal<Option<(ChoiceSet, Vec<Choice>)>> = RwSignal::new(None);
+    let options = Signal::derive(move || choices.with(|c| c.as_ref().map(|(_, o)| o.clone())));
     Effect::new(move |_| {
-        if kind() == FilterKind::Project && projects.get_untracked().is_none() {
+        if let FilterKind::Pick(set) = kind()
+            && choices.with_untracked(|c| c.as_ref().map(|(s, _)| *s)) != Some(set)
+        {
+            choices.set(None);
+            let asked = field.get_untracked();
             leptos::task::spawn_local(async move {
-                projects.set(Some(get_choices(ChoiceSet::AllProjects).await.unwrap_or_default()));
+                let got = get_choices(set).await.unwrap_or_default();
+                // A slower answer for a field left since must not replace the new one's.
+                if field.try_get_untracked().as_deref() == Some(asked.as_str()) {
+                    let _ = choices.try_set(Some((set, got)));
+                }
             });
         }
     });
@@ -298,7 +310,7 @@ pub fn FilterBar(list: PagedList) -> impl IntoView {
                 field.set(event_target_value(&ev));
                 value.set(String::new());
             }>
-                {defs.iter().map(|d| {
+                {defs.get_value().into_iter().map(|d| {
                     let (key, k) = (d.key, label(d.key));
                     view! { <option value=key selected=move || field.get() == key>{move || i18n.t(k)}</option> }
                 }).collect_view()}
@@ -321,11 +333,11 @@ pub fn FilterBar(list: PagedList) -> impl IntoView {
                         {options.iter().map(|o| view! { <option value=*o selected=move || value.get() == *o>{*o}</option> }).collect_view()}
                     </select>
                 }.into_any(),
-                FilterKind::Project => view! {
+                FilterKind::Pick(_) => view! {
                     <input type="hidden" name="q" prop:value=value/>
-                    <Combo id="filter-project" options=projects value=value
+                    <Combo id="filter-pick" options=options value=value
                         on_change=Callback::new(move |v| value.set(v))
-                        aria_label=Signal::derive(move || i18n.t(K::Project).to_string())/>
+                        aria_label=Signal::derive(move || i18n.t(label(&field.get())).to_string())/>
                 }.into_any(),
             }}
             <button type="submit" class="btn">{move || i18n.t(K::FilterApply)}</button>
@@ -340,9 +352,17 @@ pub fn FilterBar(list: PagedList) -> impl IntoView {
 /// following page's marker (`None` on the last page); `stack` is the page's
 /// [`PagerState`]. A deep link (a marker, no history) has no known row numbers, and
 /// its *Previous* reads *First page*. Without the API's `count`, a *Count all*
-/// link asks `count_admin` for `list`'s total on a click (roadmap 88).
+/// link asks `count_rows` for `list`'s total in `scope` on a click (roadmap 88).
 #[component]
-pub fn Pager(list: PagedList, next: Option<String>, shown: usize, count: Option<u64>, page_size: u32, stack: PagerState) -> impl IntoView {
+pub fn Pager(
+    list: PagedList,
+    next: Option<String>,
+    shown: usize,
+    count: Option<u64>,
+    page_size: u32,
+    stack: PagerState,
+    #[prop(optional)] scope: ListScope,
+) -> impl IntoView {
     let i18n = use_i18n();
     let map = use_query_map();
     let marker = move || map.with(|m| m.get("marker").filter(|v| !v.is_empty()));
@@ -353,7 +373,7 @@ pub fn Pager(list: PagedList, next: Option<String>, shown: usize, count: Option<
         let (q, k) = (map.with_untracked(query_of), key());
         stack.total.set(Some((k.clone(), Counting::Running)));
         leptos::task::spawn_local(async move {
-            let done = match count_admin(list, q).await {
+            let done = match count_rows(list, scope, q).await {
                 Ok(t) => Counting::Done(t.data),
                 Err(_) => Counting::Failed,
             };
@@ -415,9 +435,82 @@ pub fn Pager(list: PagedList, next: Option<String>, shown: usize, count: Option<
     }
 }
 
+/// The neutral server-side sort key of a paged column, by its header: the same
+/// header means the same field on every list. `DataTable` uses a key only when
+/// the list's API sorts by it (`PagedList::sorts`), so *IP Address* sorts Floating
+/// IPs on the server and an instance's addresses on the page.
+pub fn server_key(header: K) -> Option<&'static str> {
+    Some(match header {
+        K::Name | K::InstanceName => "name",
+        K::Status => "status",
+        K::Size => "size",
+        K::Age | K::Created => "created",
+        K::Host => "host",
+        K::IpAddress => "address",
+        _ => return None,
+    })
+}
+
+/// `cols` with their [`server_key`]s, for a paged table.
+pub fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
+    cols.into_iter().map(|c| match server_key(c.header) { Some(k) => c.server_sort(k), None => c }).collect()
+}
+
+/// The table of a paged list (roadmap 88), Admin or Project (`scope`): one page
+/// with the filter bar and *Previous* / *Next*, or, when the server sent the whole
+/// list (`page_size = 0`, or a Project panel with `paged_lists = "admin"`), the
+/// client-side table and search box as before. Bulk actions act on the rows shown.
+#[allow(clippy::too_many_arguments)]
+pub fn paged_table<T: Clone + Send + Sync + 'static>(
+    t: Timed<Page<T>>,
+    list: PagedList,
+    scope: ListScope,
+    cols: Vec<Col<T>>,
+    search: fn(&T) -> String,
+    select: Option<Select<T>>,
+    drawer: Option<fn(&T, crate::i18n::Lang) -> AnyView>,
+    stack: PagerState,
+    refresh: Callback<()>,
+) -> AnyView {
+    let page = t.data;
+    let timing = (t.millis, t.calls);
+    // `select` is an optional prop that takes a `Select`, not an `Option`.
+    if !page.paged {
+        return match select {
+            Some(select) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select drawer=drawer/> }.into_any(),
+            None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh drawer=drawer/> }.into_any(),
+        };
+    }
+    let footer = view! { <Pager list=list next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack scope=scope/> }.into_any();
+    let bar = view! { <FilterBar list=list scope=scope/> }.into_any();
+    let sort = server_sort(list);
+    let cols = with_server_keys(cols);
+    match select {
+        Some(select) => view! {
+            <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select drawer=drawer paged=true extra=bar footer=footer server_sort=sort/>
+        }
+        .into_any(),
+        None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh drawer=drawer paged=true extra=bar footer=footer server_sort=sort/> }.into_any(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_server_sort_key_comes_from_a_header() {
+        use crate::model::PagedList;
+        let all = [PagedList::Instances, PagedList::Volumes, PagedList::Snapshots, PagedList::FloatingIps, PagedList::Networks, PagedList::Routers, PagedList::Trunks, PagedList::Images, PagedList::VolumeGroups, PagedList::GroupSnapshots];
+        let headers = [K::Name, K::Status, K::Size, K::Age, K::Created, K::Host, K::IpAddress];
+        let keys: Vec<_> = headers.iter().filter_map(|h| server_key(*h)).collect();
+        for l in all {
+            for d in l.sorts() {
+                assert!(keys.contains(&d.key), "{l:?}: no header sorts by {:?}", d.key);
+            }
+        }
+        assert_eq!(server_key(K::Actions), None);
+    }
 
     fn map(pairs: &[(&str, &str)]) -> ParamsMap {
         let mut m = ParamsMap::new();

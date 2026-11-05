@@ -130,7 +130,7 @@ show_requests = false
 # the dialog.
 background_batch_from = 10
 # Rows per page of the big lists (Admin: Instances, Volumes…). Filters and sorting run on the
-# server, so a page costs the same on any cloud. 1-1000; 0 = every row at once.
+# server, so a page costs the same on any cloud. 1-999; 0 = every row at once.
 # (API_RESULT_PAGE_SIZE; Horizon uses 20)
 page_size = 100
 # Which lists are paged: "admin" (the Admin lists) or "all" (the Project panels too).

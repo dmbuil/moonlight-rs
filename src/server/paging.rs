@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use crate::model::{check_id, AppError, ListQuery, PagedList, SortStyle};
+use crate::model::{check_id, AppError, ListQuery, ListScope, PagedList, SortStyle};
 
 /// Longest filter value accepted; a name or an address is far shorter.
 const MAX_VALUE: usize = 255;
@@ -14,11 +14,12 @@ const MAX_VALUE: usize = 255;
 /// The filter of `q` as `(key, value)`, trimmed; `None` when there is no value.
 /// A value without a known field, or a field the list lacks, is an error: the URL is
 /// user input and a typo must not silently list everything.
-fn filter_of(list: PagedList, q: &ListQuery) -> Result<Option<(&'static str, &str)>, AppError> {
+fn filter_of(list: PagedList, scope: ListScope, q: &ListQuery) -> Result<Option<(&'static str, &str)>, AppError> {
     let value = q.value.as_deref().map(str::trim).unwrap_or_default();
     let field = q.field.as_deref().map(str::trim).filter(|f| !f.is_empty());
+    let offered = list.filters_in(scope);
     let def = match field {
-        Some(f) => Some(list.filters().iter().find(|d| d.key == f).ok_or_else(|| AppError::invalid(format!("unknown filter {f:?}")))?),
+        Some(f) => Some(*offered.iter().find(|d| d.key == f).ok_or_else(|| AppError::invalid(format!("unknown filter {f:?}")))?),
         None => None,
     };
     if value.is_empty() {
@@ -28,7 +29,7 @@ fn filter_of(list: PagedList, q: &ListQuery) -> Result<Option<(&'static str, &st
         return Err(AppError::invalid("the filter value is too long or has control characters"));
     }
     // Without a field the first filter (the name) is the default, as the filter bar.
-    let def = def.unwrap_or(&list.filters()[0]);
+    let def = def.unwrap_or(offered[0]);
     Ok(Some((def.param, value)))
 }
 
@@ -36,8 +37,27 @@ fn filter_of(list: PagedList, q: &ListQuery) -> Result<Option<(&'static str, &st
 /// the sort, `limit` and `marker`. `limit` is `page_size + 1`: the extra row only
 /// says whether a next page exists ([`cut`]).
 pub fn params(list: PagedList, q: &ListQuery, limit: u32) -> Result<Vec<(&'static str, String)>, AppError> {
-    let mut out: Vec<(&'static str, String)> = list.fixed().iter().map(|(k, v)| (*k, v.to_string())).collect();
-    if let Some((param, value)) = filter_of(list, q)? {
+    params_in(list, None, q, limit)
+}
+
+/// [`params`] for a list scoped to `project` (a Project panel, roadmap 88 slice E),
+/// or every project's when `None` (an Admin panel). In a project, Nova and Cinder
+/// lists drop `all_tenants` (a project-scoped token lists its own project's), and
+/// Neutron lists filter by `project_id`, since Neutron shows an admin every
+/// project's rows (AGENTS.md §6). Glance's list stays as the whole Project › Images
+/// asks it: every image the token may see. The *Project* and *Host* filters are
+/// refused in a project ([`PagedList::filters_in`]).
+pub fn params_in(list: PagedList, project: Option<&str>, q: &ListQuery, limit: u32) -> Result<Vec<(&'static str, String)>, AppError> {
+    let scope = if project.is_some() { ListScope::Project } else { ListScope::Admin };
+    let mut out: Vec<(&'static str, String)> = match project {
+        None => list.fixed().iter().map(|(k, v)| (*k, v.to_string())).collect(),
+        Some(p) if list.is_neutron() => {
+            check_id(p)?;
+            vec![("project_id", p.to_string())]
+        }
+        Some(_) => Vec::new(),
+    };
+    if let Some((param, value)) = filter_of(list, scope, q)? {
         out.push((param, value.to_string()));
     }
     if let Some(key) = q.sort.as_deref().filter(|k| !k.is_empty()) {
@@ -85,9 +105,9 @@ pub fn cinder(mut params: Vec<(&'static str, String)>, mv: Option<(u16, u16)>) -
 /// The query of one request of *Count all* (roadmap 88): `q`'s filter (not its
 /// sort, which can't change a count), `limit` and `marker`, and on Neutron
 /// `fields=id`, so each row is only its ID.
-pub fn count_params(list: PagedList, q: &ListQuery, marker: Option<&str>, limit: u32) -> Result<Vec<(&'static str, String)>, AppError> {
+pub fn count_params(list: PagedList, project: Option<&str>, q: &ListQuery, marker: Option<&str>, limit: u32) -> Result<Vec<(&'static str, String)>, AppError> {
     let q = ListQuery { marker: marker.map(str::to_string), sort: None, desc: false, ..q.clone() };
-    let mut out = params(list, &q, limit)?;
+    let mut out = params_in(list, project, &q, limit)?;
     if list.is_neutron() {
         out.push(("fields", "id".to_string()));
     }
@@ -218,6 +238,45 @@ mod tests {
     }
 
     #[test]
+    fn sorts_the_test_cloud_refused_are_not_offered() {
+        let by = |k: &str| ListQuery { sort: Some(k.into()), ..Default::default() };
+        assert!(params(PagedList::Instances, &by("host"), 11).is_err(), "Nova answered sort_key=host with HTTP 500");
+        assert!(params(PagedList::Snapshots, &by("size"), 11).is_err(), "Cinder answered a snapshot sort=size with HTTP 400");
+        assert_eq!(get(&params(PagedList::Volumes, &by("size"), 11).unwrap(), "sort"), Some("size:asc"), "volumes still sort by size");
+    }
+
+    #[test]
+    fn a_project_panel_lists_its_own_project_only() {
+        let pid = "0123456789abcdef0123456789abcdef";
+        // Nova and Cinder: a project-scoped token lists its own; no all_tenants.
+        assert_eq!(params_in(PagedList::Instances, Some(pid), &q("name", "web"), 11).unwrap(), [("name", "web".to_string()), ("limit", "11".to_string())]);
+        assert!(get(&params_in(PagedList::Volumes, Some(pid), &ListQuery::default(), 11).unwrap(), "all_tenants").is_none());
+        // Neutron shows an admin every project's rows: filter explicitly (AGENTS.md §6).
+        let p = params_in(PagedList::FloatingIps, Some(pid), &q("status", "DOWN"), 11).unwrap();
+        assert_eq!(p, [("project_id", pid.to_string()), ("status", "DOWN".to_string()), ("limit", "11".to_string())]);
+        assert_eq!(get(&params_in(PagedList::Routers, Some(pid), &ListQuery::default(), 11).unwrap(), "project_id"), Some(pid));
+        // Glance: the same visible images as the whole Project › Images.
+        assert_eq!(params_in(PagedList::Images, Some(pid), &ListQuery::default(), 11).unwrap(), [("limit", "11".to_string())]);
+        // Cross-project filters are refused in a project, offered to an admin.
+        assert!(params_in(PagedList::Instances, Some(pid), &q("project", "x"), 11).is_err());
+        assert!(params_in(PagedList::Volumes, Some(pid), &q("host", "c1"), 11).is_err());
+        assert!(params_in(PagedList::Volumes, None, &q("host", "c1"), 11).is_ok());
+        assert!(params_in(PagedList::Routers, Some("a/b"), &ListQuery::default(), 11).is_err(), "the project goes into the query: an ID only");
+        // A count keeps the scope.
+        assert_eq!(get(&count_params(PagedList::Routers, Some(pid), &ListQuery::default(), None, 1000).unwrap(), "project_id"), Some(pid));
+    }
+
+    #[test]
+    fn nova_flavor_and_image_filters_are_picked_by_name_and_send_the_id() {
+        use crate::model::{ChoiceSet, FilterKind};
+        let kind = |k: &str| PagedList::Instances.filters().iter().find(|d| d.key == k).unwrap().kind;
+        // Nova matched a typed flavor or image name against nothing (test cloud, roadmap 88).
+        assert_eq!(kind("flavor"), FilterKind::Pick(ChoiceSet::Flavors));
+        assert_eq!(kind("image"), FilterKind::Pick(ChoiceSet::Images));
+        assert_eq!(get(&params(PagedList::Instances, &q("flavor", "12003"), 11).unwrap(), "flavor"), Some("12003"));
+    }
+
+    #[test]
     fn every_list_names_by_its_first_filter_and_only_cinder_volumes_take_like() {
         use crate::model::FilterKind;
         let all = [PagedList::Instances, PagedList::Volumes, PagedList::Snapshots, PagedList::FloatingIps, PagedList::Networks, PagedList::Routers, PagedList::Trunks, PagedList::Images, PagedList::VolumeGroups, PagedList::GroupSnapshots];
@@ -265,16 +324,16 @@ mod tests {
     #[test]
     fn a_count_ignores_the_sort_and_asks_neutron_for_ids_only() {
         let sorted = ListQuery { sort: Some("name".into()), desc: true, marker: Some("old".into()), ..q("status", "ACTIVE") };
-        let p = count_params(PagedList::Networks, &sorted, Some("n9"), 1000).unwrap();
+        let p = count_params(PagedList::Networks, None, &sorted, Some("n9"), 1000).unwrap();
         assert_eq!(
             p,
             [("status", "ACTIVE".to_string()), ("limit", "1000".to_string()), ("marker", "n9".to_string()), ("fields", "id".to_string())],
             "the filter stays, the sort and the page's own marker don't"
         );
-        let p = count_params(PagedList::Instances, &q("host", "c1"), None, 1000).unwrap();
+        let p = count_params(PagedList::Instances, None, &q("host", "c1"), None, 1000).unwrap();
         assert_eq!((get(&p, "host"), get(&p, "all_tenants"), get(&p, "fields")), (Some("c1"), Some("true"), None));
-        assert!(count_params(PagedList::Images, &q("password", "x"), None, 1000).is_err(), "same validation as a page");
-        assert!(count_params(PagedList::Images, &ListQuery::default(), Some("a/b"), 1000).is_err());
+        assert!(count_params(PagedList::Images, None, &q("password", "x"), None, 1000).is_err(), "same validation as a page");
+        assert!(count_params(PagedList::Images, None, &ListQuery::default(), Some("a/b"), 1000).is_err());
     }
 
     #[test]

@@ -6,11 +6,14 @@ use leptos_router::components::A;
 use crate::components::dialog::{data_version, BulkButton, CreateButton, RowActions};
 use crate::components::ops;
 
-use crate::api::list_instances;
-use crate::components::table::{col, DataTable, Select};
+use std::collections::HashMap;
+
+use crate::api::{get_boot_images, list_instances};
+use crate::components::pager::{paged_table, use_list_query, PagerState};
+use crate::components::table::{col, Select};
 use crate::components::widgets::{age_cell_since, dash, is_busy, poll_while_busy, render, AzPill, Busy, FlavorPopover, LockIcon, PageHeader, Pill, Skeleton, Tone};
-use crate::i18n::{power_state, server_status, t, task_state, use_i18n, K};
-use crate::model::{Address, Instance, OsAction};
+use crate::i18n::{power_state, server_status, t, task_state, use_i18n, Lang, K};
+use crate::model::{Address, Instance, ListScope, OsAction, PagedList, BOOT_IMAGE_CHUNK};
 
 #[component]
 pub fn IpList(addresses: Vec<Address>) -> impl IntoView {
@@ -64,6 +67,67 @@ pub fn image_cell(i: &Instance, l: crate::i18n::Lang) -> AnyView {
     }
 }
 
+/// Images of a paged page's boot-from-volume rows by server ID, filled after the
+/// table shows (roadmap 88): absent = still loading, `None` = no image found.
+pub type BootImages = RwSignal<HashMap<String, Option<String>>>;
+
+/// The *Image* cell: Nova's or the boot volume's image, or, on a paged page, the
+/// one [`BootImages`] fills in later (a placeholder until then).
+pub fn late_image_cell(i: &Instance, l: Lang, boot: BootImages) -> AnyView {
+    if i.image_name.is_some() || i.boot_volume_ids.is_empty() {
+        return image_cell(i, l);
+    }
+    let id = i.id.clone();
+    (move || match boot.with(|m| m.get(&id).cloned()) {
+        None => view! { <span class="muted" title=t(l, K::LoadingChoices)>"…"</span> }.into_any(),
+        Some(None) => "-".into_any(),
+        Some(Some(n)) => view! { <span>{n}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span> }.into_any(),
+    })
+    .into_any()
+}
+
+/// The rows' boot volumes in [`BOOT_IMAGE_CHUNK`]-sized requests, as `(servers,
+/// volume IDs)`. A server's volumes are never split across two requests: the boot
+/// volume is picked among all of them. A server with more volumes than a chunk
+/// gets a request of its own.
+pub fn boot_chunks(rows: &[(String, Vec<String>)]) -> Vec<(Vec<String>, Vec<String>)> {
+    let mut out: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    for (server, vols) in rows.iter().filter(|(_, v)| !v.is_empty()) {
+        match out.last_mut() {
+            Some((servers, ids)) if ids.len() + vols.len() <= BOOT_IMAGE_CHUNK => {
+                servers.push(server.clone());
+                ids.extend(vols.iter().cloned());
+            }
+            _ => out.push((vec![server.clone()], vols.clone())),
+        }
+    }
+    out
+}
+
+/// Names the images of a paged page's boot-from-volume rows (`(server ID, its
+/// boot_volume_ids)`) into `boot`, one chunk at a time, after the table shows (the
+/// server reads FAN_OUT volumes at once): reading them before cost ≈10 s a page on
+/// ttcp-dev, which boots every server from a volume. A whole list's rows come with
+/// their images, so there is nothing to read.
+pub fn load_boot_images(rows: Vec<(String, Vec<String>)>, boot: BootImages) {
+    let chunks = boot_chunks(&rows);
+    if chunks.is_empty() {
+        return;
+    }
+    leptos::task::spawn_local(async move {
+        for (servers, ids) in chunks {
+            let found: HashMap<String, String> = get_boot_images(ids).await.map(|t| t.data.into_iter().collect()).unwrap_or_default();
+            // A failed chunk or a server without an image shows "-", not "…" forever.
+            let _ = boot.try_update(|m| {
+                for s in servers {
+                    let name = found.get(&s).cloned();
+                    m.insert(s, name);
+                }
+            });
+        }
+    });
+}
+
 fn search(i: &Instance) -> String {
     let ips: Vec<&str> = i.addresses.iter().map(|a| a.addr.as_str()).collect();
     format!(
@@ -82,10 +146,20 @@ fn search(i: &Instance) -> String {
 #[component]
 pub fn InstancesPage() -> impl IntoView {
     let i18n = use_i18n();
-    let data = Resource::new(data_version, |_| list_instances());
+    let query = use_list_query();
+    let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_instances(q));
     let polling = poll_while_busy(data, move || {
-        data.with(|r| matches!(r, Some(Ok(td)) if td.data.iter().any(|i| is_busy(i.task_state.as_deref(), &i.status))))
+        data.with(|r| matches!(r, Some(Ok(td)) if td.data.rows.iter().any(|i| is_busy(i.task_state.as_deref(), &i.status))))
     });
+    // A paged page (roadmap 88 slice E) names its boot-from-volume rows' images later.
+    let boot: BootImages = RwSignal::new(HashMap::new());
+    Effect::new(move |_| {
+        let Some(Ok(t)) = data.get() else { return };
+        if t.data.paged {
+            load_boot_images(t.data.rows.iter().map(|i| (i.id.clone(), i.boot_volume_ids.clone())).collect(), boot);
+        }
+    });
+    let stack = PagerState::new();
     let columns = vec![
         col(K::InstanceName, |i: &Instance, _| {
             let href = format!("/project/instances/{}", i.id);
@@ -93,7 +167,7 @@ pub fn InstancesPage() -> impl IntoView {
             view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }
         })
         .sort_text(|i| i.name.clone()),
-        col(K::ImageName, |i: &Instance, l| image_cell(i, l))
+        col(K::ImageName, move |i: &Instance, l| late_image_cell(i, l, boot))
         .sort_text(|i| i.image_name.clone().unwrap_or_default()),
         col(K::IpAddress, |i: &Instance, _| view! { <IpList addresses=i.addresses.clone()/> }),
         col(K::Flavor, |i: &Instance, _| view! { <FlavorPopover flavor=i.flavor.clone() key=i.id.clone()/> })
@@ -130,15 +204,8 @@ pub fn InstancesPage() -> impl IntoView {
             />
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), |td| view! {
-                <DataTable
-                    rows=td.data
-                    columns=columns.get_value()
-                    search=search
-                    timing=(td.millis, td.calls)
-                    on_refresh=move |_| data.refetch()
-                    select=select
-                />
+            {move || render(data.get(), move |td| {
+                paged_table(td, PagedList::Instances, ListScope::Project, columns.get_value(), search, Some(select), None, stack, Callback::new(move |_| data.refetch()))
             })}
         </Transition>
     }
@@ -147,7 +214,26 @@ pub fn InstancesPage() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::i18n::Lang;
+
+    #[test]
+    fn boot_volumes_go_in_chunks_without_splitting_a_server() {
+        let ids = |p: &str, n: usize| (0..n).map(|i| format!("{p}{i}")).collect::<Vec<_>>();
+        let rows = vec![
+            ("a".to_string(), ids("a", 30)),
+            ("img".to_string(), vec![]),
+            ("b".to_string(), ids("b", 20)),
+            ("c".to_string(), ids("c", 1)),
+            ("big".to_string(), ids("x", BOOT_IMAGE_CHUNK + 5)),
+        ];
+        let chunks = boot_chunks(&rows);
+        let shape: Vec<(Vec<&str>, usize)> = chunks.iter().map(|(s, v)| (s.iter().map(String::as_str).collect(), v.len())).collect();
+        assert_eq!(
+            shape,
+            [(vec!["a", "b"], 50), (vec!["c"], 1), (vec!["big"], BOOT_IMAGE_CHUNK + 5)],
+            "a and b fill a chunk; c would make 51, so it starts the next; a server is never split; rows without volumes ask nothing"
+        );
+        assert!(boot_chunks(&[]).is_empty());
+    }
 
     #[test]
     fn task_label_prefers_the_task_then_a_transitional_status() {

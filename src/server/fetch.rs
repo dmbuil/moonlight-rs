@@ -1679,9 +1679,11 @@ struct RawPage {
 /// into the page's raw rows and the next page's marker. Raw requests, not the SDK's
 /// list builders: they lack some filters (Cinder's) and paging is one request, not
 /// `Pagination::All`. `cinder_mv` is the cloud's Cinder microversion, which decides
-/// a Cinder list's name filter and count (`paging::cinder`).
-async fn page_raw(os: &AsyncOpenStack, list: PagedList, q: &ListQuery, page_size: u32, cinder_mv: Option<(u16, u16)>) -> R<RawPage> {
-    let params = super::paging::params(list, q, page_size + 1)?;
+/// a Cinder list's name filter and count (`paging::cinder`). `project`: the
+/// session project for a Project panel (slice E), `None` for an Admin one
+/// (`paging::params_in`).
+async fn page_raw(os: &AsyncOpenStack, list: PagedList, project: Option<&str>, q: &ListQuery, page_size: u32, cinder_mv: Option<(u16, u16)>) -> R<RawPage> {
+    let params = super::paging::params_in(list, project, q, page_size + 1)?;
     let (req, key, what) = list_request(list, params, cinder_mv, false);
     let body = get_json(os, req, what).await?;
     let count = body.get("count").and_then(Value::as_u64);
@@ -1747,14 +1749,15 @@ pub const MAX_COUNT_PAGES: u32 = 100;
 /// `os::REQUEST_TIMEOUT` (20 s), and an "at least N" is more use than a timeout.
 const COUNT_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// *Count all* for a paged Admin list (roadmap 88): the rows matching `q`'s
-/// filter, asked only when the user clicks, never before the table shows. One
+/// *Count all* for a paged list (roadmap 88): the rows matching `q`'s filter in
+/// `project` (`None`: every project's, an Admin list), asked only when the user
+/// clicks, never before the table shows. One
 /// request when Cinder gives `count` (volume 3.45), else the lightest list
 /// (`list_request` with `brief`, `fields=id` on Neutron) walked
 /// [`COUNT_PAGE`] rows at a time until an empty answer, at most
 /// [`MAX_COUNT_PAGES`] requests or [`COUNT_BUDGET`]. As costly as the whole list
 /// was before paging.
-pub async fn admin_count(os: &AsyncOpenStack, list: PagedList, q: &ListQuery, cinder_mv: Option<(u16, u16)>) -> R<Timed<RowCount>> {
+pub async fn count_rows(os: &AsyncOpenStack, list: PagedList, project: Option<&str>, q: &ListQuery, cinder_mv: Option<(u16, u16)>) -> R<Timed<RowCount>> {
     let t = Instant::now();
     let mut counted = 0;
     let mut marker: Option<String> = None;
@@ -1762,7 +1765,7 @@ pub async fn admin_count(os: &AsyncOpenStack, list: PagedList, q: &ListQuery, ci
         if t.elapsed() > COUNT_BUDGET {
             break;
         }
-        let params = super::paging::count_params(list, q, marker.as_deref(), COUNT_PAGE)?;
+        let params = super::paging::count_params(list, project, q, marker.as_deref(), COUNT_PAGE)?;
         let (req, key, what) = list_request(list, params, cinder_mv, true);
         let body = get_json(os, req, what).await?;
         if let Some(n) = body.get("count").and_then(Value::as_u64) {
@@ -1855,10 +1858,10 @@ async fn neutron_where(os: &AsyncOpenStack, path: &'static str, filter: &'static
 /// page, not the cloud. Besides the servers page and the project names, it reads
 /// only the images the page's servers were built from: no cloud-wide
 /// `volumes/detail?all_tenants` or image list. Boot-from-volume rows name their
-/// image later, through [`admin_boot_images`].
+/// image later, through [`boot_images`].
 pub async fn admin_instances_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<Instance>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::Instances, q, page_size, None), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Instances, None, q, page_size, None), project_names(os, &[]));
     let RawPage { rows: sv, next, .. } = page?;
     let im = images_by_ids(os, mapping::image_ids(&sv)).await;
     let rows = mapping::instances_page(&sv, &soft(im));
@@ -1866,7 +1869,7 @@ pub async fn admin_instances_page(os: &AsyncOpenStack, q: &ListQuery, page_size:
     Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
 }
 
-/// Most volumes one [`admin_boot_images`] call reads. The page sends its IDs in
+/// Most volumes one [`boot_images`] call reads. The page sends its IDs in
 /// chunks of `model::BOOT_IMAGE_CHUNK` (the IDs travel in a GET's query string);
 /// the cap only refuses a hand-made request for more.
 pub const MAX_BOOT_VOLUMES: usize = 100;
@@ -1875,7 +1878,7 @@ pub const MAX_BOOT_VOLUMES: usize = 100;
 /// for a paged Instances list's second call (roadmap 88). Cinder keeps only the
 /// last `id=` of a list query (probed on ttcp-dev, 2026-11-03), so it is one
 /// `volumes/{id}` per volume, [`FAN_OUT`] at a time.
-pub async fn admin_boot_images(os: &AsyncOpenStack, ids: Vec<String>) -> R<Timed<Vec<(String, String)>>> {
+pub async fn boot_images(os: &AsyncOpenStack, ids: Vec<String>) -> R<Timed<Vec<(String, String)>>> {
     let t = Instant::now();
     if ids.len() > MAX_BOOT_VOLUMES {
         return Err(AppError::invalid(format!("at most {MAX_BOOT_VOLUMES} volumes at once")));
@@ -1884,12 +1887,12 @@ pub async fn admin_boot_images(os: &AsyncOpenStack, ids: Vec<String>) -> R<Timed
     Ok(timed(t, mapping::boot_images(&vo)))
 }
 
-/// Most IDs one [`admin_names`] call reads; the page sends `model::BOOT_IMAGE_CHUNK`.
+/// Most IDs one [`late_names`] call reads; the page sends `model::BOOT_IMAGE_CHUNK`.
 pub const MAX_LATE_NAMES: usize = 100;
 
 /// The names (and, for volumes, hosts) of the servers or volumes a paged page
 /// points at, read after the table shows (roadmap 88).
-pub async fn admin_names(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) -> R<Timed<Vec<LateName>>> {
+pub async fn late_names(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) -> R<Timed<Vec<LateName>>> {
     let t = Instant::now();
     if ids.len() > MAX_LATE_NAMES {
         return Err(AppError::invalid(format!("at most {MAX_LATE_NAMES} names at once")));
@@ -1899,23 +1902,23 @@ pub async fn admin_names(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) 
 }
 
 /// Admin › Volume › Volumes, one page (roadmap 88): the volumes page and the
-/// project names. Attached servers are named afterwards ([`admin_names`]), not
+/// project names. Attached servers are named afterwards ([`late_names`]), not
 /// from every server of the cloud. `volume_mv`: the cloud's Cinder microversion,
 /// for the name filter and the total.
 pub async fn admin_volumes_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32, volume_mv: Option<(u16, u16)>) -> R<Timed<Page<Owned<Volume>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::Volumes, q, page_size, volume_mv), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Volumes, None, q, page_size, volume_mv), project_names(os, &[]));
     let RawPage { rows: vo, next, count } = page?;
     let rows = mapping::owned(mapping::volumes_page(&vo, &[]), |v| &v.id, &vo, "os-vol-tenant-attr:tenant_id", Some("os-vol-host-attr:host"), &names);
     Ok(timed(t, Page { rows, next, count, paged: true, page_size }))
 }
 
 /// Admin › Volume › Snapshots, one page (roadmap 88). Each snapshot's volume, and
-/// with it the host column, is named afterwards ([`admin_names`]), not from every
+/// with it the host column, is named afterwards ([`late_names`]), not from every
 /// project's volumes.
 pub async fn admin_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32, volume_mv: Option<(u16, u16)>) -> R<Timed<Page<Owned<Snapshot>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::Snapshots, q, page_size, volume_mv), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Snapshots, None, q, page_size, volume_mv), project_names(os, &[]));
     let RawPage { rows: sn, next, count } = page?;
     let rows = mapping::owned(mapping::snapshots_page(&sn, &[]), |s| &s.id, &sn, "os-extended-snapshot-attributes:project_id", None, &names);
     Ok(timed(t, Page { rows, next, count, paged: true, page_size }))
@@ -1923,10 +1926,10 @@ pub async fn admin_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page_size:
 
 /// Admin › Network › Floating IPs, one page (roadmap 88): the page, its pools in
 /// one `networks?id=…` GET and the project names. Instances are named afterwards
-/// ([`admin_names`]), not from every server of the cloud.
+/// ([`late_names`]), not from every server of the cloud.
 pub async fn admin_floating_ips_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<FloatingIpRow>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::FloatingIps, q, page_size, None), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::FloatingIps, None, q, page_size, None), project_names(os, &[]));
     let RawPage { rows: fi, next, .. } = page?;
     let ne = networks_by_ids(os, mapping::pool_ids(&fi)).await;
     let rows = mapping::owned(mapping::floating_ips_page(&fi, &soft(ne), &[]), |f| &f.id, &fi, "project_id", None, &names);
@@ -1939,7 +1942,7 @@ pub async fn admin_floating_ips_page(os: &AsyncOpenStack, q: &ListQuery, page_si
 pub async fn admin_networks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32, dhcp: bool) -> R<Timed<Page<Owned<NetworkRow>>>> {
     let t = Instant::now();
     let (page, names, agents) = tokio::join!(
-        page_raw(os, PagedList::Networks, q, page_size, None),
+        page_raw(os, PagedList::Networks, None, q, page_size, None),
         project_names(os, &[]),
         async { if dhcp { dhcp_agent_counts(os).await.ok() } else { None } }
     );
@@ -1958,7 +1961,7 @@ pub async fn admin_networks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: 
 /// networks by ID and the project names, not every network of the cloud.
 pub async fn admin_routers_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<RouterRow>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::Routers, q, page_size, None), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Routers, None, q, page_size, None), project_names(os, &[]));
     let RawPage { rows: ro, next, .. } = page?;
     let ne = networks_by_ids(os, mapping::gateway_ids(&ro)).await;
     let rows = mapping::owned(mapping::routers_page(&ro, &soft(ne)), |r| &r.id, &ro, "project_id", None, &names);
@@ -1970,7 +1973,7 @@ pub async fn admin_routers_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u
 /// every port of the cloud.
 pub async fn admin_trunks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<TrunkRow>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::Trunks, q, page_size, None), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Trunks, None, q, page_size, None), project_names(os, &[]));
     let RawPage { rows: tr, next, .. } = page?;
     let po = neutron_where(os, "ports", "id", mapping::trunk_port_ids(&tr), &["id", "name"]).await;
     let rows = mapping::owned(mapping::trunks_page(&tr, &soft(po)), |r| &r.id, &tr, "project_id", None, &names);
@@ -1980,7 +1983,7 @@ pub async fn admin_trunks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u3
 /// Admin › Compute › Images, one page (roadmap 88): the page and the project names.
 pub async fn admin_images_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<Image>>>> {
     let t = Instant::now();
-    let (page, names) = tokio::join!(page_raw(os, PagedList::Images, q, page_size, None), project_names(os, &[]));
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Images, None, q, page_size, None), project_names(os, &[]));
     let RawPage { rows: im, next, .. } = page?;
     let rows = mapping::owned(mapping::images_page(&im, "", &names), |i| &i.id, &im, "owner", None, &names);
     Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
@@ -1993,7 +1996,7 @@ pub async fn admin_volume_groups_page(os: &AsyncOpenStack, q: &ListQuery, page_s
     use openstack_sdk::api::block_storage::v3::group_snapshot;
     let t = Instant::now();
     let (page, gt, vt, gs, names) = tokio::join!(
-        page_raw(os, PagedList::VolumeGroups, q, page_size, None),
+        page_raw(os, PagedList::VolumeGroups, None, q, page_size, None),
         group_types_raw(os),
         volume_types_raw(os),
         list_where!(os, group_snapshot::list_detailed_314, "group_snapshots/detail?all_tenants", |b| b.all_tenants(true)),
@@ -2010,7 +2013,7 @@ pub async fn admin_volume_groups_page(os: &AsyncOpenStack, q: &ListQuery, page_s
 pub async fn admin_group_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<GroupSnapshotRow>>>> {
     use super::actions::JsonRequest;
     let t = Instant::now();
-    let (page, gt, names) = tokio::join!(page_raw(os, PagedList::GroupSnapshots, q, page_size, None), group_types_raw(os), project_names(os, &[]));
+    let (page, gt, names) = tokio::join!(page_raw(os, PagedList::GroupSnapshots, None, q, page_size, None), group_types_raw(os), project_names(os, &[]));
     let RawPage { rows: gs, next, .. } = page?;
     let mut tasks = Bounded::new(FAN_OUT);
     for id in mapping::group_ids(&gs).into_iter().filter(|id| check_id(id).is_ok()) {
@@ -2025,6 +2028,69 @@ pub async fn admin_group_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page
     let groups: Vec<Value> = tasks.join_all().await.into_iter().flatten().collect();
     let rows = mapping::group_snapshots_page(&gs, &groups, &soft(gt));
     Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &gs, "project_id", None, &names), next, count: None, paged: true, page_size }))
+}
+
+// --- Paged Project panels (roadmap 88, slice E: `[ui] paged_lists = "all"`) ---------
+//
+// The Admin pages' pattern for the session project: one GET of `page_size + 1`
+// rows (`page_raw` with the project, so `paging::params_in` scopes it), lookups
+// bounded by the page, and the names of servers and volumes a row points at read
+// after the table shows (`late_names`). Project › Networks stays whole: it merges
+// three Neutron lists (own, shared, external), which one marker can't page.
+
+/// Project › Compute › Instances, one page: the servers and the images they were
+/// built from (`images?id=in:…`), instead of every image and volume the project
+/// has. Boot-from-volume rows name their image afterwards ([`boot_images`]).
+pub async fn instances_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32) -> R<Timed<Page<Instance>>> {
+    let t = Instant::now();
+    let RawPage { rows: sv, next, .. } = page_raw(os, PagedList::Instances, Some(project_id), q, page_size, None).await?;
+    let im = images_by_ids(os, mapping::image_ids(&sv)).await;
+    Ok(timed(t, Page { rows: mapping::instances_page(&sv, &soft(im)), next, count: None, paged: true, page_size }))
+}
+
+/// Project › Volumes › Volumes, one page, with Cinder's total at volume 3.45. The
+/// attached servers are named afterwards ([`late_names`]), not from every server
+/// of the project.
+pub async fn volumes_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32, volume_mv: Option<(u16, u16)>) -> R<Timed<Page<Volume>>> {
+    let t = Instant::now();
+    let RawPage { rows: vo, next, count } = page_raw(os, PagedList::Volumes, Some(project_id), q, page_size, volume_mv).await?;
+    Ok(timed(t, Page { rows: mapping::volumes_page(&vo, &[]), next, count, paged: true, page_size }))
+}
+
+/// Project › Volumes › Snapshots, one page; each snapshot's volume is named
+/// afterwards ([`late_names`]).
+pub async fn snapshots_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32, volume_mv: Option<(u16, u16)>) -> R<Timed<Page<Snapshot>>> {
+    let t = Instant::now();
+    let RawPage { rows: sn, next, count } = page_raw(os, PagedList::Snapshots, Some(project_id), q, page_size, volume_mv).await?;
+    Ok(timed(t, Page { rows: mapping::snapshots_page(&sn, &[]), next, count, paged: true, page_size }))
+}
+
+/// Project › Network › Floating IPs, one page: the project's (`project_id`), their
+/// pools in one `networks?id=…` GET; instances are named afterwards ([`late_names`]).
+pub async fn floating_ips_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32) -> R<Timed<Page<FloatingIpRow>>> {
+    let t = Instant::now();
+    let RawPage { rows: fi, next, .. } = page_raw(os, PagedList::FloatingIps, Some(project_id), q, page_size, None).await?;
+    let ne = networks_by_ids(os, mapping::pool_ids(&fi)).await;
+    Ok(timed(t, Page { rows: mapping::floating_ips_page(&fi, &soft(ne), &[]), next, count: None, paged: true, page_size }))
+}
+
+/// Project › Network › Routers, one page: the project's, and their external
+/// networks by ID.
+pub async fn routers_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32) -> R<Timed<Page<RouterRow>>> {
+    let t = Instant::now();
+    let RawPage { rows: ro, next, .. } = page_raw(os, PagedList::Routers, Some(project_id), q, page_size, None).await?;
+    let ne = networks_by_ids(os, mapping::gateway_ids(&ro)).await;
+    Ok(timed(t, Page { rows: mapping::routers_page(&ro, &soft(ne)), next, count: None, paged: true, page_size }))
+}
+
+/// Project › Compute › Images, one page of the images the token may see (the
+/// whole list's Glance query), with the owners' names (`mine`: the user's
+/// projects). In Glance's order, not the whole list's "own first, by name".
+pub async fn images_page(os: &AsyncOpenStack, project_id: &str, mine: &[ProjectRef], q: &ListQuery, page_size: u32) -> R<Timed<Page<Image>>> {
+    let t = Instant::now();
+    let (page, names) = tokio::join!(page_raw(os, PagedList::Images, Some(project_id), q, page_size, None), project_names(os, mine));
+    let RawPage { rows: im, next, .. } = page?;
+    Ok(timed(t, Page { rows: mapping::images_page(&im, project_id, &names), next, count: None, paged: true, page_size }))
 }
 
 /// Admin › Compute › Images: every image Glance shows an admin, with its owner.

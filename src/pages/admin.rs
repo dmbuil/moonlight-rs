@@ -18,14 +18,14 @@ use std::sync::Arc;
 
 use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, RowActions};
 use crate::components::ops;
-use crate::components::pager::{late_host, late_label, late_text, load_late, server_sort, use_list_query, FilterBar, LateNames, Pager, PagerState};
+use crate::components::pager::{late_host, late_label, late_text, load_late, paged_table, use_list_query, with_server_keys, FilterBar, LateNames, Pager, PagerState};
 use crate::components::ops::quota_label;
 use crate::components::table::{available, col, Col, DataTable, Select, TimingChip};
 use crate::components::widgets::{age_cell_since, dash, render, ErrorBox, PageHeader, Pill, Skeleton, Tone, AzPill, AzPills, LockIcon};
 use crate::i18n::{t, use_i18n, Lang, K};
 use crate::pages::details::yes_no;
-use crate::pages::instances::{image_cell, task_cell, IpList};
-use crate::pages::lists::{admin_state, attachments, link, status_pill};
+use crate::pages::instances::{late_image_cell, load_boot_images, task_cell, BootImages, IpList};
+use crate::pages::lists::{admin_state, late_attachments, link, status_pill};
 use crate::components::widgets::FlavorPopover;
 use crate::i18n::{image_visibility, power_state, server_status};
 use leptos_router::components::A;
@@ -224,62 +224,6 @@ fn owned_search<T>(o: &Owned<T>, row: String) -> String {
     format!("{} {} {row}", o.project, o.host.as_deref().unwrap_or(""))
 }
 
-/// The neutral server-side sort key of a paged Admin column, by its header: the
-/// same header means the same field on every Admin list. `DataTable` uses a key
-/// only when the list's API sorts by it (`PagedList::sorts`), so *IP Address*
-/// sorts Floating IPs on the server and an instance's addresses on the page.
-fn server_key(header: K) -> Option<&'static str> {
-    Some(match header {
-        K::Name => "name",
-        K::Status => "status",
-        K::Size => "size",
-        K::Age | K::Created => "created",
-        K::Host => "host",
-        K::IpAddress => "address",
-        _ => return None,
-    })
-}
-
-/// `cols` with their [`server_key`]s, for a paged table.
-fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
-    cols.into_iter().map(|c| match server_key(c.header) { Some(k) => c.server_sort(k), None => c }).collect()
-}
-
-/// The table of a paged Admin list (roadmap 88): one page with the filter bar and
-/// *Previous* / *Next*, or, when the server sent the whole list (`page_size = 0`),
-/// the client-side table and search box as before. Bulk actions act on the rows
-/// shown.
-fn paged_table<T: Clone + Send + Sync + 'static>(
-    t: Timed<Page<T>>,
-    list: PagedList,
-    cols: Vec<Col<T>>,
-    search: fn(&T) -> String,
-    select: Option<Select<T>>,
-    stack: PagerState,
-    refresh: Callback<()>,
-) -> AnyView {
-    let page = t.data;
-    let timing = (t.millis, t.calls);
-    // `select` is an optional prop that takes a `Select`, not an `Option`.
-    if !page.paged {
-        return match select {
-            Some(select) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select/> }.into_any(),
-            None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh/> }.into_any(),
-        };
-    }
-    let footer = view! { <Pager list=list next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
-    let bar = view! { <FilterBar list=list/> }.into_any();
-    let sort = server_sort(list);
-    let cols = with_server_keys(cols);
-    match select {
-        Some(select) => view! {
-            <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select paged=true extra=bar footer=footer server_sort=sort/>
-        }
-        .into_any(),
-        None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh paged=true extra=bar footer=footer server_sort=sort/> }.into_any(),
-    }
-}
-
 /// A paged Admin list page without actions (roadmap 88): a server function taking
 /// the URL's [`ListQuery`], its [`PagedList`], its columns (built once, outside
 /// `view!`, AGENTS.md §6) and search text (used when the whole list came back).
@@ -294,48 +238,11 @@ macro_rules! admin_list {
             view! {
                 <PageHeader/>
                 <Transition fallback=|| view! { <Skeleton/> }>
-                    {move || render(data.get(), move |t| paged_table(t, $list, available(columns.get_value(), &caps()), $search, None, stack, Callback::new(move |_| data.refetch())))}
+                    {move || render(data.get(), move |t| paged_table(t, $list, ListScope::Admin, available(columns.get_value(), &caps()), $search, None, None, stack, Callback::new(move |_| data.refetch())))}
                 </Transition>
             }
         }
     };
-}
-
-/// Images of a paged page's boot-from-volume rows by server ID, filled after the
-/// table shows (roadmap 88): absent = still loading, `None` = no image found.
-type BootImages = RwSignal<HashMap<String, Option<String>>>;
-
-/// The *Image* cell: Nova's or the boot volume's image, or, on a paged page, the
-/// one [`BootImages`] fills in later (a placeholder until then).
-fn admin_image_cell(i: &Instance, l: Lang, boot: BootImages) -> AnyView {
-    if i.image_name.is_some() || i.boot_volume_ids.is_empty() {
-        return image_cell(i, l);
-    }
-    let id = i.id.clone();
-    (move || match boot.with(|m| m.get(&id).cloned()) {
-        None => view! { <span class="muted" title=t(l, K::LoadingChoices)>"…"</span> }.into_any(),
-        Some(None) => "-".into_any(),
-        Some(Some(n)) => view! { <span>{n}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span> }.into_any(),
-    })
-    .into_any()
-}
-
-/// The rows' boot volumes in [`BOOT_IMAGE_CHUNK`]-sized requests, as `(servers,
-/// volume IDs)`. A server's volumes are never split across two requests: the boot
-/// volume is picked among all of them. A server with more volumes than a chunk
-/// gets a request of its own.
-fn boot_chunks(rows: &[(String, Vec<String>)]) -> Vec<(Vec<String>, Vec<String>)> {
-    let mut out: Vec<(Vec<String>, Vec<String>)> = Vec::new();
-    for (server, vols) in rows.iter().filter(|(_, v)| !v.is_empty()) {
-        match out.last_mut() {
-            Some((servers, ids)) if ids.len() + vols.len() <= BOOT_IMAGE_CHUNK => {
-                servers.push(server.clone());
-                ids.extend(vols.iter().cloned());
-            }
-            _ => out.push((vec![server.clone()], vols.clone())),
-        }
-    }
-    out
 }
 
 /// Admin › Instances' columns, Horizon's admin table with each row's menu.
@@ -348,7 +255,7 @@ fn admin_instance_columns(boot: BootImages) -> Vec<Col<Owned<Instance>>> {
             let (href, name) = (format!("/project/instances/{}", i.id), i.name.clone());
             view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }
         }).sort_text(|i| i.name.clone())),
-        lift(col(K::ImageName, move |i: &Instance, l| admin_image_cell(i, l, boot)).sort_text(|i| i.image_name.clone().unwrap_or_default())),
+        lift(col(K::ImageName, move |i: &Instance, l| late_image_cell(i, l, boot)).sort_text(|i| i.image_name.clone().unwrap_or_default())),
         lift(col(K::IpAddress, |i: &Instance, _| view! { <IpList addresses=i.addresses.clone()/> })),
         lift(col(K::Flavor, |i: &Instance, _| view! { <FlavorPopover flavor=i.flavor.clone() key=i.id.clone()/> }).sort_text(|i| i.flavor_name.clone())),
         lift(col(K::Status, |i: &Instance, l| view! { <Pill tone=Tone::server(&i.status) label=server_status(l, &i.status)/> }).sort_text(|i| i.status.clone())),
@@ -374,24 +281,9 @@ pub fn AdminInstancesPage() -> impl IntoView {
     let boot: BootImages = RwSignal::new(HashMap::new());
     let columns = StoredValue::new(admin_instance_columns(boot));
     let stack = PagerState::new();
-    // Boot-from-volume rows name their image after the table shows, one chunk at a
-    // time (the server reads FAN_OUT volumes at once): reading them before cost
-    // ≈10 s a page on ttcp-dev, which boots every server from a volume.
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
-        let rows: Vec<(String, Vec<String>)> = t.data.rows.iter().map(|o| (o.row.id.clone(), o.row.boot_volume_ids.clone())).collect();
-        leptos::task::spawn_local(async move {
-            for (servers, ids) in boot_chunks(&rows) {
-                let found: HashMap<String, String> = get_admin_boot_images(ids).await.map(|t| t.data.into_iter().collect()).unwrap_or_default();
-                // A failed chunk or a server without an image shows "-", not "…" forever.
-                let _ = boot.try_update(|m| {
-                    for s in servers {
-                        let name = found.get(&s).cloned();
-                        m.insert(s, name);
-                    }
-                });
-            }
-        });
+        load_boot_images(t.data.rows.iter().map(|o| (o.row.id.clone(), o.row.boot_volume_ids.clone())).collect(), boot);
     });
     view! {
         <PageHeader/>
@@ -408,7 +300,7 @@ pub fn AdminInstancesPage() -> impl IntoView {
                 let footer = view! { <Pager list=PagedList::Instances next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
                 view! {
                     <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()
-                        paged=true extra=view! { <FilterBar list=PagedList::Instances/> }.into_any() footer=footer server_sort=server_sort(PagedList::Instances)/>
+                        paged=true extra=view! { <FilterBar list=PagedList::Instances/> }.into_any() footer=footer server_sort=crate::components::pager::server_sort(PagedList::Instances)/>
                 }.into_any()
             })}
         </Transition>
@@ -453,34 +345,9 @@ pub fn AdminImagesPage() -> impl IntoView {
                 open=Arc::new(move |l, items| ops::bulk_delete(l, K::DeleteImages, items, |id| OsAction::ImageDelete { id }))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Images, columns.get_value(), image_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Images, ListScope::Admin, columns.get_value(), image_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
-}
-
-/// *Attached To* on Admin › Volumes: the servers, named by Cinder's lookup on a
-/// whole list or later on a paged one ([`LateNames`]).
-fn admin_attachments(v: &Volume, late: LateNames) -> AnyView {
-    if v.attachments.is_empty() || v.attachments.iter().all(|a| a.server_name.is_some()) {
-        return attachments(v);
-    }
-    view! {
-        <ul class="plain">
-            {v.attachments.iter().map(|a| {
-                let label = match &a.server_name {
-                    Some(n) => n.clone().into_any(),
-                    None => late_text(late, a.server_id.clone(), late_label, a.server_id.clone()),
-                };
-                view! {
-                    <li>
-                        <A href=format!("/project/instances/{}", a.server_id)>{label}</A>
-                        {a.device.clone().map(|d| view! { " " <span class="mono muted">{d}</span> })}
-                    </li>
-                }
-            }).collect_view()}
-        </ul>
-    }
-    .into_any()
 }
 
 /// Admin › Volumes' columns, Horizon's admin table, with each row's menu.
@@ -492,7 +359,7 @@ fn volume_columns(late: LateNames) -> Vec<Col<Owned<Volume>>> {
         lift(col(K::Size, |v: &Volume, _| format!("{} GiB", v.size_gb)).sort_num(|v| v.size_gb).class("num")),
         lift(col(K::Status, |v: &Volume, l| status_pill(&v.status, l)).sort_text(|v| v.status.clone())),
         lift(col(K::Type, |v: &Volume, _| dash(v.volume_type.clone())).sort_text(|v| v.volume_type.clone().unwrap_or_default())),
-        lift(col(K::AttachedTo, move |v: &Volume, _| admin_attachments(v, late))),
+        lift(col(K::AttachedTo, move |v: &Volume, _| late_attachments(v, late))),
         lift(col(K::Bootable, |v: &Volume, l| yes_no(l, v.bootable))),
         lift(col(K::Encrypted, |v: &Volume, l| yes_no(l, v.encrypted))),
         col(K::Actions, |o: &Owned<Volume>, l| view! { <RowActions items=ops::admin_volume_items(l, &o.row, o.host.as_deref())/> }).class("actions"),
@@ -536,7 +403,7 @@ pub fn AdminVolumesPage() -> impl IntoView {
                 open=Arc::new(move || ops::manage_volume_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Volumes, columns.get_value(), volume_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Volumes, ListScope::Admin, columns.get_value(), volume_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -597,7 +464,7 @@ pub fn AdminSnapshotsPage() -> impl IntoView {
                 open=Arc::new(move |l, items| ops::bulk_delete(l, K::DeleteSnapshots, items, |id| OsAction::SnapshotDelete { id }))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Snapshots, columns.get_value(), snapshot_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Snapshots, ListScope::Admin, columns.get_value(), snapshot_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -790,7 +657,7 @@ pub fn AdminNetworksPage() -> impl IntoView {
                 open=Arc::new(move || ops::admin_create_network_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Networks, available(columns.get_value(), &caps()), admin_network_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Networks, ListScope::Admin, available(columns.get_value(), &caps()), admin_network_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -837,7 +704,7 @@ pub fn AdminRoutersPage() -> impl IntoView {
                 open=Arc::new(move || ops::admin_create_router_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Routers, available(columns.get_value(), &caps()), admin_router_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::Routers, ListScope::Admin, available(columns.get_value(), &caps()), admin_router_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -915,7 +782,7 @@ pub fn AdminFloatingIpsPage() -> impl IntoView {
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
             // `available`: columns that need an extension (DNS).
-            {move || render(data.get(), move |t| paged_table(t, PagedList::FloatingIps, available(columns.get_value(), &caps()), admin_floating_ip_search, Some(select), stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| paged_table(t, PagedList::FloatingIps, ListScope::Admin, available(columns.get_value(), &caps()), admin_floating_ip_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
         </Transition>
     }
 }
@@ -1454,40 +1321,6 @@ pub fn ModulesCard() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_server_sort_key_comes_from_a_header() {
-        use crate::model::PagedList;
-        let all = [PagedList::Instances, PagedList::Volumes, PagedList::Snapshots, PagedList::FloatingIps, PagedList::Networks, PagedList::Routers, PagedList::Trunks, PagedList::Images, PagedList::VolumeGroups, PagedList::GroupSnapshots];
-        let headers = [K::Name, K::Status, K::Size, K::Age, K::Created, K::Host, K::IpAddress];
-        let keys: Vec<_> = headers.iter().filter_map(|h| server_key(*h)).collect();
-        for l in all {
-            for d in l.sorts() {
-                assert!(keys.contains(&d.key), "{l:?}: no header sorts by {:?}", d.key);
-            }
-        }
-        assert_eq!(server_key(K::Actions), None);
-    }
-
-    #[test]
-    fn boot_volumes_go_in_chunks_without_splitting_a_server() {
-        let ids = |p: &str, n: usize| (0..n).map(|i| format!("{p}{i}")).collect::<Vec<_>>();
-        let rows = vec![
-            ("a".to_string(), ids("a", 30)),
-            ("img".to_string(), vec![]),
-            ("b".to_string(), ids("b", 20)),
-            ("c".to_string(), ids("c", 1)),
-            ("big".to_string(), ids("x", BOOT_IMAGE_CHUNK + 5)),
-        ];
-        let chunks = boot_chunks(&rows);
-        let shape: Vec<(Vec<&str>, usize)> = chunks.iter().map(|(s, v)| (s.iter().map(String::as_str).collect(), v.len())).collect();
-        assert_eq!(
-            shape,
-            [(vec!["a", "b"], 50), (vec!["c"], 1), (vec!["big"], BOOT_IMAGE_CHUNK + 5)],
-            "a and b fill a chunk; c would make 51, so it starts the next; a server is never split; rows without volumes ask nothing"
-        );
-        assert!(boot_chunks(&[]).is_empty());
-    }
 
     fn some<T>(on: bool) -> Option<Fallible<T>> {
         on.then(|| Fallible { rows: vec![], error: None })

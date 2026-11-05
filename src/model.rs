@@ -447,8 +447,10 @@ pub enum FilterKind {
     /// Free text the API matches whole: an address, a host, an ID. The box says so,
     /// so a partial value finding nothing is no surprise.
     Exact,
-    /// A project, picked by name (`ChoiceSet::AllProjects`); the value is its ID.
-    Project,
+    /// A resource picked by name from a choice set; the value sent is its ID.
+    /// `AllProjects` for projects; `Flavors` and `Images` for Nova's `flavor` and
+    /// `image` filters, which take IDs only (a typed name found nothing, roadmap 88).
+    Pick(ChoiceSet),
     /// One of the API's values, e.g. a status.
     Choice(&'static [&'static str]),
 }
@@ -484,16 +486,16 @@ const fn filter(key: &'static str, param: &'static str, kind: FilterKind) -> Fil
 }
 
 /// Nova's `name` is a regular expression, so a substring works; `flavor` and `image`
-/// take IDs.
+/// take IDs, so they are picked by name.
 const INSTANCE_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Text),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("host", "host", FilterKind::Exact),
     filter("status", "status", FilterKind::Choice(SERVER_STATUSES)),
     filter("ip", "ip", FilterKind::Text),
     filter("ip6", "ip6", FilterKind::Text),
-    filter("flavor", "flavor", FilterKind::Exact),
-    filter("image", "image", FilterKind::Exact),
+    filter("flavor", "flavor", FilterKind::Pick(ChoiceSet::Flavors)),
+    filter("image", "image", FilterKind::Pick(ChoiceSet::Images)),
     filter("zone", "availability_zone", FilterKind::Exact),
 ];
 
@@ -506,7 +508,7 @@ const FILTER_SNAPSHOT_STATUSES: &[&str] = &["available", "creating", "deleting",
 /// it into the exact `name` on an older Cinder.
 const VOLUME_FILTERS: &[FilterDef] = &[
     filter("name", "name~", FilterKind::Text),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("host", "host", FilterKind::Exact),
     filter("status", "status", FilterKind::Choice(FILTER_VOLUME_STATUSES)),
     filter("bootable", "bootable", FilterKind::Choice(&["true", "false"])),
@@ -516,7 +518,7 @@ const VOLUME_FILTERS: &[FilterDef] = &[
 /// `volume` takes the volume's ID.
 const SNAPSHOT_FILTERS: &[FilterDef] = &[
     filter("name", "name~", FilterKind::Text),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("status", "status", FilterKind::Choice(FILTER_SNAPSHOT_STATUSES)),
     filter("volume", "volume_id", FilterKind::Exact),
 ];
@@ -524,7 +526,7 @@ const SNAPSHOT_FILTERS: &[FilterDef] = &[
 /// Neutron matches exactly; `network` (the pool) and `router` take IDs.
 const FLOATING_IP_FILTERS: &[FilterDef] = &[
     filter("address", "floating_ip_address", FilterKind::Exact),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("fixed", "fixed_ip_address", FilterKind::Exact),
     filter("network", "floating_network_id", FilterKind::Exact),
     filter("router", "router_id", FilterKind::Exact),
@@ -534,7 +536,7 @@ const FLOATING_IP_FILTERS: &[FilterDef] = &[
 /// Neutron matches whole values (a name too); `shared` and `external` take `true` / `false`.
 const NETWORK_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "ERROR"])),
     filter("shared", "shared", FilterKind::Choice(&["true", "false"])),
     filter("external", "router:external", FilterKind::Choice(&["true", "false"])),
@@ -542,14 +544,14 @@ const NETWORK_FILTERS: &[FilterDef] = &[
 
 const ROUTER_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("status", "status", FilterKind::Choice(&["ACTIVE", "ALLOCATING", "DOWN", "ERROR"])),
 ];
 
 /// `port` takes the parent port's ID.
 const TRUNK_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "DEGRADED", "ERROR"])),
     filter("port", "port_id", FilterKind::Exact),
 ];
@@ -557,7 +559,7 @@ const TRUNK_FILTERS: &[FilterDef] = &[
 /// Glance matches the name whole; the project is the image's `owner`.
 const IMAGE_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
-    filter("project", "owner", FilterKind::Project),
+    filter("project", "owner", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("visibility", "visibility", FilterKind::Choice(&["public", "private", "shared", "community"])),
     filter("status", "status", FilterKind::Choice(&["active", "queued", "saving", "uploading", "importing", "killed", "deactivated", "pending_delete", "deleted"])),
     filter("disk_format", "disk_format", FilterKind::Choice(&["raw", "qcow2", "vmdk", "vdi", "vhd", "vhdx", "iso", "ploop", "ami", "ari", "aki"])),
@@ -566,13 +568,13 @@ const IMAGE_FILTERS: &[FilterDef] = &[
 /// Cinder lets an admin filter groups by any column, matched whole.
 const VOLUME_GROUP_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("status", "status", FilterKind::Choice(&["available", "creating", "updating", "deleting", "error", "error_deleting"])),
 ];
 
 const GROUP_SNAPSHOT_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
-    filter("project", "project_id", FilterKind::Project),
+    filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
     filter("status", "status", FilterKind::Choice(&["available", "creating", "deleting", "error", "error_deleting"])),
 ];
 
@@ -604,7 +606,26 @@ pub enum PagedList {
     GroupSnapshots,
 }
 
+/// Whose rows a paged list shows (roadmap 88): an Admin panel's, every project's;
+/// a Project panel's (`[ui] paged_lists = "all"`, slice E), the session project's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ListScope {
+    #[default]
+    Admin,
+    Project,
+}
+
+/// Filters that only make sense across projects: the project itself, and the host,
+/// which Nova and Cinder show only to admins.
+const ADMIN_ONLY_FILTERS: &[&str] = &["project", "host"];
+
 impl PagedList {
+    /// [`Self::filters`] offered in `scope`: a Project panel drops the
+    /// [`ADMIN_ONLY_FILTERS`]. `paging::params` refuses the others there.
+    pub fn filters_in(self, scope: ListScope) -> Vec<FilterDef> {
+        self.filters().iter().copied().filter(|d| scope == ListScope::Admin || !ADMIN_ONLY_FILTERS.contains(&d.key)).collect()
+    }
+
     /// The filters the server accepts, in the filter bar's order; the first is the default.
     pub fn filters(self) -> &'static [FilterDef] {
         match self {
@@ -627,12 +648,21 @@ impl PagedList {
             PagedList::Instances => &[
                 SortDef { key: "name", param: "display_name" },
                 SortDef { key: "created", param: "created_at" },
-                SortDef { key: "host", param: "host" },
+                // Not `host`: the test cloud's Nova answers `sort_key=host` with HTTP 500
+                // (multi-cell listings merge the cells' rows in Python, and a server with no
+                // host can't be compared); its header sorts the page instead (roadmap 88).
                 SortDef { key: "status", param: "vm_state" },
             ],
-            PagedList::Volumes | PagedList::Snapshots => &[
+            PagedList::Volumes => &[
                 SortDef { key: "name", param: "name" },
                 SortDef { key: "size", param: "size" },
+                SortDef { key: "created", param: "created_at" },
+                SortDef { key: "status", param: "status" },
+            ],
+            // No `size`: a snapshot's column is `volume_size`, and Cinder refuses
+            // `sort=size` on snapshots with HTTP 400 (seen on the test cloud, roadmap 88).
+            PagedList::Snapshots => &[
+                SortDef { key: "name", param: "name" },
                 SortDef { key: "created", param: "created_at" },
                 SortDef { key: "status", param: "status" },
             ],
@@ -724,18 +754,18 @@ pub struct Instance {
     pub security_groups: Vec<String>,
     /// Volumes still to read to name the image of a server booted from a volume:
     /// set only by a paged list (roadmap 88), which shows the page first and fills
-    /// the *Image* cell later (`api::get_admin_boot_images`). Empty when the image
+    /// the *Image* cell later (`api::get_boot_images`). Empty when the image
     /// is known or the server has no volume.
     #[serde(default)]
     pub boot_volume_ids: Vec<String>,
 }
 
-/// Volume IDs per `api::get_admin_boot_images` call: a paged Instances page sends
+/// Volume IDs per `api::get_boot_images` call: a paged Instances page sends
 /// its rows' `boot_volume_ids` in chunks this size, so each GET's query string stays
 /// a few KiB and the *Image* cells fill in chunk by chunk (roadmap 88).
 pub const BOOT_IMAGE_CHUNK: usize = 50;
 
-/// What `api::get_admin_names` looks up: a paged page names the resources its rows
+/// What `api::get_late_names` looks up: a paged page names the resources its rows
 /// point at after the table shows, since neither Nova nor Cinder lists several
 /// IDs in one request (probed on ttcp-dev, roadmap 88).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -746,7 +776,7 @@ pub enum NameKind {
     Volumes,
 }
 
-/// A name `api::get_admin_names` found. `host` is the volume's
+/// A name `api::get_late_names` found. `host` is the volume's
 /// `os-vol-host-attr:host` (a snapshot's host column); `None` for servers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LateName {
