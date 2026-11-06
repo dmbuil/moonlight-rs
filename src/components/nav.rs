@@ -87,6 +87,7 @@ pub const PROJECT_NAV: &[Group] = &[
             needs(K::SecurityGroups, "/project/security_groups", Requires::NetExt("security-group")),
             needs(K::FloatingIps, "/project/floating_ips", Requires::NetExt("router")),
             needs(K::Trunks, "/project/trunks", crate::model::needs::TRUNK),
+            needs(K::Firewall, "/project/firewall", crate::model::needs::FIREWALL),
             needs(K::NetworkQos, "/project/qos", crate::model::needs::QOS),
             needs(K::LoadBalancers, "/project/load_balancers", Requires::All(&[Requires::Plugin(Plugin::LoadBalancer), Requires::Service("load-balancer")])),
         ],

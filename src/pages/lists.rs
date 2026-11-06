@@ -18,6 +18,7 @@ use crate::components::widgets::{
 use crate::pages::details::{Card, Kv};
 use crate::i18n::{bytes, image_visibility, key_manager_term, resource_status, server_group_policy, t, use_i18n, Lang, K};
 use crate::model::*;
+use crate::pages::firewall as fw;
 
 type Opener = &'static [(K, fn(Lang) -> Dialog)];
 
@@ -40,13 +41,16 @@ macro_rules! list_page {
     (@busy $busy:expr) => { $busy };
     (@drawer) => { None };
     (@drawer $drawer:expr) => { Some($drawer) };
-    ($name:ident, $fetch:ident, $ty:ty, $cols:expr, $search:expr, $create:expr, $bulk:expr $(, busy = $busy:expr)? $(, drawer = $drawer:expr)?) => {
+    (@above) => { None };
+    (@above $above:expr) => { Some($above) };
+    ($name:ident, $fetch:ident, $ty:ty, $cols:expr, $search:expr, $create:expr, $bulk:expr $(, busy = $busy:expr)? $(, drawer = $drawer:expr)? $(, above = $above:expr)?) => {
         #[component]
         pub fn $name() -> impl IntoView {
             let i18n = use_i18n();
             let data = Resource::new(data_version, |_| $fetch());
             let busy: fn(&$ty) -> bool = list_page!(@busy $($busy)?);
             let drawer: Option<fn(&$ty, Lang) -> AnyView> = list_page!(@drawer $($drawer)?);
+            let above: Option<fn() -> AnyView> = list_page!(@above $($above)?);
             let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if td.data.iter().any(busy))));
             let columns: StoredValue<Vec<Col<$ty>>> = StoredValue::new($cols);
             let create: Opener = $create;
@@ -64,6 +68,7 @@ macro_rules! list_page {
                         />
                     }).collect_view()}
                 </PageHeader>
+                {above.map(|f| f())}
                 <Transition fallback=|| view! { <Skeleton/> }>
                     {move || render(data.get(), |td| view! {
                         <DataTable
@@ -585,6 +590,71 @@ list_page!(
     |t: &TrunkRow| format!("{} {} {}", t.name, t.id, t.parent.name),
     &[(K::CreateTrunk, ops::create_trunk_dialog)],
     (K::DeleteTrunks, key!(id, name), |id| OsAction::TrunkDelete { id })
+);
+
+// --- Firewall (FWaaS v2, roadmap 93) --------------------------------------------
+// One panel with neutron-fwaas-dashboard's three tabs, each its own URL.
+
+list_page!(
+    FirewallGroupsPage,
+    list_firewall_groups,
+    FirewallGroupRow,
+    vec![
+        col(K::Name, |g: &FirewallGroupRow, _| link(format!("/project/firewall/groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone()),
+        col(K::IngressPolicy, |g: &FirewallGroupRow, _| fw::policy_link(g.ingress.as_ref())),
+        col(K::EgressPolicy, |g: &FirewallGroupRow, _| fw::policy_link(g.egress.as_ref())),
+        col(K::Ports, |g: &FirewallGroupRow, _| g.ports.len().to_string()).sort_num(|g| g.ports.len() as i64).class("num"),
+        col(K::Status, |g: &FirewallGroupRow, l| moving_status(&g.status, l, g.busy())).sort_text(|g| g.status.clone()),
+        col(K::AdminState, |g: &FirewallGroupRow, l| admin_state(l, g.admin_up)),
+        col(K::Shared, |g: &FirewallGroupRow, l| yes_no(l, g.shared)),
+        actions_col(|l, g: &FirewallGroupRow| ops::firewall_group_items(l, g)),
+    ],
+    |g: &FirewallGroupRow| format!("{} {} {} {}", g.name, g.id, g.ingress.as_ref().map(|p| p.name.as_str()).unwrap_or(""), g.egress.as_ref().map(|p| p.name.as_str()).unwrap_or("")),
+    &[(K::CreateFirewallGroup, ops::create_firewall_group_dialog)],
+    (K::DeleteFirewallGroups, |g: &FirewallGroupRow| g.deletable().then(|| (g.id.clone(), g.name.clone())), |id| OsAction::FirewallGroupDelete { id }),
+    busy = FirewallGroupRow::busy,
+    above = || view! { <fw::FirewallTabs active=0/> }.into_any()
+);
+
+list_page!(
+    FirewallPoliciesPage,
+    list_firewall_policies,
+    FirewallPolicyRow,
+    vec![
+        col(K::Name, |p: &FirewallPolicyRow, _| link(format!("/project/firewall/policies/{}", p.id), p.name.clone())).sort_text(|p| p.name.clone()),
+        col(K::Rules, |p: &FirewallPolicyRow, _| fw::rule_links(&p.rules)),
+        col(K::Audited, |p: &FirewallPolicyRow, l| yes_no(l, p.audited)),
+        col(K::Shared, |p: &FirewallPolicyRow, l| yes_no(l, p.shared)),
+        actions_col(|l, p: &FirewallPolicyRow| ops::firewall_policy_items(l, p)),
+    ],
+    |p: &FirewallPolicyRow| format!("{} {} {}", p.name, p.id, p.rules.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(" ")),
+    &[(K::AddPolicy, ops::create_firewall_policy_dialog)],
+    (K::DeletePolicies, |p: &FirewallPolicyRow| p.deletable().then(|| (p.id.clone(), p.name.clone())), |id| OsAction::FirewallPolicyDelete { id }),
+    above = || view! { <fw::FirewallTabs active=1/> }.into_any()
+);
+
+list_page!(
+    FirewallRulesPage,
+    list_firewall_rules,
+    FirewallRuleRow,
+    vec![
+        col(K::Name, |r: &FirewallRuleRow, _| link(format!("/project/firewall/rules/{}", r.id), r.name.clone())).sort_text(|r| r.name.clone()),
+        col(K::Protocol, |r: &FirewallRuleRow, l| fw::protocol(l, r)).sort_text(|r| r.protocol.clone().unwrap_or_default()),
+        col(K::SourceIp, |r: &FirewallRuleRow, l| fw::any(l, &r.source_ip)),
+        col(K::SourcePort, |r: &FirewallRuleRow, l| fw::any(l, &r.source_port)),
+        col(K::DestinationIp, |r: &FirewallRuleRow, l| fw::any(l, &r.destination_ip)),
+        col(K::DestinationPort, |r: &FirewallRuleRow, l| fw::any(l, &r.destination_port)),
+        col(K::Action, |r: &FirewallRuleRow, l| fw::action_pill(l, &r.action)).sort_text(|r| r.action.clone()),
+        col(K::IpVersion, |r: &FirewallRuleRow, _| format!("IPv{}", r.ip_version)),
+        col(K::EnabledCol, |r: &FirewallRuleRow, l| yes_no(l, r.enabled)),
+        col(K::Shared, |r: &FirewallRuleRow, l| yes_no(l, r.shared)),
+        col(K::Policies, |r: &FirewallRuleRow, _| fw::policy_links(&r.policies)),
+        actions_col(|l, r: &FirewallRuleRow| ops::firewall_rule_items(l, r)),
+    ],
+    |r: &FirewallRuleRow| format!("{} {} {} {} {} {}", r.name, r.id, r.protocol.as_deref().unwrap_or("any"), r.action, r.source_ip.as_deref().unwrap_or(""), r.destination_ip.as_deref().unwrap_or("")),
+    &[(K::AddRule, ops::create_firewall_rule_dialog)],
+    (K::DeleteRules, |r: &FirewallRuleRow| r.owned.then(|| (r.id.clone(), r.name.clone())), |id| OsAction::FirewallRuleDelete { id }),
+    above = || view! { <fw::FirewallTabs active=2/> }.into_any()
 );
 
 // --- Key Manager (Barbican, roadmap 55) --------------------------------------

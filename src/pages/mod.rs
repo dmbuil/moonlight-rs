@@ -15,6 +15,7 @@ pub mod qos;
 pub mod quotas;
 pub mod stack_launch;
 pub mod stacks;
+pub mod firewall;
 pub mod trunks;
 pub mod topology;
 pub mod volume_groups;

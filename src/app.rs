@@ -20,6 +20,7 @@ use crate::pages::identity::*;
 use crate::pages::load_balancers::LoadBalancerDetailPage;
 use crate::pages::qos::QosPolicyDetailPage;
 use crate::pages::trunks::TrunkDetailPage;
+use crate::pages::firewall::{FirewallGroupDetailPage, FirewallPolicyDetailPage, FirewallRuleDetailPage};
 use crate::pages::volume_groups::{GroupSnapshotDetailPage, VolumeGroupDetailPage};
 use crate::pages::login::LoginPage;
 use crate::pages::overview::OverviewPage;
@@ -102,6 +103,12 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("floating_ips/:id") view=FloatingIpDetailPage/>
                         <Route path=path!("trunks") view=TrunksPage/>
                         <Route path=path!("trunks/:id") view=TrunkDetailPage/>
+                        <Route path=path!("firewall") view=FirewallGroupsPage/>
+                        <Route path=path!("firewall/groups/:id") view=FirewallGroupDetailPage/>
+                        <Route path=path!("firewall/policies") view=FirewallPoliciesPage/>
+                        <Route path=path!("firewall/policies/:id") view=FirewallPolicyDetailPage/>
+                        <Route path=path!("firewall/rules") view=FirewallRulesPage/>
+                        <Route path=path!("firewall/rules/:id") view=FirewallRuleDetailPage/>
                         <Route path=path!("qos") view=QosPoliciesPage/>
                         <Route path=path!("qos/:id") view=QosPolicyDetailPage/>
                         <Route path=path!("load_balancers") view=LoadBalancersPage/>

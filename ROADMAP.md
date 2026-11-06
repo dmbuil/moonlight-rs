@@ -105,9 +105,11 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
 | 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
-| 93  | Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
+| 93  | 🚧 Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
 | 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
+| 96 | Tab bars show a pointless scroll control | P3 | XS | — |
+| 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -5629,6 +5631,64 @@ Split in two slices when started: the pure model plus the form first, the canvas
 ## 93. Firewall (FWaaS v2): firewall groups, policies and rules
 
 > 🔗 **Issue:** [#15]
+>
+> 🚧 **In progress.** All three slices are built and checked in the browser on ttcp-dev
+> (2026-11-06); what is left needs a router or an instance in the project. Plugin `firewall`
+> (`model::Plugin::Firewall`, `needs::FIREWALL` = plugin and `fwaas_v2`), documented in
+> `CONFIGURATION.md` and `moonlight.conf.example`, and on in the repo's `moonlight.conf`.
+> *Network › Firewall* (`nav.rs`) has three link tabs (`pages/firewall.rs::FirewallTabs`, CSS
+> `.tabs a`): `/project/firewall` (groups, polling while `PENDING_*`),
+> `/project/firewall/policies`, `/project/firewall/rules`, built with `list_page!` and its
+> `above` slot (`lists.rs`). Detail pages `/project/firewall/{groups,policies,rules}/:id`: a
+> group's ports resolved to their router or instance (*Remove Port* per row, *Add Port*), a
+> policy's rules in evaluation order (*Remove Rule* per row, *Insert Rule*), a rule's match and
+> the policies using it. Reads: `fetch::firewall_*` (raw GETs under `fwaas/`, own rows by
+> `project_id` merged with `shared=true`), mappers in `mapping.rs` with 5 tests. Writes: the 12
+> `OsAction::Firewall*` through `actions::fwaas` (JSON requests, `ServiceType::Network`),
+> dry-run test `firewall_rules_policies_and_groups`; validation in `FirewallRuleSpec::body`
+> (ports only on TCP/UDP, `22` or `8000:8080`, addresses of the rule's IP version), run by the
+> dialog too. Dialogs in `ops.rs` (test `firewall_dialogs`): **no *Shared* anywhere** (it
+> failed on ttcp-dev for groups, and the user dropped it for policies and rules too, so
+> `FirewallRuleSpec`, `FirewallPolicyCreate` / `Update` and `FirewallGroupCreate` / `Update`
+> have no `shared` field and never send it; the lists and detail pages still show Neutron's
+> value). Another project's shared rows have no actions and can't be bulk-selected. In
+> the *Add / Edit Rule* dialog, protocol, IP version and action share one line
+> (`Field::short`), then source address and port, then destination address and port, each pair
+> on its own line (`Field::new_line`, new: keeps the destination on its line when the ports are
+> hidden for *Any* / ICMP). *Insert Rule* offers *At the top* or *After* each rule (Neutron's
+> `insert_after`), defaulting to the end, and leaves out rules the policy has
+> (`dialog::Source::Without`). Rule pickers: `firewall_rule_choices` labels a rule by name and
+> gives the picker Name, Action and Protocol columns translated in the browser
+> (`pick::Fmt::FwAction`, `Fmt::Protocol`; the label used to carry English `(allow, any)`).
+> Ports: `ChoiceSet::FirewallPorts` (router interfaces and instance ports that no group has;
+> columns Device, Type, IP Addresses and Port, `Fmt::Device`); Neutron takes the whole list, so
+> *Add* / *Remove Port* send `FirewallGroupSetPorts`. *Create Firewall Group* is a two-step
+> wizard: the group (name, description, ingress and egress policy with an (i) on the direction,
+> admin state), then its ports (optional). Status `INACTIVE` reads *Inactive* / *Sin aplicar*,
+> grey (Neutron also reports it for a group with ports but no policy, so not *No ports*); the
+> group detail explains it (`K::FirewallInactiveHelp`). Neutron's `default` group and its
+> `default ingress` / `default egress` policies (neutron-fwaas matches them by name) are
+> protected like the `default` security group (item 34): `FirewallGroupRow` /
+> `FirewallPolicyRow::is_default` and `deletable`; the group offers only *Add* / *Remove Port*
+> and the policies only *Insert* / *Remove Rule* (Neutron refuses the rest:
+> `FirewallGroupCannotRemoveDefault`, `FirewallDefaultObjectUpdateRestricted`), neither can be
+> bulk-selected for delete, and the group detail says why (`K::FirewallDefaultGroupHelp`). The
+> picker's empty *Available* table says why it is empty (`pick::available_hint`: nothing to
+> choose, all selected, or the filter) instead of "Select one or more…". Found while checking
+: closing any dialog before its choice lists loaded panicked
+> (`DialogView` read the disposed `choices` signal after the await) and killed the page; it now
+> uses `try_get_untracked`. **Checked in Brave** (ttcp-dev, project *admin2*, Spanish, nothing
+> submitted): the three tabs with Neutron's `default` group, its two policies and four rules;
+> the three detail pages; *Create Firewall Group* (both steps), *Edit Firewall Group*,
+> *Add / Edit Rule* (TCP and *Any*), *Add / Edit Policy*, *Insert Rule*, *Remove Rule*; dialogs
+> opened and closed at once three times with no panic; no console errors. Clippy (both builds)
+> clean, 546 tests pass. The `default` protection, the *Inactive* wording and the picker's
+> empty states (2026-11-06, later) pass clippy and 547 tests but are **not yet checked in
+> Brave** (no browser tunnel then). **Left** (the project has no router or instance, so its
+> port list is rightly empty): with one, check the port picker's rows, *Add Port* /
+> *Remove Port* and the group detail's port table; what Neutron does with no policy in a
+> direction (the select says *None (no filtering)*); and that an instance port's direction
+> matches the (i). Later: link a router or instance port's page to its group.
 
 Requested 2026-11-05. ttcp-dev has it: Neutron lists the `fwaas_v2` extension (checked that day
 through `get_session_info`, project *pokemon*, user `admin2`, GET only).
@@ -5677,7 +5737,7 @@ Rules*. The Admin side is item 94.
   roadmap 46).
 - Ports for a group: the project's router interface ports and instance ports, not ports already
   in another group (Neutron refuses those); a new `ChoiceSet`, labelled by device name and IP.
-- *Shared* is admin-only by Neutron's default policy: show it with `needs::ADMIN`.
+- *Shared* is not offered (see the progress note): Moonlight never sends `shared`.
 - i18n for every label, status and action, both languages. Verify on ttcp-dev: read-only first,
   then open each dialog (writes are allowed there, but do not submit unless the user asks).
 
@@ -5708,8 +5768,23 @@ leftovers. neutron-fwaas-dashboard has no admin panel; this goes beyond Horizon.
   `require_admin` in its server fns.
 - Paged like the other Admin lists (item 88): a `PagedList::FirewallGroups` (and policies,
   rules) with Neutron's `sort_key` / `sort_dir` and `project`, `name`, `status` filters.
-- Writes: *Edit* and *Delete* across projects; *Shared* editable (admin-only by Neutron's
-  default policy). Dry-run tests as in item 93.
+- Writes: *Edit* and *Delete* across projects. Dry-run tests as in item 93.
+- ***Shared* lives here only** (user's decision, 2026-11-06). The Project panel (item 93)
+  never offers it, not even to admins, and never sends `shared`, so Neutron's default
+  (`false`) applies on create and an edit leaves the value as it is. To add it here:
+  - put `shared: Option<bool>` back on `FirewallRuleSpec` (inserted into the body only when
+    `Some`), `FirewallPolicyCreate` / `Update` and `FirewallGroupCreate` / `Update`
+    (`model.rs`, `actions.rs`); item 93 removed it on 2026-11-06 before it was ever committed,
+    so write it again (`if let Some(sh) = shared { body.insert("shared", sh) }`). Project
+    dialogs pass `None`;
+  - give the dialog builders in `ops.rs` (`firewall_rule_dialog`,
+    `create_firewall_policy_dialog`, `firewall_policy_items`, `create_firewall_group_dialog`,
+    `firewall_group_items`) a view flag (Project / Admin), not a role check: an admin in the
+    Project panel still gets no checkbox;
+  - dry-run tests: Project sends no `shared`, Admin sends the checkbox's value;
+  - **find out first why sharing a group failed on ttcp-dev** (item 93, 2026-11-06; the
+    error wasn't recorded): Neutron's policy, or the FWaaS driver refusing shared groups. If
+    the driver can't share groups, offer *Shared* only on policies and rules.
 
 **Open question.** Whether operators need it at all, or Project's panel with the admin's own
 project is enough.
@@ -5768,6 +5843,84 @@ Open questions:
   `direct` (item 45).
 - Cost: three or four extra Keystone calls per upload, which is negligible next to a multi-GB
   `PUT`.
+
+## 96. Tab bars show a pointless scroll control
+
+**Goal.** Every tab bar (`.tabs`) shows a small scroll control even when all its tabs fit, as on
+*Project › Network › Firewall* (*Firewall Groups* / *Firewall Policies* / *Firewall Rules*).
+Scrolling it moves the tabs by about a pixel, so it does nothing useful and looks broken. The
+bar should show no scrollbar while the tabs fit, and on a narrow window still let the user
+reach every tab (sideways scroll, or wrapping), with no vertical scroll ever. Horizon's tabs
+(Bootstrap `nav-tabs`) wrap and never scroll.
+
+**Implementation.** One rule fixes all of them, since every tab bar uses the same class:
+the link tabs in `pages/firewall.rs` (`tab_bar`, its `TABS`), the button tabs of
+`pages/details.rs::Tabs` (detail pages: volumes, networks, routers, load balancers, Admin
+System Information and Defaults…) and the instance tabs in `pages/instance_detail.rs`.
+
+- Likely cause, to confirm in the browser: `style/main.css` gives `.tabs` `overflow-x: auto`,
+  which makes `overflow-y` compute to `auto` too, and its `button` / `a` children have
+  `margin-bottom: -1px` so their active underline covers the bar's `border-bottom`. Each child
+  then sticks out 1px below the scroll box and the bar gets a 1px vertical scroll (the
+  control the user sees, with scrollbars set to always show).
+- Fix: draw the bar's line without overflowing, e.g. drop `border-bottom` and the `-1px`
+  margins and paint the line with `box-shadow: inset 0 -1px 0 var(--line-2)` on `.tabs`
+  (the active tab's 2px border then sits over it), or add `overflow-y: hidden`. Decide
+  between keeping the sideways scroll on narrow windows (hide its scrollbar with
+  `scrollbar-width: thin` or none) and `flex-wrap: wrap` as Horizon does.
+- Check in Brave with the macOS *Show scroll bars: Always* setting and at phone width, in
+  light and dark theme, on Firewall, a volume detail and an instance detail.
+
+## 97. Inline documentation: doc comments on every module and function, rustdoc clean
+
+**Goal.** A contributor (or a fresh session) can read any module or function and learn what it
+is for, its contract and its gotchas from its doc comment, without reverse-engineering the code.
+Most of the code already has good `///` comments (they explain *why*: Neutron quirks, Horizon
+behaviour, roadmap numbers), but coverage is uneven, and nothing keeps it from slipping.
+Improve what is there, fill the gaps that matter, and add a lint so new code keeps up.
+
+Measured on 2026-11-06 with `cargo clippy --features ssr --lib -- -W missing_docs
+-W clippy::missing_docs_in_private_items` (the `ssr` build only; `hydrate`-only code is not
+counted): 2,338 items lack a doc comment. 1,745 are struct fields and enum variants, mostly the
+self-explanatory row fields in `model.rs` (1,506 of the total), which are not worth a comment
+each. The rest is what matters: 269 functions, 13 methods, 22 constants, 9 modules, 8 structs,
+6 enums and 8 type aliases. Functions and types by file: `server/mapping.rs` 33,
+`components/ops.rs` 33, `pages/admin.rs` 32, `server/fetch.rs` 23, `model.rs` 18,
+`pages/details.rs` 14, `pages/identity.rs` 13, `server/actions.rs` 11, then 10 or fewer each.
+Files with no `//!` module comment: `main.rs`, `app.rs`, `components/mod.rs`,
+`components/widgets.rs`, `pages/mod.rs`, `pages/login.rs`, `pages/instances.rs`,
+`pages/instance_detail.rs`, `pages/overview.rs`, `server/config.rs`.
+
+**Implementation.**
+
+1. Module comments (`//!`) for the ten files above: what the module holds and how it fits
+   (AGENTS.md describes the layers; link to it rather than repeat it).
+2. Doc comments for every function, method, type, constant and enum, worst files first.
+   Follow the house style: one summary line, then the contract and the *why* (OpenStack
+   behaviour, Horizon parity, safety rule), with the roadmap item when it explains the
+   design. Don't restate the signature. Name the `OsAction` and the endpoint a server fn
+   reaches. Mark panics and the `ssr` / `hydrate` split where it matters.
+3. Struct fields and enum variants: only where the name doesn't say it all (units, `None`
+   meaning, Neutron's `null` as *any*, IDs vs names). Leave plain row fields alone.
+4. Review the existing comments for drift while there: comments that cite a removed field or
+   behaviour (e.g. after item 93 dropped `shared` from the firewall actions) or a renamed
+   function.
+5. Make rustdoc clean: `cargo doc --no-deps --features ssr` with
+   `RUSTDOCFLAGS="-D warnings"` (broken intra-doc links such as `` [`Field::new_line`] ``,
+   bare URLs, invalid code blocks). It could not run in this session (permission denied
+   writing the doc fingerprint under `target/`), so its warning count is still unknown;
+   check it first. Also run it for `hydrate`.
+6. Keep it from slipping: in `Cargo.toml` `[lints]`, `rust.missing_docs = "warn"` and
+   `clippy.missing_docs_in_private_items` for functions only if clippy can scope it
+   (it can't per item kind, so probably keep it off and rely on review), and add the rustdoc
+   check to AGENTS.md's verify commands (and CI if there is one).
+7. Split into slices by layer to keep reviews small: `server/` first (it carries the safety
+   rules), then `components/`, then `pages/`, then `model.rs` and the rest.
+
+**Open questions.** Whether to enforce with a lint (`missing_docs` only covers the public API,
+and almost everything here is `pub` inside one crate, so it would also demand the 1,745 fields
+and variants) or by review only. Whether doc comments may stay in English while the UI is
+bilingual (they should: code is English throughout).
 
 ## Also pending (from the PoC)
 

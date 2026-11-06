@@ -17,6 +17,12 @@ pub enum Fmt {
     UpDown,
     /// Localised status word
     State,
+    /// What a port belongs to: `router` / `instance` → Router / Instance (roadmap 93)
+    Device,
+    /// A firewall rule's `allow` / `deny` / `reject` (roadmap 93)
+    FwAction,
+    /// A firewall rule's protocol, upper case; empty → *Any* (roadmap 93)
+    Protocol,
 }
 
 /// Columns of each choice set, matching `mapping::*_choices` cells and the
@@ -43,6 +49,9 @@ pub fn columns(set: Option<ChoiceSet>) -> Vec<(K, Fmt)> {
         ],
         Some(ChoiceSet::Networks) => vec![(Network, Text), (SubnetsAssociated, Text), (Shared, YesNo), (AdminState, UpDown), (Status, State)],
         Some(ChoiceSet::FreePorts) => vec![(Name, Text), (IpAddress, Text), (AdminState, UpDown), (Status, State)],
+        // Ports are seldom named: what they belong to comes first (roadmap 93).
+        Some(ChoiceSet::FirewallPorts) => vec![(K::Device, Text), (Type, Fmt::Device), (IpAddresses, Text), (Port, Text)],
+        Some(ChoiceSet::FirewallRules) => vec![(Name, Text), (Action, FwAction), (K::Protocol, Fmt::Protocol)],
         Some(ChoiceSet::SecurityGroups | ChoiceSet::SecurityGroupIds) => vec![(Name, Text), (Description, Text)],
         Some(ChoiceSet::KeyPairs) => vec![(Name, Text), (Type, Text), (Fingerprint, Text)],
         Some(ChoiceSet::ServerGroups) => vec![(Name, Text), (Policy, Text)],
@@ -58,8 +67,26 @@ fn cell(lang: Lang, fmt: Fmt, raw: &str) -> String {
         (Fmt::UpDown, "true") => t(K::Up),
         (Fmt::UpDown, "false") => t(K::Down),
         (Fmt::State, s) if !s.is_empty() => resource_status(lang, s),
+        (Fmt::Device, "router") => t(K::Router),
+        (Fmt::Device, "instance") => t(K::Instance),
+        (Fmt::FwAction, "allow") => t(K::FirewallAllow),
+        (Fmt::FwAction, "deny") => t(K::FirewallDeny),
+        (Fmt::FwAction, "reject") => t(K::FirewallReject),
+        (Fmt::Protocol, "") => t(K::AnyValue),
+        (Fmt::Protocol, p) => p.to_uppercase(),
         (_, "") => "-".into(),
         (_, s) => s.to_string(),
+    }
+}
+
+/// What an empty *Available* table says: nothing to choose at all, everything
+/// already chosen, or nothing matching the filter.
+fn available_hint(options: usize, left: usize) -> K {
+    match (options, left) {
+        (0, _) => K::NothingToChoose,
+        (_, 0) => K::AllAllocated,
+        // Items left but none shown: the filter hides them.
+        _ => K::NoMatches,
     }
 }
 
@@ -158,7 +185,8 @@ pub fn PickTable(
                         {move || {
                             let rows = allocated();
                             if rows.is_empty() {
-                                let hint = if multi { K::SelectManyHint } else { K::SelectOneHint };
+                                let none = options.get().is_some_and(|l| l.is_empty());
+                                let hint = if none { K::NothingToChoose } else if multi { K::SelectManyHint } else { K::SelectOneHint };
                                 return view! { <tr><td class="pick-hint" colspan="99">{i18n.t(hint)}</td></tr> }.into_any();
                             }
                             rows.into_iter().enumerate().map(|(i, c)| {
@@ -197,10 +225,11 @@ pub fn PickTable(
                     <tbody>
                         {move || match options.get() {
                             None => view! { <tr><td class="pick-hint" colspan="99">{i18n.t(K::LoadingChoices)}</td></tr> }.into_any(),
-                            Some(_) => {
+                            Some(list) => {
                                 let rows = available();
                                 if rows.is_empty() {
-                                    return view! { <tr><td class="pick-hint" colspan="99">{i18n.t(K::NoMatches)}</td></tr> }.into_any();
+                                    let hint = available_hint(list.len(), total_available().unwrap_or(0));
+                                    return view! { <tr><td class="pick-hint" colspan="99">{i18n.t(hint)}</td></tr> }.into_any();
                                 }
                                 rows.into_iter().map(|c| {
                                     let why = blocked.run(c.clone());
@@ -254,6 +283,18 @@ mod tests {
         assert_eq!(cell(Lang::EsEs, Fmt::UpDown, "false"), "Inactivo");
         assert_eq!(cell(Lang::EnUs, Fmt::Text, ""), "-");
         assert_eq!(columns(Some(ChoiceSet::Flavors)).len(), 7);
+        assert_eq!((cell(Lang::EsEs, Fmt::Device, "instance"), cell(Lang::EnUs, Fmt::Device, "router")), ("Instancia".into(), "Router".into()));
+        assert_eq!(columns(Some(ChoiceSet::FirewallPorts)).len(), 4, "one per cell of mapping::firewall_port_choices");
+        assert_eq!(columns(Some(ChoiceSet::FirewallRules)).len(), 3, "one per cell of mapping::firewall_rule_choices");
+        assert_eq!((cell(Lang::EsEs, Fmt::FwAction, "deny"), cell(Lang::EnUs, Fmt::FwAction, "allow")), ("Denegar".into(), "Allow".into()));
+        assert_eq!((cell(Lang::EsEs, Fmt::Protocol, ""), cell(Lang::EnUs, Fmt::Protocol, "icmp")), ("Cualquiera".into(), "ICMP".into()));
+    }
+
+    #[test]
+    fn an_empty_available_table_says_why() {
+        assert_eq!(available_hint(0, 0), K::NothingToChoose, "e.g. no router or instance ports for a firewall group");
+        assert_eq!(available_hint(3, 0), K::AllAllocated);
+        assert_eq!(available_hint(3, 2), K::NoMatches, "the filter hides them");
     }
 
     #[test]

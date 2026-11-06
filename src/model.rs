@@ -58,11 +58,13 @@ pub enum Plugin {
     Alarming,
     /// Cinder backups (Volumes › Backups; Horizon's `enable_backup`, roadmap 5).
     Backup,
+    /// Neutron's `fwaas_v2` extension (Network › Firewall; neutron-fwaas-dashboard, roadmap 93).
+    Firewall,
 }
 
 impl Plugin {
     /// Every plugin, in menu order; `[plugins] enabled` names are checked against it.
-    pub const ALL: [Plugin; 7] = [Plugin::LoadBalancer, Plugin::Orchestration, Plugin::Qos, Plugin::Trunk, Plugin::KeyManager, Plugin::Alarming, Plugin::Backup];
+    pub const ALL: [Plugin; 8] = [Plugin::LoadBalancer, Plugin::Orchestration, Plugin::Qos, Plugin::Trunk, Plugin::KeyManager, Plugin::Alarming, Plugin::Backup, Plugin::Firewall];
 
     /// The name used in `moonlight.conf` (for services, also the catalog type).
     pub fn name(self) -> &'static str {
@@ -74,6 +76,7 @@ impl Plugin {
             Plugin::KeyManager => "key-manager",
             Plugin::Alarming => "alarming",
             Plugin::Backup => "backup",
+            Plugin::Firewall => "firewall",
         }
     }
 
@@ -247,6 +250,8 @@ pub mod needs {
     pub const BACKUP: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Backup), Requires::Service("block-storage")]);
     /// Trunks panel.
     pub const TRUNK: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Trunk), Requires::NetExt("trunk")]);
+    /// Network › Firewall (FWaaS v2, roadmap 93).
+    pub const FIREWALL: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Firewall), Requires::NetExt("fwaas_v2")]);
     /// `dns_name` / `dns_domain` on floating IPs and ports.
     pub const DNS: Requires = Requires::NetExt("dns-integration");
     /// Making an image `public`: Glance's default policy `publicize_image` is admin only.
@@ -1404,6 +1409,229 @@ pub struct TrunkRow {
     pub status: String,
     pub admin_up: bool,
     pub subports: Vec<Subport>,
+}
+
+// --- Firewall (FWaaS v2, roadmap 93) --------------------------------------------
+
+/// A FWaaS v2 firewall rule. `None` addresses, ports and protocol mean *any*.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FirewallRuleRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// `tcp`, `udp`, `icmp`; `None` = any protocol.
+    pub protocol: Option<String>,
+    /// 4 or 6.
+    pub ip_version: u8,
+    pub source_ip: Option<String>,
+    pub source_port: Option<String>,
+    pub destination_ip: Option<String>,
+    pub destination_port: Option<String>,
+    /// `allow`, `deny` or `reject`.
+    pub action: String,
+    pub enabled: bool,
+    pub shared: bool,
+    /// The policies that use it (FWaaS v2 lets a rule be in several), named
+    /// from the policies the project can see, else their IDs.
+    pub policies: Vec<Ref>,
+    /// The project's own; another project's shared rule has no edit or delete.
+    pub owned: bool,
+}
+
+/// A FWaaS v2 firewall policy: an ordered list of rules.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FirewallPolicyRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// In evaluation order, named from the rules the project can see.
+    pub rules: Vec<Ref>,
+    pub audited: bool,
+    pub shared: bool,
+    pub owned: bool,
+}
+
+/// A firewall policy's page: the policy and its rules in full, in evaluation order.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FirewallPolicyDetail {
+    pub policy: FirewallPolicyRow,
+    /// Rules the project can't see (another project's, not shared) are left out.
+    pub rules: Vec<FirewallRuleRow>,
+}
+
+/// A port a firewall group protects, with the router or instance it belongs to.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FirewallPort {
+    /// The port, by name (else ID).
+    pub port: Ref,
+    /// Its fixed IPs.
+    pub ips: Vec<String>,
+    /// `router` or `instance` (from `device_owner`), `None` when unknown.
+    pub kind: Option<String>,
+    /// The router or instance, by name when known.
+    pub device: Option<Ref>,
+}
+
+impl FirewallPort {
+    /// Where the device's page is (`None` for an unknown kind).
+    pub fn device_href(&self) -> Option<String> {
+        let d = self.device.as_ref()?;
+        match self.kind.as_deref()? {
+            "router" => Some(format!("/project/routers/{}", d.id)),
+            "instance" => Some(format!("/project/instances/{}", d.id)),
+            _ => None,
+        }
+    }
+}
+
+/// A FWaaS v2 firewall group: an ingress and an egress policy applied to ports.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FirewallGroupRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub ingress: Option<Ref>,
+    pub egress: Option<Ref>,
+    /// Resolved to their router or instance on the detail page; the list
+    /// only names the ports.
+    pub ports: Vec<FirewallPort>,
+    /// `ACTIVE`, `INACTIVE` (no ports, or neither policy), `DOWN`, `PENDING_CREATE` / `_UPDATE` / `_DELETE`, `ERROR`.
+    pub status: String,
+    pub admin_up: bool,
+    pub shared: bool,
+    pub owned: bool,
+}
+
+impl FirewallGroupRow {
+    /// Neutron moves it through `PENDING_*` on its own: the list polls meanwhile.
+    pub fn busy(&self) -> bool {
+        self.status.starts_with("PENDING")
+    }
+    /// Neutron's per-project `default` group (neutron-fwaas matches it by name): only its
+    /// ports can change, and only an admin can delete it (`FirewallGroupCannotRemoveDefault`,
+    /// `FirewallDefaultObjectUpdateRestricted`).
+    pub fn is_default(&self) -> bool {
+        self.name == "default"
+    }
+    /// Can be deleted from the Project panel: the project's own, not `default`.
+    pub fn deletable(&self) -> bool {
+        self.owned && !self.is_default()
+    }
+}
+
+impl FirewallPolicyRow {
+    /// The default group's `default ingress` / `default egress` policies (matched by name, as
+    /// neutron-fwaas does): Neutron refuses to update them; their rules can still change.
+    pub fn is_default(&self) -> bool {
+        matches!(self.name.as_str(), "default ingress" | "default egress")
+    }
+    /// Can be deleted from the Project panel: the project's own, not a default policy (the
+    /// default group uses it, so Neutron would refuse anyway).
+    pub fn deletable(&self) -> bool {
+        self.owned && !self.is_default()
+    }
+}
+
+/// What *Add Rule* and *Edit Rule* send. Empty strings mean *any*.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FirewallRuleSpec {
+    pub name: String,
+    pub description: String,
+    /// `tcp`, `udp`, `icmp`, or `any` / empty.
+    pub protocol: String,
+    /// `allow`, `deny` or `reject`.
+    pub action: String,
+    /// 4 or 6.
+    pub ip_version: u8,
+    pub source_ip: String,
+    pub source_port: String,
+    pub destination_ip: String,
+    pub destination_port: String,
+    pub enabled: bool,
+}
+
+impl FirewallRuleSpec {
+    /// The `firewall_rule` body Neutron expects, validated: protocol and action
+    /// from Neutron's lists, ports (`22`, `8000:8080`) only for TCP or UDP, and
+    /// addresses (an IP or a CIDR) of the rule's IP version. *Any* is `null`, so
+    /// an update clears a field.
+    pub fn body(&self) -> Result<serde_json::Value, String> {
+        use serde_json::{json, Value};
+        let protocol = match self.protocol.trim() {
+            "" | "any" => None,
+            p @ ("tcp" | "udp" | "icmp") => Some(p),
+            other => return Err(format!("protocol must be tcp, udp, icmp or any (got {other})")),
+        };
+        if !matches!(self.action.as_str(), "allow" | "deny" | "reject") {
+            return Err(format!("action must be allow, deny or reject (got {})", self.action));
+        }
+        if !matches!(self.ip_version, 4 | 6) {
+            return Err(format!("IP version must be 4 or 6 (got {})", self.ip_version));
+        }
+        let addr = |a: &str| -> Result<Value, String> {
+            let a = a.trim();
+            if a.is_empty() {
+                return Ok(Value::Null);
+            }
+            validate_ip_or_cidr(a, self.ip_version)?;
+            Ok(json!(a))
+        };
+        // Neutron refuses ports on ICMP or *any* protocol rules.
+        let port = |p: &str| -> Result<Value, String> {
+            let p = p.trim();
+            if p.is_empty() {
+                return Ok(Value::Null);
+            }
+            if !matches!(protocol, Some("tcp" | "udp")) {
+                return Err("ports need the TCP or UDP protocol".into());
+            }
+            validate_port_range(p)?;
+            Ok(json!(p))
+        };
+        let mut r = serde_json::Map::new();
+        r.insert("name".into(), json!(self.name.trim()));
+        r.insert("description".into(), json!(self.description.trim()));
+        r.insert("protocol".into(), json!(protocol));
+        r.insert("action".into(), json!(self.action));
+        r.insert("ip_version".into(), json!(self.ip_version));
+        r.insert("source_ip_address".into(), addr(&self.source_ip)?);
+        r.insert("source_port".into(), port(&self.source_port)?);
+        r.insert("destination_ip_address".into(), addr(&self.destination_ip)?);
+        r.insert("destination_port".into(), port(&self.destination_port)?);
+        r.insert("enabled".into(), json!(self.enabled));
+        Ok(json!({ "firewall_rule": r }))
+    }
+}
+
+/// A port (`22`) or a range (`8000:8080`, low to high), 1-65535.
+pub fn validate_port_range(p: &str) -> Result<(), String> {
+    let one = |x: &str| x.trim().parse::<u16>().ok().filter(|n| *n > 0);
+    let bad = || format!("not a port or a port range (22, 8000:8080): {p}");
+    match p.split_once(':') {
+        None => one(p).map(|_| ()).ok_or_else(bad),
+        Some((a, b)) => match (one(a), one(b)) {
+            (Some(a), Some(b)) if a <= b => Ok(()),
+            _ => Err(bad()),
+        },
+    }
+}
+
+/// An IP address or a CIDR of IP version `version` (4 or 6).
+pub fn validate_ip_or_cidr(a: &str, version: u8) -> Result<(), String> {
+    use std::net::IpAddr;
+    let (ip, len) = match a.split_once('/') {
+        Some((ip, len)) => (ip, Some(len)),
+        None => (a, None),
+    };
+    let ip: IpAddr = ip.parse().map_err(|_| format!("not an IP address or a CIDR: {a}"))?;
+    let max = if ip.is_ipv4() { 32 } else { 128 };
+    if let Some(len) = len {
+        len.parse::<u8>().ok().filter(|l| *l <= max).ok_or_else(|| format!("not an IP address or a CIDR: {a}"))?;
+    }
+    if (version == 4) != ip.is_ipv4() {
+        return Err(format!("{a} is not an IPv{version} address"));
+    }
+    Ok(())
 }
 
 // --- Orchestration (Heat, roadmap 62) ------------------------------------------
@@ -4698,6 +4926,24 @@ pub enum OsAction {
     TrunkDelete { id: String },
     TrunkAddSubports { id: String, subports: Vec<SubportSpec> },
     TrunkRemoveSubports { id: String, port_ids: Vec<String> },
+    // Firewall (FWaaS v2, roadmap 93)
+    FirewallRuleCreate(FirewallRuleSpec),
+    FirewallRuleUpdate { id: String, spec: FirewallRuleSpec },
+    FirewallRuleDelete { id: String },
+    /// `rule_ids` in evaluation order.
+    FirewallPolicyCreate { name: String, description: String, rule_ids: Vec<String>, audited: bool },
+    FirewallPolicyUpdate { id: String, name: String, description: String, audited: bool },
+    FirewallPolicyDelete { id: String },
+    /// Inserts a rule before or after one already in the policy (neither: first).
+    FirewallPolicyInsertRule { id: String, rule_id: String, before_id: Option<String>, after_id: Option<String> },
+    FirewallPolicyRemoveRule { id: String, rule_id: String },
+    /// `None` policies: no ingress / egress filtering.
+    FirewallGroupCreate { name: String, description: String, ingress_policy_id: Option<String>, egress_policy_id: Option<String>, port_ids: Vec<String>, admin_up: bool },
+    /// `None` policies are cleared (`null`).
+    FirewallGroupUpdate { id: String, name: String, description: String, ingress_policy_id: Option<String>, egress_policy_id: Option<String>, admin_up: bool },
+    /// *Add Port* / *Remove Port*: Neutron takes the whole new list.
+    FirewallGroupSetPorts { id: String, port_ids: Vec<String> },
+    FirewallGroupDelete { id: String },
     // Network QoS
     QosPolicyCreate { name: String, description: Option<String>, shared: bool },
     QosPolicyUpdate { id: String, name: String, description: String, shared: bool },
@@ -4902,6 +5148,18 @@ impl OsAction {
             | OsAction::TrunkDelete { .. }
             | OsAction::TrunkAddSubports { .. }
             | OsAction::TrunkRemoveSubports { .. } => vec![Plugin::Trunk],
+            OsAction::FirewallRuleCreate(_)
+            | OsAction::FirewallRuleUpdate { .. }
+            | OsAction::FirewallRuleDelete { .. }
+            | OsAction::FirewallPolicyCreate { .. }
+            | OsAction::FirewallPolicyUpdate { .. }
+            | OsAction::FirewallPolicyDelete { .. }
+            | OsAction::FirewallPolicyInsertRule { .. }
+            | OsAction::FirewallPolicyRemoveRule { .. }
+            | OsAction::FirewallGroupCreate { .. }
+            | OsAction::FirewallGroupUpdate { .. }
+            | OsAction::FirewallGroupSetPorts { .. }
+            | OsAction::FirewallGroupDelete { .. } => vec![Plugin::Firewall],
             OsAction::SecretCreate(_)
             | OsAction::SecretDelete { .. }
             | OsAction::SecretAclSet { .. }
@@ -5107,6 +5365,15 @@ pub enum ChoiceSet {
     /// take (no group, one of its volume types, `available` or `in-use`); a
     /// volume appears once per group, first cell = the group's ID (`Source::Of`)
     GroupVolumes,
+    /// Firewall rules the project can use: its own and shared ones (roadmap 93);
+    /// cells `[action, protocol]`
+    FirewallRules,
+    /// Firewall policies the project can use: its own and shared ones
+    FirewallPolicies,
+    /// Ports a firewall group can take: the project's router interfaces and
+    /// instance ports no group has (Neutron refuses those); cells
+    /// `[device, kind, IPs, port]`
+    FirewallPorts,
 }
 
 /// One option of a select or pick table. `cells` feed the wizard tables (one

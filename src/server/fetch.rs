@@ -614,6 +614,100 @@ pub async fn trunk(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Timed<T
     Ok(timed(t, mapping::trunks(std::slice::from_ref(&one), &soft(po)).remove(0)))
 }
 
+// --- Firewall (FWaaS v2, roadmap 93) --------------------------------------------
+// Not in the SDK (`openstack-sdk-network` has no `fwaas` module): JSON GETs.
+
+/// One FWaaS collection the project can use: its own (`project_id`: admins see
+/// every project's) and the shared ones, each once. `kind` is `firewall_rules`,
+/// `firewall_policies` or `firewall_groups` (the path under `fwaas/` and the key).
+async fn fwaas_list(os: &AsyncOpenStack, project_id: &str, kind: &'static str) -> R<Vec<Value>> {
+    use super::actions::JsonRequest;
+    use openstack_sdk::types::ServiceType;
+    let path = format!("fwaas/{kind}");
+    let (own, shared) = tokio::join!(
+        get_json(os, JsonRequest::get(ServiceType::Network, path.clone()).param("project_id", project_id), "GET firewall list"),
+        get_json(os, JsonRequest::get(ServiceType::Network, path).param("shared", "true"), "GET shared firewall list")
+    );
+    let items = |v: Value| v.get(kind).and_then(Value::as_array).cloned().unwrap_or_default();
+    // The shared half only adds names: `soft`, so it never breaks the page.
+    Ok(merge_by_id(vec![items(own?), soft(shared.map(items))]))
+}
+
+/// One FWaaS object (`kind` as in [`fwaas_list`], `key` its singular).
+async fn fwaas_one(os: &AsyncOpenStack, kind: &'static str, key: &'static str, id: &str) -> R<Value> {
+    use super::actions::JsonRequest;
+    use openstack_sdk::types::ServiceType;
+    let v = get_json(os, JsonRequest::get(ServiceType::Network, format!("fwaas/{kind}/{id}")), "GET firewall object").await?;
+    Ok(v.get(key).cloned().unwrap_or(v))
+}
+
+/// The project's router interface and instance ports, routers and servers: what
+/// a firewall group's ports are resolved with.
+async fn firewall_port_lookups(os: &AsyncOpenStack, project_id: &str) -> (R<Vec<Value>>, Vec<Value>, Vec<Value>) {
+    use openstack_sdk::api::network::v2::{port::list as ports, router::list as routers};
+    let (po, ro, sv) = tokio::join!(
+        list_where!(os, ports, "ports?tenant_id", |b| b.tenant_id(project_id)),
+        list_where!(os, routers, "routers", |b| b.tenant_id(project_id)),
+        servers_brief(os)
+    );
+    (po, soft(ro), soft(sv))
+}
+
+/// Project › Network › Firewall › *Firewall Rules*, with the policies using them.
+pub async fn firewall_rules(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Vec<FirewallRuleRow>>> {
+    let t = Instant::now();
+    let (ru, po) = tokio::join!(fwaas_list(os, project_id, "firewall_rules"), fwaas_list(os, project_id, "firewall_policies"));
+    Ok(timed(t, mapping::firewall_rules(&ru?, &soft(po), project_id)))
+}
+
+/// *Firewall Policies*, their rules named.
+pub async fn firewall_policies(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Vec<FirewallPolicyRow>>> {
+    let t = Instant::now();
+    let (po, ru) = tokio::join!(fwaas_list(os, project_id, "firewall_policies"), fwaas_list(os, project_id, "firewall_rules"));
+    Ok(timed(t, mapping::firewall_policies(&po?, &soft(ru), project_id)))
+}
+
+/// *Firewall Groups*, policies and ports named (devices only on the detail page).
+pub async fn firewall_groups(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Vec<FirewallGroupRow>>> {
+    use openstack_sdk::api::network::v2::port::list as ports;
+    let t = Instant::now();
+    let (gr, po, pt) = tokio::join!(
+        fwaas_list(os, project_id, "firewall_groups"),
+        fwaas_list(os, project_id, "firewall_policies"),
+        list_where!(os, ports, "ports?tenant_id", |b| b.tenant_id(project_id))
+    );
+    Ok(timed(t, mapping::firewall_groups(&gr?, &soft(po), &soft(pt), &[], &[], project_id)))
+}
+
+/// One firewall rule.
+pub async fn firewall_rule(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Timed<FirewallRuleRow>> {
+    let t = Instant::now();
+    let (ru, po) = tokio::join!(fwaas_one(os, "firewall_rules", "firewall_rule", id), fwaas_list(os, project_id, "firewall_policies"));
+    Ok(timed(t, mapping::firewall_rules(std::slice::from_ref(&ru?), &soft(po), project_id).remove(0)))
+}
+
+/// One firewall policy and its rules in full.
+pub async fn firewall_policy(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Timed<FirewallPolicyDetail>> {
+    let t = Instant::now();
+    let (p, ru, all) = tokio::join!(
+        fwaas_one(os, "firewall_policies", "firewall_policy", id),
+        fwaas_list(os, project_id, "firewall_rules"),
+        fwaas_list(os, project_id, "firewall_policies")
+    );
+    Ok(timed(t, mapping::firewall_policy_detail(&p?, &soft(ru), &soft(all), project_id)))
+}
+
+/// One firewall group, its ports resolved to their router or instance.
+pub async fn firewall_group(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Timed<FirewallGroupRow>> {
+    let t = Instant::now();
+    let (g, po, (pt, ro, sv)) = tokio::join!(
+        fwaas_one(os, "firewall_groups", "firewall_group", id),
+        fwaas_list(os, project_id, "firewall_policies"),
+        firewall_port_lookups(os, project_id)
+    );
+    Ok(timed(t, mapping::firewall_groups(std::slice::from_ref(&g?), &soft(po), &soft(pt), &ro, &sv, project_id).remove(0)))
+}
+
 // --- Orchestration (Heat, roadmap 62) ------------------------------------------
 
 /// Stacks per page (`limit`); the next page starts after the last one's ID.
@@ -2778,6 +2872,12 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
             let (po, names) = (po?, mapping::server_names(&soft(sv)));
             let reachable = topology.then(|| mapping::externally_reachable_networks(&po, &soft(ro)));
             mapping::instance_port_choices(&po, &soft(fi), &names, associate, reachable.as_ref())
+        }
+        ChoiceSet::FirewallRules => mapping::firewall_rule_choices(&fwaas_list(os, project_id, "firewall_rules").await?),
+        ChoiceSet::FirewallPolicies => mapping::firewall_policy_choices(&fwaas_list(os, project_id, "firewall_policies").await?),
+        ChoiceSet::FirewallPorts => {
+            let ((pt, ro, sv), gr) = tokio::join!(firewall_port_lookups(os, project_id), fwaas_list(os, project_id, "firewall_groups"));
+            mapping::firewall_port_choices(&pt?, &gr?, &ro, &sv)
         }
         ChoiceSet::QosPolicies => mapping::qos_policy_choices(&qos_policies_raw(os, project_id).await?),
         ChoiceSet::LbMemberTargets => {

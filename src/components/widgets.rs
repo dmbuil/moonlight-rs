@@ -47,7 +47,7 @@ impl Tone {
     pub fn resource(status: &str) -> Tone {
         match status.to_ascii_lowercase().as_str() {
             "active" | "available" | "in-use" | "online" => Tone::Ok,
-            "down" | "deactivated" | "offline" | "no_monitor" => Tone::Off,
+            "down" | "deactivated" | "offline" | "no_monitor" | "inactive" => Tone::Off,
             s if s.contains("error") || s == "killed" => Tone::Err,
             _ => Tone::Warn,
         }

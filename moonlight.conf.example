@@ -226,7 +226,8 @@ clouds_yaml_profile = ""
 # (Octavia), orchestration (Heat), qos (Network QoS; QoS policy of router gateways and floating
 # IPs), trunk (Trunks), key-manager (Barbican: Secrets, Containers), alarming (Aodh: Monitoring ›
 # Alarms), backup (Cinder backups: Volumes › Backups; enable it only where cinder-backup runs, the
-# catalog can't tell). Env: MOONLIGHT_PLUGINS="load-balancer,orchestration,qos,trunk,key-manager,alarming,backup"
+# catalog can't tell), firewall (FWaaS v2: Network › Firewall, where Neutron has fwaas_v2).
+# Env: MOONLIGHT_PLUGINS="load-balancer,orchestration,qos,trunk,key-manager,alarming,backup,firewall"
 enabled = ["load-balancer", "orchestration", "qos", "trunk"]
 
 [key_manager]

@@ -341,6 +341,13 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 }
 .tabs button:hover { color: var(--accent); }
 .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
+/* Tabs that are links (Project › Network › Firewall, roadmap 93). */
+.tabs a {
+  display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; color: var(--ink-2); text-decoration: none; white-space: nowrap; font-weight: 500;
+}
+.tabs a:hover { color: var(--accent); }
+.tabs a.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
 .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
 .card h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
@@ -507,7 +514,13 @@ form.modal-body > .wizard-pane { overflow-y: auto; min-height: 0; flex: 1 1 auto
 .wizard-pane > .field.half { grid-column: span 3; }
 /* A checkbox beside a select lines up with the select's control, not its label. */
 .wizard-pane > .field.check.half { align-self: end; padding-bottom: 9px; }
-@media (max-width: 520px) { .wizard-pane > .field.short { grid-column: span 3; } .wizard-pane > .field.half { grid-column: 1 / -1; } }
+.wizard-pane > .field.short.new-line { grid-column: 1 / span 2; }
+.wizard-pane > .field.half.new-line { grid-column: 1 / span 3; }
+@media (max-width: 520px) {
+  .wizard-pane > .field.short { grid-column: span 3; }
+  .wizard-pane > .field.short.new-line { grid-column: 1 / span 3; }
+  .wizard-pane > .field.half, .wizard-pane > .field.half.new-line { grid-column: 1 / -1; }
+}
 /* Only the wizard keeps a steady height while switching steps, unless the window is too short
    for it: then the `.modal` cap wins and the pane scrolls. */
 .modal-body.wizard .wizard-pane { padding-top: 16px; min-height: min(380px, calc(100dvh - 240px)); }

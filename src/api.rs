@@ -675,6 +675,66 @@ pub async fn get_trunk(id: String) -> Result<Timed<TrunkRow>, AppError> {
     .await
 }
 
+/// Project › Network › Firewall › *Firewall Groups* (`firewall` plugin, roadmap 93).
+#[server(input = GetUrl)]
+pub async fn list_firewall_groups() -> Result<Timed<Vec<FirewallGroupRow>>, AppError> {
+    plugin_enabled(Plugin::Firewall)?;
+    scoped("list_firewall_groups", |s, c| async move {
+        fetch::firewall_groups(&c, &s.project_id).await
+    })
+    .await
+}
+
+/// Project › Network › Firewall › *Firewall Policies* (`firewall` plugin, roadmap 93).
+#[server(input = GetUrl)]
+pub async fn list_firewall_policies() -> Result<Timed<Vec<FirewallPolicyRow>>, AppError> {
+    plugin_enabled(Plugin::Firewall)?;
+    scoped("list_firewall_policies", |s, c| async move {
+        fetch::firewall_policies(&c, &s.project_id).await
+    })
+    .await
+}
+
+/// Project › Network › Firewall › *Firewall Rules* (`firewall` plugin, roadmap 93).
+#[server(input = GetUrl)]
+pub async fn list_firewall_rules() -> Result<Timed<Vec<FirewallRuleRow>>, AppError> {
+    plugin_enabled(Plugin::Firewall)?;
+    scoped("list_firewall_rules", |s, c| async move {
+        fetch::firewall_rules(&c, &s.project_id).await
+    })
+    .await
+}
+
+/// Firewall group detail page (`firewall` plugin, roadmap 93).
+#[server(input = GetUrl)]
+pub async fn get_firewall_group(id: String) -> Result<Timed<FirewallGroupRow>, AppError> {
+    plugin_enabled(Plugin::Firewall)?;
+    scoped_id("get_firewall_group", id, |s, c, id| async move {
+        fetch::firewall_group(&c, &s.project_id, &id).await
+    })
+    .await
+}
+
+/// Firewall policy detail page (`firewall` plugin, roadmap 93).
+#[server(input = GetUrl)]
+pub async fn get_firewall_policy(id: String) -> Result<Timed<FirewallPolicyDetail>, AppError> {
+    plugin_enabled(Plugin::Firewall)?;
+    scoped_id("get_firewall_policy", id, |s, c, id| async move {
+        fetch::firewall_policy(&c, &s.project_id, &id).await
+    })
+    .await
+}
+
+/// Firewall rule detail page (`firewall` plugin, roadmap 93).
+#[server(input = GetUrl)]
+pub async fn get_firewall_rule(id: String) -> Result<Timed<FirewallRuleRow>, AppError> {
+    plugin_enabled(Plugin::Firewall)?;
+    scoped_id("get_firewall_rule", id, |s, c, id| async move {
+        fetch::firewall_rule(&c, &s.project_id, &id).await
+    })
+    .await
+}
+
 /// Project › Network › Network QoS (`qos` plugin).
 #[server(input = GetUrl)]
 pub async fn list_qos_policies() -> Result<Timed<Vec<QosPolicyRow>>, AppError> {

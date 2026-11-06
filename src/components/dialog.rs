@@ -34,6 +34,9 @@ pub enum Source {
     /// targets without the current host or pool, which Nova and Cinder refuse
     /// (Horizon leaves it out too).
     Except(ChoiceSet, String),
+    /// A set without these values: a firewall policy's *Insert Rule* leaves out
+    /// the rules it already has (roadmap 93).
+    Without(ChoiceSet, Vec<String>),
 }
 
 impl Source {
@@ -43,6 +46,7 @@ impl Source {
         match self {
             Source::Of(_, owner) => c.cells.first() == Some(owner),
             Source::Except(_, value) => c.value != *value,
+            Source::Without(_, values) => !values.contains(&c.value),
             _ => true,
         }
     }
@@ -127,6 +131,9 @@ pub struct Field {
     /// Half the row: two consecutive half fields share a line (Create Image's format and
     /// architecture, minimum disk and RAM).
     pub half: bool,
+    /// Starts a new line even when the field before it left room (a hidden field
+    /// must not pull the next one up beside it).
+    pub new_line: bool,
     /// Visible lines of a text area (4 when `None`).
     pub rows: Option<u8>,
     /// Hidden once its choices load empty (Horizon drops *Availability Zone
@@ -142,7 +149,7 @@ pub struct Field {
 
 impl Field {
     fn new(name: &'static str, label: impl Into<String>, kind: Kind) -> Self {
-        Field { name, label: label.into(), kind, required: false, default: String::new(), help: None, when: None, show_if: None, empty_label: None, from_file: None, help_code: None, tip: None, danger: false, short: false, half: false, rows: None, hide_empty: false, catalog: None, catalog_skip: &[] }
+        Field { name, label: label.into(), kind, required: false, default: String::new(), help: None, when: None, show_if: None, empty_label: None, from_file: None, help_code: None, tip: None, danger: false, short: false, half: false, new_line: false, rows: None, hide_empty: false, catalog: None, catalog_skip: &[] }
     }
     /// One-line text.
     pub fn text(name: &'static str, label: impl Into<String>) -> Self {
@@ -241,6 +248,11 @@ impl Field {
     /// Lays the field out at half the row, beside the half field next to it.
     pub fn half(mut self) -> Self {
         self.half = true;
+        self
+    }
+    /// Starts the field on a new line (see [`Field::new_line`]).
+    pub fn new_line(mut self) -> Self {
+        self.new_line = true;
         self
     }
     /// Lays the field out narrow, beside the short fields next to it.
@@ -644,7 +656,7 @@ fn visible(f: &Field, values: &HashMap<String, String>, all: &[Field]) -> bool {
 fn choice_set_for(src: &Source, values: &HashMap<String, String>) -> Option<ChoiceSet> {
     match src {
         Source::Static(_) => None,
-        Source::Set(s) | Source::Of(s, _) | Source::Except(s, _) => Some(*s),
+        Source::Set(s) | Source::Of(s, _) | Source::Except(s, _) | Source::Without(s, _) => Some(*s),
         Source::Switch(field, map) => {
             let v = values.get(*field).cloned().unwrap_or_default();
             map.iter().find(|(k, _)| *k == v).map(|(_, s)| *s)
@@ -657,7 +669,7 @@ fn all_sets(fields: &[Field]) -> Vec<ChoiceSet> {
     for f in fields {
         if let Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. } = &f.kind {
             match src {
-                Source::Set(s) | Source::Of(s, _) | Source::Except(s, _) => out.push(*s),
+                Source::Set(s) | Source::Of(s, _) | Source::Except(s, _) | Source::Without(s, _) => out.push(*s),
                 Source::Switch(_, m) => out.extend(m.iter().map(|(_, s)| *s)),
                 Source::Static(_) => {}
             }
@@ -753,7 +765,9 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
             // field that now has a value from this set (preselected, or preset
             // by the caller, e.g. *Launch* from an image row) runs the hook as
             // if the user had picked it, so dependent fields follow.
-            let sets = choices.get_untracked();
+            // The dialog may have closed while the list loaded: its signals are gone
+            // (`update` is then a no-op, but a read panics and kills the app).
+            let Some(sets) = choices.try_get_untracked() else { return };
             values.update(|vals| {
                 for f in &fields {
                     let (Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. }) = &f.kind else { continue };
@@ -1392,9 +1406,9 @@ fn FieldView(
         Some(tip) => view! { <div class="field-head">{label_view}{tip}</div> }.into_any(),
         None => label_view,
     };
-    let (short, half) = (field.short, field.half);
+    let (short, half, new_line) = (field.short, field.half, field.new_line);
     view! {
-        <div class="field" class:short=short class:half=half class:invalid=move || error.get().is_some() style:display=move || if shown() { "" } else { "none" }>
+        <div class="field" class:short=short class:half=half class:new-line=new_line class:invalid=move || error.get().is_some() style:display=move || if shown() { "" } else { "none" }>
             {label_view}
             {control}
             {help.map(|h| view! { <small class="muted">{h}</small> })}
@@ -1643,7 +1657,7 @@ fn KeyValueRows(id: String, labelled_by: String, initial: String, catalog: Optio
 fn resolve(src: &Source, values: RwSignal<HashMap<String, String>>, choices: RwSignal<HashMap<ChoiceSet, Vec<Choice>>>) -> Option<Vec<Choice>> {
     match src {
         Source::Static(list) => Some(list.iter().map(|(v, l)| Choice::new(v.clone(), l.clone())).collect()),
-        Source::Of(set, _) | Source::Except(set, _) => choices.with(|m| m.get(set).map(|l| l.iter().filter(|c| src.admits(c)).cloned().collect())),
+        Source::Of(set, _) | Source::Except(set, _) | Source::Without(set, _) => choices.with(|m| m.get(set).map(|l| l.iter().filter(|c| src.admits(c)).cloned().collect())),
         other => {
             let set = values.with(|v| choice_set_for(other, v))?;
             choices.with(|m| m.get(&set).cloned())
