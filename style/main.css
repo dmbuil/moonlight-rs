@@ -334,7 +334,10 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .quota-bar.full span { background: var(--danger); }
 
 /* ---------- Instance detail ---------- */
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line-2); margin-bottom: 16px; overflow-x: auto; }
+/* Tabs wrap, as Horizon's do, instead of scrolling (roadmap 96): with `overflow-x: auto`,
+   `overflow-y` computed to `auto` too and the tabs' `margin-bottom: -1px` (their underline over
+   the bar's border) overflowed by 1px, so every bar showed a useless vertical scroll control. */
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line-2); margin-bottom: 16px; }
 .tabs button {
   min-height: 42px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
   background: none; color: var(--ink-2); cursor: pointer; white-space: nowrap; font-weight: 500;

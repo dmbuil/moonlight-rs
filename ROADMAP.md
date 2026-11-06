@@ -108,7 +108,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 93  | 🚧 Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
 | 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
-| 96 | Tab bars show a pointless scroll control | P3 | XS | — |
+| 96 | ✅ Tab bars show a pointless scroll control | — | XS | — |
 | 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
@@ -132,7 +132,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88**.
+85, 86, 87, 88, 96**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -5855,6 +5855,16 @@ Open questions:
   `PUT`.
 
 ## 96. Tab bars show a pointless scroll control
+
+> ✅ **Done.** Cause confirmed in Brave on *Project › Network › Firewall*: `.tabs` had
+> `overflow-x: auto`, so `overflow-y` computed to `auto`, and the tabs' `margin-bottom: -1px`
+> made the content 42px tall in a 41px box (a 1px vertical scroll). `style/main.css` now gives
+> `.tabs` `flex-wrap: wrap` and no `overflow`, as Horizon does (comment at the rule): the
+> `-1px` underline overlap stays, but there is no scroll box. Checked with
+> `getComputedStyle` (`overflow-y: visible`) on Firewall (link tabs), a network detail and
+> Admin › System Information (button tabs) at 1502px, and at 360px phone width in dark and
+> light theme: the Firewall tabs wrap to two rows, no horizontal page scroll. Not checked: an
+> instance detail (the test project has no instances), but it uses the same class.
 
 **Goal.** Every tab bar (`.tabs`) shows a small scroll control even when all its tabs fit, as on
 *Project › Network › Firewall* (*Firewall Groups* / *Firewall Policies* / *Firewall Rules*).
