@@ -5675,7 +5675,7 @@ Split in two slices when started: the pure model plus the form first, the canvas
 > bulk-selected for delete, and the group detail says why (`K::FirewallDefaultGroupHelp`). The
 > picker's empty *Available* table says why it is empty (`pick::available_hint`: nothing to
 > choose, all selected, or the filter) instead of "Select one or more…". Found while checking
-: closing any dialog before its choice lists loaded panicked
+> the dialogs: closing any dialog before its choice lists loaded panicked
 > (`DialogView` read the disposed `choices` signal after the await) and killed the page; it now
 > uses `try_get_untracked`. **Checked in Brave** (ttcp-dev, project *admin2*, Spanish, nothing
 > submitted): the three tabs with Neutron's `default` group, its two policies and four rules;
@@ -5683,12 +5683,25 @@ Split in two slices when started: the pure model plus the form first, the canvas
 > *Add / Edit Rule* (TCP and *Any*), *Add / Edit Policy*, *Insert Rule*, *Remove Rule*; dialogs
 > opened and closed at once three times with no panic; no console errors. Clippy (both builds)
 > clean, 546 tests pass. The `default` protection, the *Inactive* wording and the picker's
-> empty states (2026-11-06, later) pass clippy and 547 tests but are **not yet checked in
-> Brave** (no browser tunnel then). **Left** (the project has no router or instance, so its
-> port list is rightly empty): with one, check the port picker's rows, *Add Port* /
-> *Remove Port* and the group detail's port table; what Neutron does with no policy in a
-> direction (the select says *None (no filtering)*); and that an instance port's direction
-> matches the (i). Later: link a router or instance port's page to its group.
+> empty states (2026-11-06, later) pass clippy and 547 tests, and were **checked in Brave**
+> the same day (*admin2*, English and Spanish, nothing submitted): the `default` group and
+> both policies have their checkboxes and *Select all* disabled; the group offers only *Add
+> Port* (no ports, so no *Remove Port*), each policy only *Insert* / *Remove Rule*, in the list
+> and on its detail page; *Inactive* / *Sin aplicar* is a grey pill, and the group detail shows
+> both explanations; *Add Port* with no ports says *There is nothing to choose from.*,
+> *Add Policy* says *No matching items* for a filter that hides everything and *Every item is
+> already selected.* with all four rules allocated; no console errors. **Port picker checked
+> on *pokemon*** (it has routers and instances): *Add Port* and step 2 of *Create Firewall
+> Group* list 9 ports (3 router interfaces, 6 instance ports) with device, type, IP and port
+> name. One router interface's router is not in the project's router list (another
+> project's), so its Device cell shows the router's UUID: could say *Router (another
+> project)* instead. **Left**, all needing a write (not done; ask before submitting): *Add
+> Port* / *Remove Port* for real and the group detail's port table with rows; what Neutron
+> does with no policy in a direction (the select says *None (no filtering)*); and that an
+> instance port's direction matches the (i). Use a throwaway instance's port, never
+> `porygon` (the dev VM: the `default ingress` policy denies everything). Later: link a router
+> or instance port's page to its group; the policy detail could explain the `default` limits
+> as the group detail does.
 
 Requested 2026-11-05. ttcp-dev has it: Neutron lists the `fwaas_v2` extension (checked that day
 through `get_session_info`, project *pokemon*, user `admin2`, GET only).
@@ -5744,10 +5757,7 @@ Rules*. The Admin side is item 94.
 **Slices.** (1) the three tabs and detail pages, read-only; (2) rules and policies writes;
 (3) groups writes and ports.
 
-**Open questions.** Whether the production cloud runs FWaaS (only ttcp-dev is known). Whether the
-default group
-(`default`, created by Neutron per project when `auto_associate_default_firewall_group` is on)
-gets protection like the `default` security group (item 34).
+**Open questions.** Whether the production cloud runs FWaaS (only ttcp-dev is known).
 
 ## 94. Admin › Network › Firewall
 
