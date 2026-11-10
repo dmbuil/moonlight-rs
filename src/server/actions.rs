@@ -799,6 +799,31 @@ fn nova_action(id: &str, body: Value, microversion: Option<&'static str>) -> R<J
 }
 
 /// `addTenantAccess` / `removeTenantAccess` of a flavor, one action per project.
+/// *Create Flavor*'s `POST /flavors`, its values checked (Horizon: a flavor
+/// given to projects is private; `auto` or no ID lets Nova pick one).
+fn flavor_request(spec: &FlavorSpec) -> R<openstack_sdk::api::compute::v2::flavor::create_21::Request<'_>> {
+    use openstack_sdk::api::compute::v2::flavor::create_21 as m;
+    let (vcpus, ram, disk) = (positive(spec.vcpus, "VCPUs")?, positive(spec.ram_mb, "RAM")?, at_least_zero(spec.disk_gb, "root disk")?);
+    let mut b = m::FlavorBuilder::default();
+    b.name(non_empty(&spec.name, "name")?)
+        .vcpus(vcpus)
+        .ram(ram)
+        .disk(disk)
+        .os_flv_ext_data_ephemeral(at_least_zero(spec.ephemeral_gb, "ephemeral disk")?)
+        .swap(at_least_zero(spec.swap_mb, "swap disk")?)
+        .os_flavor_access_is_public(spec.projects.is_empty());
+    if let Some(id) = opt(&spec.flavor_id).filter(|i| !i.eq_ignore_ascii_case("auto")) {
+        b.id(Some(Cow::from(id.to_string())));
+    }
+    if let Some(f) = spec.rxtx_factor {
+        if f.is_nan() || f <= 0.0 {
+            return Err(AppError::invalid("RX/TX factor must be positive"));
+        }
+        b.rxtx_factor(f.to_string());
+    }
+    m::Request::builder().flavor(b.build().map_err(build_err)?).build().map_err(build_err)
+}
+
 async fn flavor_access(x: &mut Exec<'_>, id: &str, add: &[String], remove: &[String]) -> R<()> {
     use openstack_sdk::api::compute::v2::flavor::{add_tenant_access as a, remove_tenant_access as r};
     for p in add {
@@ -878,15 +903,20 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
             x.send(metadef(http::Method::PUT, format!("metadefs/namespaces/{id}"), Some(body))).await?;
         }
         MetadefNamespaceDelete { id } => x.send(metadef(http::Method::DELETE, format!("metadefs/namespaces/{id}"), None)).await?,
-        MetadefNamespaceSetTypes { id, add_type_ids, remove_type_ids } => {
+        MetadefNamespaceSetTypes { id, add_type_ids, remove_type_ids, prefixes } => {
             if add_type_ids.is_empty() && remove_type_ids.is_empty() {
                 return Err(AppError::invalid("nothing changed"));
             }
-            for name in add_type_ids {
-                x.send(metadef(http::Method::POST, format!("metadefs/namespaces/{id}/resource_types"), Some(json!({ "name": name })))).await?;
-            }
+            // Removals first: a new prefix removes the association, then adds it back.
             for name in remove_type_ids {
                 x.send(metadef(http::Method::DELETE, format!("metadefs/namespaces/{id}/resource_types/{name}"), None)).await?;
+            }
+            for name in add_type_ids {
+                let mut body = json!({ "name": name });
+                if let Some((_, p)) = prefixes.iter().find(|(t, p)| t == name && !p.trim().is_empty()) {
+                    body["prefix"] = json!(p.trim());
+                }
+                x.send(metadef(http::Method::POST, format!("metadefs/namespaces/{id}/resource_types"), Some(body))).await?;
             }
         }
         // ---------------------------------------------------------------- Compute
@@ -1112,6 +1142,9 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
             }
             if let Some(r) = spec.min_ram_mb {
                 b.min_ram(r as i32);
+            }
+            if let Some(owner) = spec.owner.as_deref().map(str::trim).filter(|o| !o.is_empty()) {
+                b.owner(Some(Cow::from(owner.to_string())));
             }
             let image = x.create(b.build().map_err(build_err)?, "image").await?;
             if let Some(bytes) = spec.upload_bytes {
@@ -1522,27 +1555,20 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
         }
         // ---------------------------------------------------------- Admin › Compute
         FlavorCreate(spec) => {
-            use openstack_sdk::api::compute::v2::flavor::create_21 as m;
-            let (vcpus, ram, disk) = (positive(spec.vcpus, "VCPUs")?, positive(spec.ram_mb, "RAM")?, at_least_zero(spec.disk_gb, "root disk")?);
-            let mut b = m::FlavorBuilder::default();
-            b.name(non_empty(&spec.name, "name")?)
-                .vcpus(vcpus)
-                .ram(ram)
-                .disk(disk)
-                .os_flv_ext_data_ephemeral(at_least_zero(spec.ephemeral_gb, "ephemeral disk")?)
-                .swap(at_least_zero(spec.swap_mb, "swap disk")?)
-                // Horizon: a flavor given to projects is private.
-                .os_flavor_access_is_public(spec.projects.is_empty());
-            if let Some(id) = opt(&spec.flavor_id).filter(|i| !i.eq_ignore_ascii_case("auto")) {
-                b.id(Some(Cow::from(id.to_string())));
+            let id = x.create(flavor_request(spec)?, "flavor").await?;
+            flavor_access(x, &id, &spec.projects, &[]).await?;
+        }
+        FlavorReplace { spec, extra_specs } => {
+            use openstack_sdk::api::compute::v2::flavor::{delete as del, extra_spec::create as ex};
+            let id = opt(&spec.flavor_id).filter(|i| !i.eq_ignore_ascii_case("auto")).ok_or_else(|| AppError::invalid("the flavor's ID"))?.to_string();
+            // Everything is checked before the old flavor goes: a refused value must not lose it.
+            let create = flavor_request(spec)?;
+            let specs = checked_metadata(extra_specs)?;
+            x.send(del::Request::builder().id(id.as_str()).build().map_err(build_err)?).await?;
+            x.create(create, "flavor").await?;
+            if !specs.is_empty() {
+                x.send(ex::Request::builder().flavor_id(id.as_str()).extra_specs(specs.into_iter()).build().map_err(build_err)?).await?;
             }
-            if let Some(f) = spec.rxtx_factor {
-                if f.is_nan() || f <= 0.0 {
-                    return Err(AppError::invalid("RX/TX factor must be positive"));
-                }
-                b.rxtx_factor(f.to_string());
-            }
-            let id = x.create(m::Request::builder().flavor(b.build().map_err(build_err)?).build().map_err(build_err)?, "flavor").await?;
             flavor_access(x, &id, &spec.projects, &[]).await?;
         }
         FlavorDelete { id } => {
@@ -1957,10 +1983,16 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
             let body = b.build().map_err(build_err)?;
             x.create(m::Request::builder().router(body).build().map_err(build_err)?, "router").await?;
         }
-        RouterUpdate { id, name, admin_up, snat } => {
+        RouterUpdate { id, name, admin_up, snat, distributed, ha } => {
             use openstack_sdk::api::network::v2::router::set as m;
             let mut b = m::RouterBuilder::default();
             b.name(name.trim()).admin_state_up(*admin_up);
+            if let Some(d) = distributed {
+                b.distributed(Some(*d));
+            }
+            if let Some(h) = ha {
+                b.ha(Some(*h));
+            }
             if let Some((network_id, on)) = snat {
                 let gw = m::ExternalGatewayInfoBuilder::default()
                     .network_id(network_id.as_str())
@@ -3325,6 +3357,9 @@ mod tests {
         assert!(file[1].body.as_deref().unwrap_or_default().contains("2048 bytes"), "{:?}", file[1].body);
         let ami = dry(OsAction::ImageCreate(ImageSpec { disk_format: id("ami"), ..spec.clone() })).await;
         assert_eq!(body(&ami[0])["container_format"], "ami", "AMI-style images are their own container");
+        assert!(body(&r[0]).get("owner").is_none(), "no owner: the session's project");
+        let owned = dry(OsAction::ImageCreate(ImageSpec { owner: Some(id("p9")), ..spec.clone() })).await;
+        assert_eq!(body(&owned[0])["owner"], "p9", "admin Create Image (roadmap 89)");
         for bad in [
             ImageSpec { url: Some(id("ftp://x/y")), ..spec.clone() },
             ImageSpec { url: Some(id("https://")), ..spec.clone() },
@@ -3797,6 +3832,15 @@ mod tests {
         assert_eq!(body(&r[0])["flavor"]["rxtx_factor"], "2");
         assert!(dry_err(OsAction::FlavorCreate(Box::new(FlavorSpec { vcpus: 0, ..spec(vec![]) }))).await, "at least one VCPU");
         assert_eq!(calls(&dry(OsAction::FlavorDelete { id: id("f1") }).await), [(id("DELETE"), id("/flavors/f1"))]);
+        // Edit Flavor (`[admin] flavor_edit`, roadmap 89): Horizon's delete and re-create,
+        // same ID, then the extra specs and the access back.
+        let edited = || Box::new(FlavorSpec { flavor_id: Some(id("f1")), ..spec(vec![id("p1")]) });
+        let r = dry(OsAction::FlavorReplace { spec: edited(), extra_specs: vec![(id("hw:cpu_policy"), id("dedicated"))] }).await;
+        assert_eq!(calls(&r), [(id("DELETE"), id("/flavors/f1")), (id("POST"), id("/flavors")), (id("POST"), id("/flavors/f1/os-extra_specs")), (id("POST"), id("/flavors/f1/action"))]);
+        assert_eq!((&body(&r[1])["flavor"]["id"], &body(&r[1])["flavor"]["os-flavor-access:is_public"]), (&json!("f1"), &json!(false)));
+        assert_eq!(body(&r[2]), json!({"extra_specs": {"hw:cpu_policy": "dedicated"}}));
+        assert!(dry_err(OsAction::FlavorReplace { spec: Box::new(FlavorSpec { vcpus: 0, ..*edited() }), extra_specs: vec![] }).await, "checked before the delete");
+        assert!(dry_err(OsAction::FlavorReplace { spec: Box::new(FlavorSpec { flavor_id: Some(id("auto")), ..*edited() }), extra_specs: vec![] }).await, "needs the flavor's ID");
         let r = dry(OsAction::FlavorSetExtraSpecs { id: id("f1"), set: vec![(id("hw:cpu_policy"), id("dedicated"))], unset: vec![id("quota:vif")] }).await;
         assert_eq!(calls(&r), [(id("POST"), id("/flavors/f1/os-extra_specs")), (id("DELETE"), id("/flavors/f1/os-extra_specs/quota:vif"))]);
         assert_eq!(body(&r[0]), json!({"extra_specs": {"hw:cpu_policy": "dedicated"}}));
@@ -3834,10 +3878,15 @@ mod tests {
         assert_eq!(calls(&r), [(id("PUT"), id("/metadefs/namespaces/OS::Acme::Gpu"))]);
         assert_eq!(body(&r[0]), json!({"namespace": "OS::Acme::Gpu", "display_name": "GPU", "visibility": "public", "protected": false}));
         assert_eq!(calls(&dry(OsAction::MetadefNamespaceDelete { id: id("OS::Acme::Gpu") }).await), [(id("DELETE"), id("/metadefs/namespaces/OS::Acme::Gpu"))]);
-        let r = dry(OsAction::MetadefNamespaceSetTypes { id: id("OS::Acme::Gpu"), add_type_ids: vec![id("OS::Nova::Flavor")], remove_type_ids: vec![id("OS::Glance::Image")] }).await;
-        assert_eq!(calls(&r), [(id("POST"), id("/metadefs/namespaces/OS::Acme::Gpu/resource_types")), (id("DELETE"), id("/metadefs/namespaces/OS::Acme::Gpu/resource_types/OS::Glance::Image"))]);
-        assert_eq!(body(&r[0]), json!({"name": "OS::Nova::Flavor"}));
-        assert!(dry_err(OsAction::MetadefNamespaceSetTypes { id: id("n"), add_type_ids: vec![], remove_type_ids: vec![] }).await, "nothing changed");
+        let r = dry(OsAction::MetadefNamespaceSetTypes { id: id("OS::Acme::Gpu"), add_type_ids: vec![id("OS::Nova::Flavor")], remove_type_ids: vec![id("OS::Glance::Image")], prefixes: vec![] }).await;
+        assert_eq!(calls(&r), [(id("DELETE"), id("/metadefs/namespaces/OS::Acme::Gpu/resource_types/OS::Glance::Image")), (id("POST"), id("/metadefs/namespaces/OS::Acme::Gpu/resource_types"))]);
+        assert_eq!(body(&r[1]), json!({"name": "OS::Nova::Flavor"}));
+        // A new prefix (roadmap 89): the association goes, then comes back with it.
+        let flavor = || vec![id("OS::Nova::Flavor")];
+        let r = dry(OsAction::MetadefNamespaceSetTypes { id: id("OS::Acme::Gpu"), add_type_ids: flavor(), remove_type_ids: flavor(), prefixes: vec![(id("OS::Nova::Flavor"), id(" gpu: "))] }).await;
+        assert_eq!(calls(&r).iter().map(|c| c.0.as_str()).collect::<Vec<_>>(), ["DELETE", "POST"]);
+        assert_eq!(body(&r[1]), json!({"name": "OS::Nova::Flavor", "prefix": "gpu:"}));
+        assert!(dry_err(OsAction::MetadefNamespaceSetTypes { id: id("n"), add_type_ids: vec![], remove_type_ids: vec![], prefixes: vec![] }).await, "nothing changed");
     }
 
     #[tokio::test]
@@ -4288,15 +4337,18 @@ mod tests {
         assert_eq!(body(&r[0])["port"]["fixed_ips"], json!([{"ip_address": "10.0.0.5"}]));
         let r = dry(OsAction::RouterCreate { name: id("r"), admin_up: true, external_network_id: Some(id("ext")), qos_policy_id: None }).await;
         assert_eq!(body(&r[0])["router"]["external_gateway_info"]["network_id"], "ext");
-        let r = dry(OsAction::RouterUpdate { id: id("r"), name: id(" gw "), admin_up: true, snat: None }).await;
+        let r = dry(OsAction::RouterUpdate { id: id("r"), name: id(" gw "), admin_up: true, snat: None, distributed: None, ha: None }).await;
         assert_eq!((r[0].method.as_str(), r[0].path.as_str()), ("PUT", "/routers/r"));
         assert_eq!(body(&r[0]), json!({"router": {"name": "gw", "admin_state_up": true}}), "rename keeps the gateway");
-        let r = dry(OsAction::RouterUpdate { id: id("r"), name: id("gw"), admin_up: false, snat: Some((id("ext"), false)) }).await;
+        let r = dry(OsAction::RouterUpdate { id: id("r"), name: id("gw"), admin_up: false, snat: Some((id("ext"), false)), distributed: None, ha: None }).await;
         assert_eq!(
             body(&r[0]),
             json!({"router": {"name": "gw", "admin_state_up": false,
                 "external_gateway_info": {"network_id": "ext", "enable_snat": false}}})
         );
+        // Admin Edit Router (roadmap 89): type and HA mode only when they change.
+        let r = dry(OsAction::RouterUpdate { id: id("r"), name: id("gw"), admin_up: false, snat: None, distributed: Some(true), ha: Some(false) }).await;
+        assert_eq!(body(&r[0]), json!({"router": {"name": "gw", "admin_state_up": false, "distributed": true, "ha": false}}));
         let r = dry(OsAction::RouterClearGateway { id: id("r") }).await;
         assert_eq!(body(&r[0]), json!({"router": {"external_gateway_info": null}}));
         let r = dry(OsAction::RouterAddInterface { id: id("r"), subnet_id: id("s") }).await;

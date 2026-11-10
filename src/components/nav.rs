@@ -315,6 +315,8 @@ mod tests {
         assert_eq!(system.visible(&admin).unwrap().iter().map(|p| p.label).collect::<Vec<_>>(), [K::QuotaDefaults, K::MetadataDefinitions, K::SystemInformation], "Horizon's System group");
         let no_glance = Capabilities { services: vec!["compute".into()], ..admin };
         assert!(!available("/admin/metadata_defs", &no_glance), "Glance holds the namespaces");
+        assert_eq!(active("/admin/metadata_defs/OS::Compute::Watchdog").map(|(g, p)| (g.label, p.label)), Some((K::System, K::MetadataDefinitions)), "the detail (roadmap 89)");
+        assert!(!available("/admin/metadata_defs/OS::Compute::Watchdog", &no_glance), "the detail too");
         let groups = |c: &Capabilities| ADMIN_NAV.iter().filter_map(|g| g.visible(c).map(|_| g.label)).collect::<Vec<_>>();
         assert_eq!(groups(&Capabilities { roles: vec!["admin".into()], ..Capabilities::default() }), [K::Admin, K::Compute, K::VolumeAdminGroup, K::NetworkGroup, K::System], "Horizon's groups");
         assert_eq!(active("/admin").map(|(g, p)| (g.label, p.label)), Some((K::Admin, K::Overview)), "/admin is Admin › Overview");

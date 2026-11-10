@@ -894,12 +894,20 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
 pub fn create_image_dialog(lang: Lang) -> Dialog {
     let img = crate::components::dialog::prefs().images;
     let c = caps();
-    create_image_form(lang, &img, needs::PUBLICIZE_IMAGE.met(&c), needs::IMAGE_URL_IMPORT.met(&c))
+    create_image_form(lang, &img, needs::PUBLICIZE_IMAGE.met(&c), needs::IMAGE_URL_IMPORT.met(&c), false)
+}
+
+/// Admin › Images' *Create Image* (roadmap 89): Project's, plus the owning
+/// project (empty: the session's).
+pub fn admin_create_image_dialog(lang: Lang) -> Dialog {
+    let img = crate::components::dialog::prefs().images;
+    let c = caps();
+    create_image_form(lang, &img, needs::PUBLICIZE_IMAGE.met(&c), needs::IMAGE_URL_IMPORT.met(&c), true)
 }
 
 /// [`create_image_dialog`] for given settings: `publicize` (the admin role) offers `public`
-/// visibility, `url_import` is whether Glance has `web-download`.
-fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool, url_import: bool) -> Dialog {
+/// visibility, `url_import` is whether Glance has `web-download`, `admin` adds the owner.
+fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool, url_import: bool, admin: bool) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let formats: Vec<&str> = img.disk_formats.iter().map(String::as_str).collect();
     let mut vis: Vec<&str> = vec!["private", "shared", "community"];
@@ -917,7 +925,7 @@ fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool
         sources.insert(0, ("url".to_string(), tr(K::ImageSourceUrl)));
     }
     let first_source = sources[0].0.clone();
-    let fields = vec![
+    let mut fields = vec![
         Field::text("name", tr(K::ImageName)).required(),
         Field::area("description", tr(K::Description)).rows(2),
         // The source and its URL or file share a line (only one of the two shows).
@@ -937,6 +945,9 @@ fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool
         Field::check("protected", tr(K::Protected), false).half(),
         Field::key_values("metadata", tr(K::Metadata), &[]).help(tr(K::MetadataHelp)).catalog("OS::Glance::Image").catalog_skip(&IMAGE_FIELD_PROPS),
     ];
+    if admin {
+        fields.insert(2, Field::select("owner", tr(K::Project), Source::Set(ChoiceSet::AllProjects)).help(tr(K::ImageOwnerHelp)).empty_label(tr(K::SelectProject)));
+    }
     let (max_bytes, offered) = (img.max_upload_bytes(), formats.iter().map(|f| f.to_string()).collect::<Vec<_>>());
     let details: Vec<&'static str> = fields.iter().map(|f| f.name).filter(|n| *n != "metadata").collect();
     let mut dialog = Dialog::form(tr(K::CreateImage), tr(K::CreateImage), fields, move |v| {
@@ -971,6 +982,7 @@ fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool
             min_ram_mb: num_u32(v, "min_ram", K::MinRamMb, lang)?.filter(|n| *n > 0),
             properties,
             upload_bytes: file,
+            owner: v.opt("owner"),
         }))
     });
     // Horizon's wizard: the details, then the metadata (item 25 adds the catalog to that step).
@@ -1972,20 +1984,24 @@ pub fn router_items(lang: Lang, r: &RouterRow) -> Vec<MenuItem> {
             )
         }));
     }
-    items.push(edit_router_item(lang, r));
+    items.push(edit_router_item(lang, r, false));
     let i = r.id.clone();
     items.push(MenuItem::dialog(t(lang, K::AddInterface), move || add_interface_dialog(lang, &i)));
     items.push(delete_router_item(lang, r));
     items
 }
 
-/// *Edit Router*: name, admin state and, with a gateway, SNAT.
-fn edit_router_item(lang: Lang, r: &RouterRow) -> MenuItem {
+/// *Edit Router*: name, admin state and, with a gateway, SNAT. Admin's
+/// (`admin`, roadmap 89) adds Horizon's *Router Type* and *High Availability*
+/// where Neutron has `dvr` / `l3-ha` and shows the router's current value.
+fn edit_router_item(lang: Lang, r: &RouterRow, admin: bool) -> MenuItem {
     let (i, n, up) = (r.id.clone(), r.name.clone(), r.admin_up);
     // SNAT is part of the gateway: only with one, and when the token's roles
     // may change it.
     let gw = r.external_network_id.clone().filter(|_| needs::SNAT.met(&caps()));
     let snat = r.snat.unwrap_or(true);
+    let dvr = r.distributed.filter(|_| admin && needs::DVR.met(&caps()));
+    let ha = r.ha.filter(|_| admin && needs::L3_HA.met(&caps()));
     MenuItem::dialog(t(lang, K::EditRouter), move || {
         let (i, gw) = (i.clone(), gw.clone());
         let mut fields =
@@ -1993,10 +2009,44 @@ fn edit_router_item(lang: Lang, r: &RouterRow) -> MenuItem {
         if gw.is_some() {
             fields.push(Field::check("snat", t(lang, K::EnableSnat), snat));
         }
+        let down_help = t(lang, K::RouterChangeWhileDown);
+        if let Some(d) = dvr {
+            let kinds = options(&[("distributed", K::Distributed), ("centralized", K::Centralized)], lang);
+            fields.push(Field::select("mode", t(lang, K::RouterType), kinds).value(if d { "distributed" } else { "centralized" }).help(down_help));
+        }
+        if let Some(h) = ha {
+            fields.push(Field::check("ha", t(lang, K::HighAvailability), h).help(down_help));
+        }
+        // What differs from the router: `None` = unchanged (or not offered).
+        let changes = move |v: &Vals| {
+            let is = |k: &str, want: &str| v.get(k).is_some_and(|x| x.trim() == want);
+            (
+                dvr.map(|_| is("mode", "distributed")).filter(|now| Some(*now) != dvr),
+                ha.map(|_| is("ha", "true")).filter(|now| Some(*now) != ha),
+            )
+        };
         Dialog::form(t(lang, K::EditRouter), t(lang, K::Save), fields, move |v| {
             // Only a change goes in the request, so a rename leaves the gateway alone.
             let snat = gw.clone().map(|net| (net, v.flag("snat"))).filter(|(_, on)| *on != snat);
-            Ok(OsAction::RouterUpdate { id: i.clone(), name: v.get("name"), admin_up: v.flag("admin_up"), snat })
+            let (distributed, ha) = changes(&v.0);
+            Ok(OsAction::RouterUpdate { id: i.clone(), name: v.get("name"), admin_up: v.flag("admin_up"), snat, distributed, ha })
+        })
+        // Neutron refuses them on a router that is up ("set router admin_state_up
+        // to False prior to upgrade"), whatever this request sets.
+        .check(move |v, _| {
+            if !up {
+                return vec![];
+            }
+            let (d, h) = changes(v);
+            let msg = t(lang, K::RouterSetDownFirst).to_string();
+            let mut out = vec![];
+            if d.is_some() {
+                out.push(("mode", msg.clone()));
+            }
+            if h.is_some() {
+                out.push(("ha", msg));
+            }
+            out
         })
     })
 }
@@ -2011,7 +2061,7 @@ fn delete_router_item(lang: Lang, r: &RouterRow) -> MenuItem {
 /// Admin › Routers' row menu, Horizon's: *Edit Router* and *Delete Router*. No
 /// gateway or interface items: their subnets would be the session project's.
 pub fn admin_router_items(lang: Lang, r: &RouterRow) -> Vec<MenuItem> {
-    vec![edit_router_item(lang, r), delete_router_item(lang, r)]
+    vec![edit_router_item(lang, r, true), delete_router_item(lang, r)]
 }
 
 /// Admin › Routers' *Create Router* (roadmap 85), Horizon's admin form: the
@@ -2301,28 +2351,49 @@ fn num_req(v: &Values, k: &str, label: K, lang: Lang) -> Result<i64, String> {
 /// Admin › Flavors' *Create Flavor*, Horizon's two steps: *Flavor Information*
 /// and *Flavor Access* (projects picked there make the flavor private).
 pub fn create_flavor_dialog(lang: Lang) -> Dialog {
+    flavor_form(lang, None)
+}
+
+/// *Edit Flavor* (`[admin] flavor_edit`, roadmap 89), Horizon's `UpdateFlavor`:
+/// the same steps, prefilled, without the ID; saving deletes the flavor and
+/// creates it again with the same ID, extra specs and access.
+fn edit_flavor_dialog(lang: Lang, f: &FlavorRow) -> Dialog {
+    flavor_form(lang, Some(f))
+}
+
+/// *Create Flavor*, or with `old` its *Edit Flavor*.
+fn flavor_form(lang: Lang, old: Option<&FlavorRow>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    let fields = vec![
-        Field::text("name", tr(K::Name)).required(),
+    let num = |n: i64| n.to_string();
+    let mut fields = vec![
+        Field::text("name", tr(K::Name)).value(old.map(|f| f.name.clone()).unwrap_or_default()).required(),
         Field::text("flavor_id", tr(K::FlavorId)).value("auto").help(tr(K::FlavorIdHelp)),
         // Sizes are a few digits each: three a line, two lines (the user found
         // eight full-width one-liners too long a step).
-        Field::number("vcpus", tr(K::Vcpus), 1).required().short(),
-        Field::number("ram", tr(K::RamMb), 1).required().short(),
-        Field::number("disk", tr(K::RootDiskGb), 0).value("0").required().short(),
-        Field::number("ephemeral", tr(K::EphemeralDiskGb), 0).value("0").short(),
-        Field::number("swap", tr(K::SwapDiskMb), 0).value("0").short(),
-        Field::text("rxtx", tr(K::RxtxFactor)).value("1.0").short(),
-        Field::multi("projects", tr(K::Projects), Source::Set(ChoiceSet::AllProjects)),
+        Field::number("vcpus", tr(K::Vcpus), 1).value(old.map(|f| num(f.vcpus)).unwrap_or_default()).required().short(),
+        Field::number("ram", tr(K::RamMb), 1).value(old.map(|f| num(f.ram_mb)).unwrap_or_default()).required().short(),
+        Field::number("disk", tr(K::RootDiskGb), 0).value(old.map_or("0".into(), |f| num(f.disk_gb))).required().short(),
+        Field::number("ephemeral", tr(K::EphemeralDiskGb), 0).value(old.map_or("0".into(), |f| num(f.ephemeral_gb))).short(),
+        Field::number("swap", tr(K::SwapDiskMb), 0).value(old.map_or("0".into(), |f| num(f.swap_mb))).short(),
+        Field::text("rxtx", tr(K::RxtxFactor)).value(old.and_then(|f| f.rxtx_factor).map_or("1.0".into(), |r| r.to_string())).short(),
+        Field::multi("projects", tr(K::Projects), Source::Set(ChoiceSet::AllProjects))
+            .value(old.map(|f| f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().join(",")).unwrap_or_default()),
     ];
-    Dialog::form(tr(K::CreateFlavor), tr(K::CreateFlavor), fields, move |v| {
+    // The ID stays: Horizon's edit has no ID field.
+    let kept = old.map(|f| (f.id.clone(), f.extra_specs.clone()));
+    if kept.is_some() {
+        fields.retain(|f| f.name != "flavor_id");
+    }
+    let info: &[&'static str] = if kept.is_some() { &["name", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"] } else { &["name", "flavor_id", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"] };
+    let (title, submit) = if kept.is_some() { (tr(K::EditFlavor), tr(K::Save)) } else { (tr(K::CreateFlavor), tr(K::CreateFlavor)) };
+    let mut d = Dialog::form(title, submit, fields, move |v| {
         let rxtx_factor = match v.opt("rxtx") {
             None => None,
             Some(x) => Some(x.parse::<f64>().ok().filter(|f| *f > 0.0).ok_or_else(|| format!("{}: ?", t(lang, K::RxtxFactor)))?),
         };
-        Ok(OsAction::FlavorCreate(Box::new(FlavorSpec {
+        let spec = FlavorSpec {
             name: req(v, "name", K::Name, lang)?,
-            flavor_id: v.opt("flavor_id"),
+            flavor_id: kept.as_ref().map(|(id, _)| id.clone()).or_else(|| v.opt("flavor_id")),
             vcpus: num_req(v, "vcpus", K::Vcpus, lang)?,
             ram_mb: num_req(v, "ram", K::RamMb, lang)?,
             disk_gb: num_req(v, "disk", K::RootDiskGb, lang)?,
@@ -2330,23 +2401,43 @@ pub fn create_flavor_dialog(lang: Lang) -> Dialog {
             swap_mb: v.num("swap").map_err(|_| format!("{}: ?", t(lang, K::SwapDiskMb)))?.unwrap_or(0),
             rxtx_factor,
             projects: v.list("projects"),
-        })))
+        };
+        Ok(match &kept {
+            Some((_, extra_specs)) => OsAction::FlavorReplace { spec: Box::new(spec), extra_specs: extra_specs.clone() },
+            None => OsAction::FlavorCreate(Box::new(spec)),
+        })
     })
     .wizard(vec![
-        Step::new(tr(K::FlavorInfo), &["name", "flavor_id", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"]).help(tr(K::FlavorInfoHelp)),
+        Step::new(tr(K::FlavorInfo), info).help(tr(K::FlavorInfoHelp)),
         Step::new(tr(K::FlavorAccessStep), &["projects"]).help(tr(K::FlavorAccessHelp)),
-    ])
+    ]);
+    if let Some(f) = old {
+        d.intro = vec![f.id.clone(), tr(K::EditFlavorRecreates)];
+    }
+    d
 }
 
 /// Admin › Flavors' row menu, Horizon's: *Update Metadata* (extra specs),
 /// *Modify Access* (private flavors: Nova can't change `is_public`) and
 /// *Delete Flavor*.
 pub fn admin_flavor_items(lang: Lang, f: &FlavorRow) -> Vec<MenuItem> {
+    // Tracked: the settings arrive after a server-rendered table has built its menus.
+    admin_flavor_menu(lang, f, crate::components::dialog::prefs_tracked().admin.flavor_edit)
+}
+
+/// [`admin_flavor_items`], with *Edit Flavor* first when `edit` (`[admin]
+/// flavor_edit`, Horizon's `ENABLE_FLAVOR_EDIT`).
+fn admin_flavor_menu(lang: Lang, f: &FlavorRow, edit: bool) -> Vec<MenuItem> {
+    let mut items = Vec::new();
+    if edit {
+        let row = f.clone();
+        items.push(MenuItem::dialog(t(lang, K::EditFlavor), move || edit_flavor_dialog(lang, &row)));
+    }
     let i = f.id.clone();
-    let mut items = vec![metadata_item(lang, "OS::Nova::Flavor", &f.extra_specs, move |new, old| {
+    items.push(metadata_item(lang, "OS::Nova::Flavor", &f.extra_specs, move |new, old| {
         let (set, unset) = metadata_changes(old, &new);
         OsAction::FlavorSetExtraSpecs { id: i.clone(), set, unset }
-    })];
+    }));
     if !f.public {
         let (i, current) = (f.id.clone(), f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>());
         items.push(MenuItem::dialog(t(lang, K::ModifyAccess), move || {
@@ -2744,21 +2835,31 @@ pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
         d.intro = vec![ns.clone()];
         d
     })];
-    let (ns, current) = (n.namespace.clone(), n.resource_types.clone());
+    let (ns, current, old_prefixes) = (n.namespace.clone(), n.resource_types.clone(), n.prefixes.clone());
     items.push(MenuItem::dialog(t(lang, K::UpdateAssociations), move || {
-        let (id, current) = (ns.clone(), current.clone());
+        let (id, current, old) = (ns.clone(), current.clone(), old_prefixes.clone());
         let mut d = Dialog::form(
             t(lang, K::UpdateAssociations),
             t(lang, K::Save),
-            vec![Field::multi("types", t(lang, K::ResourceTypes), Source::Set(ChoiceSet::MetadefResourceTypes)).value(current.join(","))],
+            vec![
+                Field::multi("types", t(lang, K::ResourceTypes), Source::Set(ChoiceSet::MetadefResourceTypes)).value(current.join(",")),
+                // Horizon's per-type *Prefix* (roadmap 89): resource type → prefix.
+                Field::key_values("prefixes", t(lang, K::Prefixes), &old).help(t(lang, K::PrefixesHelp)),
+            ],
             move |v| {
-                let new = v.list("types");
-                let add_type_ids: Vec<String> = new.iter().filter(|x| !current.contains(x)).cloned().collect();
-                let remove_type_ids: Vec<String> = current.iter().filter(|x| !new.contains(x)).cloned().collect();
+                let (new, prefixes) = (v.list("types"), v.pairs("prefixes"));
+                let prefix_of = |list: &[(String, String)], ty: &str| list.iter().find(|(t, _)| t == ty).map(|(_, p)| p.trim().to_string()).unwrap_or_default();
+                if let Some((ty, _)) = prefixes.iter().find(|(ty, _)| !new.contains(ty)) {
+                    return Err(format!("{}: {ty}", t(lang, K::PrefixNotAssociated)));
+                }
+                // A kept type whose prefix changed is removed and added again.
+                let changed = |ty: &&String| current.contains(ty) && prefix_of(&prefixes, ty) != prefix_of(&old, ty);
+                let add_type_ids: Vec<String> = new.iter().filter(|x| !current.contains(x) || changed(x)).cloned().collect();
+                let remove_type_ids: Vec<String> = current.iter().filter(|x| !new.contains(x) || changed(x)).cloned().collect();
                 if add_type_ids.is_empty() && remove_type_ids.is_empty() {
                     return Err(t(lang, K::NothingChanged).to_string());
                 }
-                Ok(OsAction::MetadefNamespaceSetTypes { id: id.clone(), add_type_ids, remove_type_ids })
+                Ok(OsAction::MetadefNamespaceSetTypes { id: id.clone(), add_type_ids, remove_type_ids, prefixes })
             },
         );
         d.intro = vec![ns.clone()];
@@ -4668,7 +4769,7 @@ mod tests {
     fn create_image_offers_file_only_when_uploads_are_enabled() {
         use crate::prefs::{ImagePrefs, ImageUpload};
         let with = |upload, url: bool| ImagePrefs { upload, allow_location: url, ..Default::default() };
-        let d = |p: &ImagePrefs, web_download| create_image_form(Lang::EnUs, p, false, web_download);
+        let d = |p: &ImagePrefs, web_download| create_image_form(Lang::EnUs, p, false, web_download, false);
         assert_eq!(source_values(&d(&with(ImageUpload::Off, false), true)), ["none"], "nothing changes until an operator enables it");
         assert_eq!(source_values(&d(&with(ImageUpload::Proxy, false), true)), ["file", "none"]);
         assert_eq!(source_values(&d(&with(ImageUpload::Direct, true), true)), ["url", "file", "none"]);
@@ -4677,7 +4778,7 @@ mod tests {
 
     #[test]
     fn create_image_catalog_leaves_out_the_keys_with_their_own_fields() {
-        let d = create_image_form(Lang::EnUs, &Default::default(), false, true);
+        let d = create_image_form(Lang::EnUs, &Default::default(), false, true, false);
         let meta = d.fields.iter().find(|f| f.name == "metadata").unwrap();
         assert_eq!(meta.catalog, Some("OS::Glance::Image"));
         for key in ["description", "architecture", "kernel_id", "ramdisk_id"] {
@@ -4686,8 +4787,24 @@ mod tests {
     }
 
     #[test]
+    fn admin_create_image_picks_the_owner() {
+        let names = |d: &Dialog| d.fields.iter().map(|f| f.name).take(3).collect::<Vec<_>>();
+        assert_eq!(names(&create_image_form(Lang::EnUs, &Default::default(), false, true, false)), ["name", "description", "source"]);
+        let d = create_image_form(Lang::EnUs, &Default::default(), true, true, true);
+        assert_eq!(names(&d), ["name", "description", "owner"], "roadmap 89");
+        assert!(d.steps[0].fields.contains(&"owner"), "on the details step");
+        let base = [("name", "deb"), ("source", "none"), ("disk_format", "qcow2"), ("visibility", "private")];
+        let build = |extra: &[(&str, &str)]| {
+            let all: Vec<(&str, &str)> = base.iter().chain(extra).copied().collect();
+            (d.build)(&vals(&all)).unwrap()
+        };
+        assert!(matches!(build(&[("owner", "p9")]), OsAction::ImageCreate(s) if s.owner.as_deref() == Some("p9")));
+        assert!(matches!(build(&[("owner", "")]), OsAction::ImageCreate(s) if s.owner.is_none()), "empty: the session's project");
+    }
+
+    #[test]
     fn create_image_is_a_wizard_with_metadata_on_its_own_step() {
-        let d = create_image_form(Lang::EnUs, &Default::default(), false, true);
+        let d = create_image_form(Lang::EnUs, &Default::default(), false, true, false);
         assert_eq!(d.steps.len(), 2);
         assert_eq!(d.steps[1].fields, ["metadata"], "metadata is the second step");
         let mut in_steps: Vec<_> = d.steps.iter().flat_map(|s| s.fields.clone()).collect();
@@ -4703,7 +4820,7 @@ mod tests {
     fn create_image_from_a_file_carries_its_size_and_respects_the_limit() {
         use crate::prefs::{ImagePrefs, ImageUpload};
         let prefs = ImagePrefs { upload: ImageUpload::Proxy, max_upload_gb: 1, ..Default::default() };
-        let d = create_image_form(Lang::EnUs, &prefs, false, true);
+        let d = create_image_form(Lang::EnUs, &prefs, false, true, false);
         let picked = |size: u64| Picked { name: "debian.qcow2".into(), size }.encode();
         let base = |file: &str| {
             vec![("name", "Debian".to_string()), ("source", "file".into()), ("file", file.to_string()), ("disk_format", "qcow2".into()), ("visibility", "private".into()), ("min_disk", "0".into()), ("min_ram", "0".into())]
@@ -5326,6 +5443,26 @@ mod tests {
     }
 
     #[test]
+    fn edit_flavor_only_when_enabled_and_recreates_with_the_same_id() {
+        let f = FlavorRow {
+            id: "f1".into(), name: "m1".into(), vcpus: 2, ram_mb: 2048, disk_gb: 20, ephemeral_gb: 0, swap_mb: 0, rxtx_factor: None, public: false,
+            extra_specs: vec![("hw:cpu_policy".into(), "dedicated".into())], access: vec![("p1".into(), "One".into())],
+        };
+        let labels = |edit| admin_flavor_menu(Lang::EnUs, &f, edit).into_iter().map(|i| i.label).collect::<Vec<_>>();
+        assert_eq!(labels(false), ["Update Metadata", "Modify Access", "Delete Flavor"], "off by default, as Horizon's ENABLE_FLAVOR_EDIT");
+        assert_eq!(labels(true)[0], "Edit Flavor");
+        let d = dialog_of(&admin_flavor_menu(Lang::EnUs, &f, true), "Edit Flavor");
+        let field = |n: &str| d.fields.iter().find(|x| x.name == n).map(|x| x.default.clone());
+        assert_eq!((field("name"), field("vcpus"), field("ram"), field("projects")), (Some("m1".into()), Some("2".into()), Some("2048".into()), Some("p1".into())));
+        assert!(field("flavor_id").is_none(), "the ID stays");
+        assert!(!d.steps[0].fields.contains(&"flavor_id"));
+        let v = vals(&[("name", "m1"), ("vcpus", "4"), ("ram", "4096"), ("disk", "20"), ("ephemeral", "0"), ("swap", "0"), ("rxtx", "1.0"), ("projects", "p1")]);
+        let OsAction::FlavorReplace { spec, extra_specs } = (d.build)(&v).unwrap() else { panic!() };
+        assert_eq!((spec.flavor_id.as_deref(), spec.vcpus, spec.projects.clone()), (Some("f1"), 4, vec!["p1".to_string()]));
+        assert_eq!(extra_specs, f.extra_specs, "the extra specs come back");
+    }
+
+    #[test]
     fn admin_instance_menu_adds_migrations_and_drops_project_pickers() {
         let labels = |status: &str| admin_instance_items(Lang::EnUs, &instance(status, false), Some("c1")).into_iter().map(|i| i.label).collect::<Vec<_>>();
         let active = labels("ACTIVE");
@@ -5405,13 +5542,23 @@ mod tests {
 
     #[test]
     fn metadef_menu_hides_delete_when_protected_and_sends_association_changes() {
-        let n = MetadefNamespace { namespace: "OS::Acme::Gpu".into(), name: "GPU".into(), description: None, resource_types: vec!["OS::Glance::Image".into()], public: true, protected: false };
+        let n = MetadefNamespace { namespace: "OS::Acme::Gpu".into(), name: "GPU".into(), description: None, resource_types: vec!["OS::Glance::Image".into()], public: true, protected: false, prefixes: vec![] };
         let items = metadef_items(Lang::EnUs, &n);
         assert_eq!(items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), ["Edit Namespace", "Update Associations", "Delete Namespace"]);
         assert_eq!(metadef_items(Lang::EnUs, &MetadefNamespace { protected: true, ..n.clone() }).len(), 2, "Glance refuses deleting a protected namespace");
         let d = dialog_of(&items, "Update Associations");
         assert_eq!((d.build)(&vals(&[("types", "OS::Nova::Flavor")])).unwrap(),
-            OsAction::MetadefNamespaceSetTypes { id: "OS::Acme::Gpu".into(), add_type_ids: vec!["OS::Nova::Flavor".into()], remove_type_ids: vec!["OS::Glance::Image".into()] });
+            OsAction::MetadefNamespaceSetTypes { id: "OS::Acme::Gpu".into(), add_type_ids: vec!["OS::Nova::Flavor".into()], remove_type_ids: vec!["OS::Glance::Image".into()], prefixes: vec![] });
+        // Prefixes (roadmap 89): prefilled, a change re-adds the association, and one
+        // for a type that isn't ticked is refused.
+        let with = MetadefNamespace { prefixes: vec![("OS::Glance::Image".into(), "hw_".into())], ..n.clone() };
+        let d = dialog_of(&metadef_items(Lang::EnUs, &with), "Update Associations");
+        assert_eq!(d.fields[1].default, r#"[["OS::Glance::Image","hw_"]]"#);
+        let img = || vec!["OS::Glance::Image".to_string()];
+        assert!((d.build)(&vals(&[("types", "OS::Glance::Image"), ("prefixes", r#"[["OS::Glance::Image","hw_"]]"#)])).is_err(), "nothing changed");
+        assert_eq!((d.build)(&vals(&[("types", "OS::Glance::Image"), ("prefixes", r#"[["OS::Glance::Image","gpu_"]]"#)])).unwrap(),
+            OsAction::MetadefNamespaceSetTypes { id: "OS::Acme::Gpu".into(), add_type_ids: img(), remove_type_ids: img(), prefixes: vec![("OS::Glance::Image".into(), "gpu_".into())] });
+        assert!((d.build)(&vals(&[("types", "OS::Glance::Image"), ("prefixes", r#"[["OS::Nova::Flavor","hw:"]]"#)])).is_err(), "not associated");
         let d = dialog_of(&items, "Edit Namespace");
         assert_eq!(d.fields[0].default, "GPU", "the display name, not the namespace");
         assert!((import_namespace_dialog(Lang::EnUs).build)(&vals(&[("definition", "{oops")])).is_err(), "JSON checked in the dialog");
@@ -5489,10 +5636,41 @@ mod tests {
             snat: Some(true),
             admin_up: true,
             availability_zones: vec![],
+            distributed: None,
+            ha: None,
         };
         let labels = |items: Vec<MenuItem>| items.into_iter().map(|i| i.label).collect::<Vec<_>>();
         assert_eq!(labels(admin_router_items(Lang::EnUs, &r)), ["Edit Router", "Delete Router"], "no gateway or interface items: their choices are the session project's");
         assert_eq!(labels(router_items(Lang::EnUs, &r)), ["Clear Gateway", "Edit Router", "Add Interface", "Delete Router"], "Project's menu unchanged");
+    }
+
+    #[test]
+    fn admin_edit_router_changes_type_and_ha_only_while_down() {
+        let r = |up: bool| RouterRow {
+            id: "r1".into(),
+            name: "edge".into(),
+            status: "ACTIVE".into(),
+            external_network: None,
+            external_network_id: None,
+            snat: None,
+            admin_up: up,
+            availability_zones: vec![],
+            distributed: Some(false),
+            ha: Some(true),
+        };
+        let names = |d: &Dialog| d.fields.iter().map(|f| f.name).collect::<Vec<_>>();
+        assert_eq!(names(&dialog_of(&router_items(Lang::EnUs, &r(true)), "Edit Router")), ["name", "admin_up"], "Project's has neither");
+        let d = dialog_of(&admin_router_items(Lang::EnUs, &r(true)), "Edit Router");
+        assert_eq!(names(&d), ["name", "admin_up", "mode", "ha"]);
+        let v = |mode: &str, ha: &str| vals(&[("name", "edge"), ("admin_up", "false"), ("mode", mode), ("ha", ha)]).0;
+        let check = d.check.clone().unwrap();
+        assert!(check(&v("centralized", "true"), &Sets::default()).is_empty(), "nothing changed: fine while up");
+        let errs = check(&v("distributed", "false"), &Sets::default());
+        assert_eq!(errs.iter().map(|e| e.0).collect::<Vec<_>>(), ["mode", "ha"], "the router is up, whatever the form says");
+        let down = dialog_of(&admin_router_items(Lang::EnUs, &r(false)), "Edit Router");
+        assert!(down.check.clone().unwrap()(&v("distributed", "false"), &Sets::default()).is_empty());
+        let a = (down.build)(&Values(v("distributed", "true"))).unwrap();
+        assert!(matches!(a, OsAction::RouterUpdate { distributed: Some(true), ha: None, .. }), "only what changed: {a:?}");
     }
 
     #[test]

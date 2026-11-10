@@ -153,6 +153,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("rbac_policies") view=AdminRbacPoliciesPage/>
                         <Route path=path!("defaults") view=DefaultQuotasPage/>
                         <Route path=path!("metadata_defs") view=MetadefsPage/>
+                        <Route path=path!("metadata_defs/:id") view=MetadefDetailPage/>
                         <Route path=path!("info") view=SystemInfoPage/>
                     </ParentRoute>
                     // Horizon's Identity dashboard (roadmap 57); `/identity` opens Projects like Horizon's.

@@ -203,6 +203,15 @@ type = "auto"
 # Lines the Log tab shows first. (INSTANCE_LOG_LENGTH)
 log_length = 35
 
+[admin]
+# Admin > Flavors' Edit Flavor: Nova can't change a flavor, so saving deletes it and creates it
+# again with the same ID, extra specs and access. (ENABLE_FLAVOR_EDIT)
+flavor_edit = false
+# Paged Admin lists that stay empty, without asking the cloud, until a filter is given: any of
+# instances, volumes, snapshots, floating_ips, networks, routers, trunks, images,
+# volume_groups, group_snapshots. Only while [ui] page_size pages them. (FILTER_DATA_FIRST)
+filter_first = []
+
 [api_access]
 # Entry name and vendor profile in the downloaded clouds.yaml.
 # (OPENSTACK_CLOUDS_YAML_NAME, OPENSTACK_CLOUDS_YAML_PROFILE)

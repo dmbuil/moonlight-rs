@@ -615,6 +615,12 @@ pub fn prefs() -> crate::prefs::Prefs {
     use_context::<Dialogs>().map(|d| d.prefs.get_untracked()).unwrap_or_default()
 }
 
+/// [`prefs`], tracked: for what a page builds before the session info loads
+/// (a server-rendered table's row menus) and must rebuild once it has.
+pub fn prefs_tracked() -> crate::prefs::Prefs {
+    use_context::<Dialogs>().map(|d| d.prefs.get()).unwrap_or_default()
+}
+
 /// Tracks the data version: put it in a `Resource` source to refetch after writes.
 pub fn data_version() -> u64 {
     use_context::<Dialogs>().map(|d| d.version.get()).unwrap_or(0)

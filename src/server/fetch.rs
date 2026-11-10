@@ -1960,7 +1960,7 @@ pub async fn admin_instances_page(os: &AsyncOpenStack, q: &ListQuery, page_size:
     let im = images_by_ids(os, mapping::image_ids(&sv)).await;
     let rows = mapping::instances_page(&sv, &soft(im));
     let rows = mapping::owned(rows, |i| &i.id, &sv, "tenant_id", Some("OS-EXT-SRV-ATTR:host"), &names);
-    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Most volumes one [`boot_images`] call reads. The page sends its IDs in
@@ -2004,7 +2004,7 @@ pub async fn admin_volumes_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u
     let (page, names) = tokio::join!(page_raw(os, PagedList::Volumes, None, q, page_size, volume_mv), project_names(os, &[]));
     let RawPage { rows: vo, next, count } = page?;
     let rows = mapping::owned(mapping::volumes_page(&vo, &[]), |v| &v.id, &vo, "os-vol-tenant-attr:tenant_id", Some("os-vol-host-attr:host"), &names);
-    Ok(timed(t, Page { rows, next, count, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Volume › Snapshots, one page (roadmap 88). Each snapshot's volume, and
@@ -2015,7 +2015,7 @@ pub async fn admin_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page_size:
     let (page, names) = tokio::join!(page_raw(os, PagedList::Snapshots, None, q, page_size, volume_mv), project_names(os, &[]));
     let RawPage { rows: sn, next, count } = page?;
     let rows = mapping::owned(mapping::snapshots_page(&sn, &[]), |s| &s.id, &sn, "os-extended-snapshot-attributes:project_id", None, &names);
-    Ok(timed(t, Page { rows, next, count, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Network › Floating IPs, one page (roadmap 88): the page, its pools in
@@ -2027,7 +2027,7 @@ pub async fn admin_floating_ips_page(os: &AsyncOpenStack, q: &ListQuery, page_si
     let RawPage { rows: fi, next, .. } = page?;
     let ne = networks_by_ids(os, mapping::pool_ids(&fi)).await;
     let rows = mapping::owned(mapping::floating_ips_page(&fi, &soft(ne), &[]), |f| &f.id, &fi, "project_id", None, &names);
-    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Network › Networks, one page (roadmap 88): the page, its subnets
@@ -2048,7 +2048,7 @@ pub async fn admin_networks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: 
             r.dhcp_agents = Some(counts.get(&r.id).copied().unwrap_or(0));
         }
     }
-    Ok(timed(t, Page { rows: mapping::owned(rows, |n| &n.id, &ne, "project_id", None, &names), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::owned(rows, |n| &n.id, &ne, "project_id", None, &names), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Network › Routers, one page (roadmap 88): the page, its external
@@ -2059,7 +2059,7 @@ pub async fn admin_routers_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u
     let RawPage { rows: ro, next, .. } = page?;
     let ne = networks_by_ids(os, mapping::gateway_ids(&ro)).await;
     let rows = mapping::owned(mapping::routers_page(&ro, &soft(ne)), |r| &r.id, &ro, "project_id", None, &names);
-    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Network › Trunks, one page (roadmap 88): the page, its parent and
@@ -2071,7 +2071,7 @@ pub async fn admin_trunks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u3
     let RawPage { rows: tr, next, .. } = page?;
     let po = neutron_where(os, "ports", "id", mapping::trunk_port_ids(&tr), &["id", "name"]).await;
     let rows = mapping::owned(mapping::trunks_page(&tr, &soft(po)), |r| &r.id, &tr, "project_id", None, &names);
-    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Compute › Images, one page (roadmap 88): the page and the project names.
@@ -2080,7 +2080,7 @@ pub async fn admin_images_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u3
     let (page, names) = tokio::join!(page_raw(os, PagedList::Images, None, q, page_size, None), project_names(os, &[]));
     let RawPage { rows: im, next, .. } = page?;
     let rows = mapping::owned(mapping::images_page(&im, "", &names), |i| &i.id, &im, "owner", None, &names);
-    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows, next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Volume › Groups, one page (roadmap 88). Group and volume types stay
@@ -2098,7 +2098,7 @@ pub async fn admin_volume_groups_page(os: &AsyncOpenStack, q: &ListQuery, page_s
     );
     let RawPage { rows: g, next, .. } = page?;
     let rows = mapping::volume_groups_page(&g, &soft(gt), &soft(vt), &soft(gs));
-    Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &g, "project_id", None, &names), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &g, "project_id", None, &names), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Volume › Group Snapshots, one page (roadmap 88): the page, the groups
@@ -2121,7 +2121,7 @@ pub async fn admin_group_snapshots_page(os: &AsyncOpenStack, q: &ListQuery, page
     }
     let groups: Vec<Value> = tasks.join_all().await.into_iter().flatten().collect();
     let rows = mapping::group_snapshots_page(&gs, &groups, &soft(gt));
-    Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &gs, "project_id", None, &names), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::owned(rows, |r| &r.id, &gs, "project_id", None, &names), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 // --- Paged Project panels (roadmap 88, slice E: `[ui] paged_lists = "all"`) ---------
@@ -2139,7 +2139,7 @@ pub async fn instances_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery
     let t = Instant::now();
     let RawPage { rows: sv, next, .. } = page_raw(os, PagedList::Instances, Some(project_id), q, page_size, None).await?;
     let im = images_by_ids(os, mapping::image_ids(&sv)).await;
-    Ok(timed(t, Page { rows: mapping::instances_page(&sv, &soft(im)), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::instances_page(&sv, &soft(im)), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Project › Volumes › Volumes, one page, with Cinder's total at volume 3.45. The
@@ -2148,7 +2148,7 @@ pub async fn instances_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery
 pub async fn volumes_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32, volume_mv: Option<(u16, u16)>) -> R<Timed<Page<Volume>>> {
     let t = Instant::now();
     let RawPage { rows: vo, next, count } = page_raw(os, PagedList::Volumes, Some(project_id), q, page_size, volume_mv).await?;
-    Ok(timed(t, Page { rows: mapping::volumes_page(&vo, &[]), next, count, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::volumes_page(&vo, &[]), next, count, paged: true, page_size, needs_filter: false }))
 }
 
 /// Project › Volumes › Snapshots, one page; each snapshot's volume is named
@@ -2156,7 +2156,7 @@ pub async fn volumes_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, 
 pub async fn snapshots_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, page_size: u32, volume_mv: Option<(u16, u16)>) -> R<Timed<Page<Snapshot>>> {
     let t = Instant::now();
     let RawPage { rows: sn, next, count } = page_raw(os, PagedList::Snapshots, Some(project_id), q, page_size, volume_mv).await?;
-    Ok(timed(t, Page { rows: mapping::snapshots_page(&sn, &[]), next, count, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::snapshots_page(&sn, &[]), next, count, paged: true, page_size, needs_filter: false }))
 }
 
 /// Project › Network › Floating IPs, one page: the project's (`project_id`), their
@@ -2165,7 +2165,7 @@ pub async fn floating_ips_page(os: &AsyncOpenStack, project_id: &str, q: &ListQu
     let t = Instant::now();
     let RawPage { rows: fi, next, .. } = page_raw(os, PagedList::FloatingIps, Some(project_id), q, page_size, None).await?;
     let ne = networks_by_ids(os, mapping::pool_ids(&fi)).await;
-    Ok(timed(t, Page { rows: mapping::floating_ips_page(&fi, &soft(ne), &[]), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::floating_ips_page(&fi, &soft(ne), &[]), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Project › Network › Routers, one page: the project's, and their external
@@ -2174,7 +2174,7 @@ pub async fn routers_page(os: &AsyncOpenStack, project_id: &str, q: &ListQuery, 
     let t = Instant::now();
     let RawPage { rows: ro, next, .. } = page_raw(os, PagedList::Routers, Some(project_id), q, page_size, None).await?;
     let ne = networks_by_ids(os, mapping::gateway_ids(&ro)).await;
-    Ok(timed(t, Page { rows: mapping::routers_page(&ro, &soft(ne)), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::routers_page(&ro, &soft(ne)), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Project › Compute › Images, one page of the images the token may see (the
@@ -2184,7 +2184,7 @@ pub async fn images_page(os: &AsyncOpenStack, project_id: &str, mine: &[ProjectR
     let t = Instant::now();
     let (page, names) = tokio::join!(page_raw(os, PagedList::Images, Some(project_id), q, page_size, None), project_names(os, mine));
     let RawPage { rows: im, next, .. } = page?;
-    Ok(timed(t, Page { rows: mapping::images_page(&im, project_id, &names), next, count: None, paged: true, page_size }))
+    Ok(timed(t, Page { rows: mapping::images_page(&im, project_id, &names), next, count: None, paged: true, page_size, needs_filter: false }))
 }
 
 /// Admin › Compute › Images: every image Glance shows an admin, with its owner.
@@ -2376,15 +2376,28 @@ pub async fn admin_rbac_policies(os: &AsyncOpenStack) -> R<Timed<Vec<RbacPolicyR
     let t = Instant::now();
     let (rb, ne, names) = tokio::join!(list_all!(os, openstack_sdk::api::network::v2::rbac_policy::list, "rbac-policies"), all_networks(os), project_names(os, &[]));
     let rb = rb?;
-    // QoS policies and security groups only when some policy shares one (most
-    // policies are networks'); unfiltered, so every project's.
+    // The other object types' lists only when some policy shares one (most
+    // policies are networks'); unfiltered, so every project's. Neutron's
+    // `object_type`s: `subnetpool` has no underscore (roadmap 89).
     let uses = |ty: &str| rb.iter().any(|r| r.get("object_type").and_then(Value::as_str) == Some(ty));
-    let (qos, sg) = tokio::join!(
-        async { if uses("qos_policy") { soft(list_all!(os, openstack_sdk::api::network::v2::qos::policy::list, "qos/policies (all)").await) } else { vec![] } },
-        async { if uses("security_group") { soft(list_all!(os, openstack_sdk::api::network::v2::security_group::list, "security-groups (all)").await) } else { vec![] } }
+    use openstack_sdk::api::network::v2 as net;
+    let (qos, sg, scopes, pools, groups) = tokio::join!(
+        async { if uses("qos_policy") { soft(list_all!(os, net::qos::policy::list, "qos/policies (all)").await) } else { vec![] } },
+        async { if uses("security_group") { soft(list_all!(os, net::security_group::list, "security-groups (all)").await) } else { vec![] } },
+        async { if uses("address_scope") { soft(list_all!(os, net::address_scope::list, "address-scopes (all)").await) } else { vec![] } },
+        async { if uses("subnetpool") { soft(list_all!(os, net::subnetpool::list, "subnetpools (all)").await) } else { vec![] } },
+        async { if uses("address_group") { soft(list_all!(os, net::address_group::list, "address-groups (all)").await) } else { vec![] } }
     );
     let ne = soft(ne);
-    Ok(timed(t, mapping::rbac_policies(&rb, &[("network", &ne[..]), ("qos_policy", &qos[..]), ("security_group", &sg[..])], &names)))
+    let objects = [
+        ("network", &ne[..]),
+        ("qos_policy", &qos[..]),
+        ("security_group", &sg[..]),
+        ("address_scope", &scopes[..]),
+        ("subnetpool", &pools[..]),
+        ("address_group", &groups[..]),
+    ];
+    Ok(timed(t, mapping::rbac_policies(&rb, &objects, &names)))
 }
 
 /// Admin › System Information (roadmap 85): the catalog plus Nova's and
@@ -2510,6 +2523,26 @@ pub async fn metadef_namespaces(os: &AsyncOpenStack) -> R<Timed<Vec<MetadefNames
     Ok(timed(t, mapping::metadef_namespaces(&all)))
 }
 
+/// A namespace name that can go into a URL path as it is (`OS::Compute::Watchdog`):
+/// it is not encoded, so anything else is refused, as `check_id` does for IDs.
+fn plain_namespace(name: &str) -> bool {
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '.' | '-'))
+}
+
+/// Admin › Metadata Definitions › a namespace (roadmap 89): one GET of its
+/// whole definition (no `resource_type`, so the names come without a prefix).
+pub async fn metadef_namespace(os: &AsyncOpenStack, namespace: &str) -> R<Timed<MetadefNamespaceDetail>> {
+    use super::actions::JsonRequest;
+    let t = Instant::now();
+    if !plain_namespace(namespace) {
+        return Err(AppError::invalid("not a metadata namespace name"));
+    }
+    let req = JsonRequest::get(openstack_sdk::types::ServiceType::Image, format!("metadefs/namespaces/{namespace}"));
+    let v = get_json(os, req, "GET metadata definition").await?;
+    let d = mapping::metadef_namespace_detail(&v).ok_or_else(|| AppError::internal("the image service returned no namespace"))?;
+    Ok(timed(t, d))
+}
+
 /// The catalog's suggestions for *Update Metadata* (roadmap 25): the properties of every
 /// namespace associated with `resource_type`. One GET lists the namespaces, then one per
 /// namespace for its properties, [`FAN_OUT`] at a time (AGENTS.md §6). A namespace whose
@@ -2522,7 +2555,7 @@ pub async fn metadata_options(os: &AsyncOpenStack, resource_type: &str) -> R<Tim
     for name in list.iter().filter_map(|n| n.get("namespace").and_then(Value::as_str)) {
         // The name goes into the path unencoded: skip anything that isn't a plain
         // namespace (`OS::Compute::Watchdog`), as `check_id` does for IDs (roadmap 48).
-        if !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '.' | '-')) {
+        if !plain_namespace(name) {
             continue;
         }
         let (os, name, rt) = (os.clone(), name.to_string(), resource_type.to_string());

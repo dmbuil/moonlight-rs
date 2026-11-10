@@ -11,17 +11,17 @@
 
 use leptos::prelude::*;
 
-use super::details::{Card, Kv, Tabs};
+use super::details::{mono, param, Card, DetailHeader, Kv, Tabs};
 use crate::api::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, RowActions};
 use crate::components::ops;
-use crate::components::pager::{late_host, late_label, late_text, load_late, paged_table, use_list_query, with_server_keys, FilterBar, LateNames, Pager, PagerState};
+use crate::components::pager::{late_host, late_label, late_text, load_late, paged_table, use_list_query, with_server_keys, LateNames, Pager, PagerState};
 use crate::components::ops::quota_label;
 use crate::components::table::{available, col, Col, DataTable, Select, TimingChip};
-use crate::components::widgets::{age_cell_since, dash, render, ErrorBox, PageHeader, Pill, Skeleton, Tone, AzPill, AzPills, LockIcon};
+use crate::components::widgets::{age_cell_since, dash, render, short_time, ErrorBox, PageHeader, Pill, Skeleton, Tone, AzPill, AzPills, LockIcon};
 use crate::i18n::{t, use_i18n, Lang, K};
 use crate::pages::details::yes_no;
 use crate::pages::instances::{late_image_cell, load_boot_images, task_cell, BootImages, IpList};
@@ -159,7 +159,9 @@ pub fn SystemInfoPage() -> impl IntoView {
 
 fn usage_columns() -> Vec<Col<ProjectUsage>> {
     vec![
-        col(K::ProjectName, |p: &ProjectUsage, _| p.project.clone()).sort_text(|p| p.project.clone()),
+        // Horizon's "(Deleted)" after a project Keystone no longer has (roadmap 89).
+        col(K::ProjectName, |p: &ProjectUsage, l| if p.deleted { format!("{} {}", p.project, t(l, K::DeletedSuffix)) } else { p.project.clone() })
+            .sort_text(|p| p.project.clone()),
         col(K::Vcpus, |p: &ProjectUsage, _| p.vcpus().to_string()).sort_num(|p| p.vcpus()).class("num"),
         col(K::Disk, |p: &ProjectUsage, _| fmt_amount(p.local_gb(), QuotaUnit::Gib)).sort_num(|p| p.local_gb()).class("num"),
         col(K::Ram, |p: &ProjectUsage, _| fmt_amount(p.memory_mb(), QuotaUnit::Mib)).sort_num(|p| p.memory_mb()).class("num"),
@@ -300,7 +302,7 @@ pub fn AdminInstancesPage() -> impl IntoView {
                 let footer = view! { <Pager list=PagedList::Instances next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
                 view! {
                     <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()
-                        paged=true extra=view! { <FilterBar list=PagedList::Instances/> }.into_any() footer=footer server_sort=crate::components::pager::server_sort(PagedList::Instances)/>
+                        paged=true extra=crate::components::pager::filter_bar(PagedList::Instances, ListScope::Admin, page.needs_filter) footer=footer server_sort=crate::components::pager::server_sort(PagedList::Instances)/>
                 }.into_any()
             })}
         </Transition>
@@ -334,6 +336,7 @@ fn image_key(o: &Owned<Image>) -> Option<(String, String)> {
 /// and each row's *Edit Image*, *Update Metadata* and *Delete Image*.
 #[component]
 pub fn AdminImagesPage() -> impl IntoView {
+    let i18n = use_i18n();
     let query = use_list_query();
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_images(q));
     let columns = StoredValue::new(image_columns());
@@ -343,6 +346,8 @@ pub fn AdminImagesPage() -> impl IntoView {
         <PageHeader>
             <BulkButton label=K::DeleteImages picked=select.picked
                 open=Arc::new(move |l, items| ops::bulk_delete(l, K::DeleteImages, items, |id| OsAction::ImageDelete { id }))/>
+            <CreateButton label=Signal::derive(move || i18n.t(K::CreateImage).to_string())
+                open=Arc::new(move || ops::admin_create_image_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
             {move || render(data.get(), move |t| paged_table(t, PagedList::Images, ListScope::Admin, columns.get_value(), image_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
@@ -1233,8 +1238,8 @@ fn default_columns(service: QuotaService) -> Vec<Col<QuotaRow>> {
 
 /// Admin › System › Metadata Definitions: Glance's namespaces, with Horizon's
 /// *Import Namespace*, the bulk delete (unprotected ones) and each row's *Edit
-/// Namespace*, *Update Associations* and *Delete Namespace*. The namespace
-/// detail page (properties, objects) is not built.
+/// Namespace*, *Update Associations* and *Delete Namespace*. The name opens
+/// [`MetadefDetailPage`].
 #[component]
 pub fn MetadefsPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -1256,6 +1261,92 @@ pub fn MetadefsPage() -> impl IntoView {
     }
 }
 
+/// Admin › Metadata Definitions › a namespace (roadmap 89), Horizon's
+/// `/admin/metadata_defs/<namespace>/detail`: *Overview* (the namespace and the
+/// resource types it applies to) and *Contents* (its properties and objects,
+/// and the definition's JSON). The header has the row's menu.
+#[component]
+pub fn MetadefDetailPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let id = param("id");
+    let data = Resource::new(move || (id(), data_version()), |(id, _)| get_metadef_namespace(id));
+    let tab = RwSignal::new(0usize);
+    view! {
+        <Transition fallback=|| view! { <Skeleton rows=8/> }>
+            {move || render(data.get(), move |td| {
+                let d = StoredValue::new(td.data);
+                view! {
+                    <DetailHeader group=K::System panel=K::MetadataDefinitions href="/admin/metadata_defs"
+                        name=d.with_value(|d| d.namespace.name.clone()) timing=(td.millis, td.calls)
+                        items=Signal::derive(move || d.with_value(|d| ops::metadef_items(i18n.lang(), &d.namespace)))/>
+                    <Tabs labels=vec![K::Overview, K::Contents] active=tab/>
+                    {move || if tab.get() == 1 { d.with_value(|d| metadef_contents(d, i18n.lang())) } else { d.with_value(|d| metadef_overview(d, i18n.lang())) }}
+                }
+            })}
+        </Transition>
+    }
+}
+
+/// *Overview*: Horizon's fields, then the resource types with their prefix and target.
+fn metadef_overview(d: &MetadefNamespaceDetail, l: Lang) -> AnyView {
+    let n = d.namespace.clone();
+    let (created, updated) = (d.created_at.as_deref().map(short_time), d.updated_at.as_deref().map(short_time));
+    let associations = d.associations.clone();
+    let columns = vec![
+        col(K::Name, |a: &MetadefAssociation, _| mono(a.name.clone())).sort_text(|a| a.name.clone()),
+        col(K::Prefix, |a: &MetadefAssociation, _| a.prefix.clone().map_or_else(|| dash(None::<String>).into_any(), mono)),
+        col(K::PropertiesTarget, |a: &MetadefAssociation, _| dash(a.properties_target.clone())),
+    ];
+    view! {
+        <div class="cards">
+            <Card title=K::Information>
+                <Kv label=K::DisplayName>{n.name.clone()}</Kv>
+                <Kv label=K::Namespace>{mono(n.namespace.clone())}</Kv>
+                <Kv label=K::Description>{dash(n.description.clone())}</Kv>
+                <Kv label=K::Public>{yes_no(l, n.public)}</Kv>
+                <Kv label=K::Protected>{yes_no(l, n.protected)}</Kv>
+                <Kv label=K::Created>{dash(created)}</Kv>
+                <Kv label=K::Updated>{dash(updated)}</Kv>
+            </Card>
+        </div>
+        <h2 class="section-title">{t(l, K::ResourceTypes)}</h2>
+        <DataTable rows=associations columns=columns search=|a: &MetadefAssociation| a.name.clone()/>
+    }
+    .into_any()
+}
+
+/// *Contents*: the properties, the objects with their properties' names, and
+/// the definition's JSON (what Horizon's tab shows).
+fn metadef_contents(d: &MetadefNamespaceDetail, l: Lang) -> AnyView {
+    let props = vec![
+        col(K::Name, |p: &MetadefProperty, _| mono(p.name.clone())).sort_text(|p| p.name.to_lowercase()),
+        col(K::Title, |p: &MetadefProperty, _| dash(p.title.clone())).sort_text(|p| p.title.clone().unwrap_or_default()),
+        col(K::Type, |p: &MetadefProperty, _| mono(p.kind.clone())).sort_text(|p| p.kind.clone()),
+        col(K::DefaultValue, |p: &MetadefProperty, _| dash(p.default.clone())),
+        col(K::AllowedValues, |p: &MetadefProperty, _| dash((!p.allowed.is_empty()).then(|| p.allowed.join(", ")))),
+        col(K::Description, |p: &MetadefProperty, _| dash(p.description.clone())),
+    ];
+    let objects = vec![
+        col(K::Name, |o: &MetadefObject, _| o.name.clone()).sort_text(|o| o.name.to_lowercase()),
+        col(K::Description, |o: &MetadefObject, _| dash(o.description.clone())),
+        col(K::Properties, |o: &MetadefObject, _| dash((!o.properties.is_empty()).then(|| o.properties.join(", ")))),
+    ];
+    let (properties, objs, raw) = (d.properties.clone(), d.objects.clone(), d.raw.clone());
+    view! {
+        <h2 class="section-title">{t(l, K::Properties)}</h2>
+        <DataTable rows=properties columns=props
+            search=|p: &MetadefProperty| format!("{} {} {}", p.name, p.title.as_deref().unwrap_or(""), p.description.as_deref().unwrap_or(""))/>
+        <h2 class="section-title">{t(l, K::Objects)}</h2>
+        <DataTable rows=objs columns=objects
+            search=|o: &MetadefObject| format!("{} {} {}", o.name, o.description.as_deref().unwrap_or(""), o.properties.join(" "))/>
+        <details class="raw-schema">
+            <summary>{t(l, K::MetadefDefinition)}</summary>
+            <pre class="console-log">{raw}</pre>
+        </details>
+    }
+    .into_any()
+}
+
 /// Protected namespaces can't be picked for the bulk delete (Glance refuses).
 fn metadef_key(n: &MetadefNamespace) -> Option<(String, String)> {
     (!n.protected).then(|| (n.namespace.clone(), n.name.clone()))
@@ -1266,7 +1357,7 @@ fn metadef_columns() -> Vec<Col<MetadefNamespace>> {
         col(K::Name, |n: &MetadefNamespace, _| {
             // The namespace is what the APIs and `Update Metadata` use.
             let ns = (n.name != n.namespace).then(|| view! { <div class="muted mono small">{n.namespace.clone()}</div> });
-            view! { <span class="strong">{n.name.clone()}</span> {ns} }
+            view! { {link(format!("/admin/metadata_defs/{}", n.namespace), n.name.clone())} {ns} }
         })
         .sort_text(|n| n.name.to_lowercase()),
         col(K::Description, |n: &MetadefNamespace, _| dash(n.description.clone())),

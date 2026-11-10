@@ -1113,6 +1113,16 @@ pub async fn list_metadef_namespaces() -> Result<Timed<Vec<MetadefNamespace>>, A
     .await
 }
 
+/// Admin › Metadata Definitions › a namespace (roadmap 89). Admins only.
+#[server(input = GetUrl)]
+pub async fn get_metadef_namespace(namespace: String) -> Result<Timed<MetadefNamespaceDetail>, AppError> {
+    scoped("get_metadef_namespace", |_s, c| async move {
+        require_admin(&c)?;
+        fetch::metadef_namespace(&c, &namespace).await
+    })
+    .await
+}
+
 /// *Update Metadata*'s suggestions (roadmap 25): the Glance metadata catalog's properties for
 /// `resource_type` (one of [`METADATA_RESOURCE_TYPES`]). Read-only; any project member.
 #[server(input = GetUrl)]
@@ -1168,7 +1178,20 @@ pub async fn get_admin_aggregates() -> Result<Timed<Aggregates>, AppError> {
 /// then shows its client-side table and search box, as before roadmap 88.
 #[cfg(feature = "ssr")]
 fn whole<T>(all: Timed<Vec<T>>) -> Timed<Page<T>> {
-    Timed { millis: all.millis, calls: all.calls, data: Page { rows: all.data, next: None, count: None, paged: false, page_size: 0 } }
+    Timed { millis: all.millis, calls: all.calls, data: Page { rows: all.data, next: None, count: None, paged: false, page_size: 0, needs_filter: false } }
+}
+
+/// `[admin] filter_first` (Horizon's `FILTER_DATA_FIRST`, roadmap 89): `list`
+/// waits for a filter and `q` has none.
+#[cfg(feature = "ssr")]
+fn waits_for_filter(list: PagedList, q: &ListQuery) -> bool {
+    cfg().prefs.admin.filter_first.contains(&list) && q.value.as_deref().is_none_or(|v| v.trim().is_empty())
+}
+
+/// The empty first page shown until a filter is given; nothing is asked of OpenStack.
+#[cfg(feature = "ssr")]
+fn filter_first_page<T>(page_size: u32) -> Timed<Page<T>> {
+    Timed { millis: 0, calls: 0, data: Page { rows: vec![], next: None, count: None, paged: true, page_size, needs_filter: true } }
 }
 
 /// Admin › Compute › Instances: every project's servers, one page of
@@ -1179,6 +1202,7 @@ pub async fn list_admin_instances(q: ListQuery) -> Result<Timed<Page<Owned<Insta
     scoped("list_admin_instances", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Instances, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_instances_page(&c, &q, size).await,
             // `page_size = 0`: every row, as before paging (the page keeps its search box).
             None => Ok(whole(fetch::admin_instances(&c).await?)),
@@ -1243,6 +1267,7 @@ pub async fn list_admin_images(q: ListQuery) -> Result<Timed<Page<Owned<Image>>>
     scoped("list_admin_images", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Images, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_images_page(&c, &q, size).await,
             None => Ok(whole(fetch::admin_images(&c).await?)),
         }
@@ -1258,6 +1283,7 @@ pub async fn list_admin_volumes(q: ListQuery) -> Result<Timed<Page<Owned<Volume>
     scoped("list_admin_volumes", |s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Volumes, &q) => Ok(filter_first_page(size)),
             Some(size) => {
                 let mv = os::capabilities(&s, &c).await.volume_mv;
                 fetch::admin_volumes_page(&c, &q, size, mv).await
@@ -1275,6 +1301,7 @@ pub async fn list_admin_snapshots(q: ListQuery) -> Result<Timed<Page<Owned<Snaps
     scoped("list_admin_snapshots", |s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Snapshots, &q) => Ok(filter_first_page(size)),
             Some(size) => {
                 let mv = os::capabilities(&s, &c).await.volume_mv;
                 fetch::admin_snapshots_page(&c, &q, size, mv).await
@@ -1319,6 +1346,7 @@ pub async fn list_admin_volume_groups(q: ListQuery) -> Result<Timed<Page<Owned<V
     scoped("list_admin_volume_groups", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::VolumeGroups, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_volume_groups_page(&c, &q, size).await,
             None => Ok(whole(fetch::admin_volume_groups(&c).await?)),
         }
@@ -1333,6 +1361,7 @@ pub async fn list_admin_group_snapshots(q: ListQuery) -> Result<Timed<Page<Owned
     scoped("list_admin_group_snapshots", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::GroupSnapshots, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_group_snapshots_page(&c, &q, size).await,
             None => Ok(whole(fetch::admin_group_snapshots(&c).await?)),
         }
@@ -1358,6 +1387,7 @@ pub async fn list_admin_networks(q: ListQuery) -> Result<Timed<Page<Owned<Networ
         require_admin(&c)?;
         let dhcp = needs::DHCP_AGENTS.met(&os::capabilities(&s, &c).await);
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Networks, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_networks_page(&c, &q, size, dhcp).await,
             None => Ok(whole(fetch::admin_networks(&c, dhcp).await?)),
         }
@@ -1372,6 +1402,7 @@ pub async fn list_admin_routers(q: ListQuery) -> Result<Timed<Page<Owned<RouterR
     scoped("list_admin_routers", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Routers, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_routers_page(&c, &q, size).await,
             None => Ok(whole(fetch::admin_routers(&c).await?)),
         }
@@ -1387,6 +1418,7 @@ pub async fn list_admin_floating_ips(q: ListQuery) -> Result<Timed<Page<Owned<Fl
     scoped("list_admin_floating_ips", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::FloatingIps, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_floating_ips_page(&c, &q, size).await,
             None => Ok(whole(fetch::admin_floating_ips(&c).await?)),
         }
@@ -1402,6 +1434,7 @@ pub async fn list_admin_trunks(q: ListQuery) -> Result<Timed<Page<Owned<TrunkRow
     scoped("list_admin_trunks", |_s, c| async move {
         require_admin(&c)?;
         match cfg().prefs.page_size_for(true) {
+            Some(size) if waits_for_filter(PagedList::Trunks, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_trunks_page(&c, &q, size).await,
             None => Ok(whole(fetch::admin_trunks(&c).await?)),
         }

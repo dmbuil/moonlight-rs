@@ -31,6 +31,18 @@ pub struct Prefs {
     pub network: NetworkPrefs,
     pub images: ImagePrefs,
     pub console: ConsolePrefs,
+    pub admin: AdminPrefs,
+}
+
+/// `[admin]` (roadmap 89): Horizon's `ENABLE_FLAVOR_EDIT` and `FILTER_DATA_FIRST`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AdminPrefs {
+    /// Admin › Flavors' *Edit Flavor*: Nova can't change a flavor, so it is
+    /// deleted and created again with the same ID, extra specs and access.
+    pub flavor_edit: bool,
+    /// Paged Admin lists that stay empty, without asking OpenStack, until a
+    /// filter is given.
+    pub filter_first: Vec<crate::model::PagedList>,
 }
 
 /// Which lists `[ui] page_size` applies to (roadmap 88).
@@ -64,6 +76,7 @@ impl Default for Prefs {
             network: NetworkPrefs::default(),
             images: ImagePrefs::default(),
             console: ConsolePrefs::default(),
+            admin: AdminPrefs::default(),
         }
     }
 }

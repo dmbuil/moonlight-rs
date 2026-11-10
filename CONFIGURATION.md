@@ -157,6 +157,13 @@ Horizon's `OPENSTACK_NEUTRON_NETWORK` and `ALLOWED_PRIVATE_SUBNET_CIDR`.
 | `[network.allowed_private_subnet_cidr] ipv4` | `[]` (anything) | IPv4 ranges new subnets must fall in; checked by the server too. |
 | `[network.allowed_private_subnet_cidr] ipv6` | `[]` (anything) | The same for IPv6. |
 
+### Admin dashboard
+
+| Key | Default | Meaning | Horizon |
+|---|---|---|---|
+| `[admin] flavor_edit` | `false` | Admin › Flavors' *Edit Flavor*. Nova can't change a flavor: saving deletes it and creates it again with the same ID, then puts its extra specs and project access back (the values are checked first, so a refused one leaves the flavor alone). Running instances keep their size. | `ENABLE_FLAVOR_EDIT` |
+| `[admin] filter_first` | `[]` | Paged Admin lists that show nothing, without asking the cloud, until a filter is given: any of `instances`, `volumes`, `snapshots`, `floating_ips`, `networks`, `routers`, `trunks`, `images`, `volume_groups`, `group_snapshots`. Applies while `[ui] page_size` pages the list (with `0` the whole list loads and is searched in the browser). | `FILTER_DATA_FIRST` |
+
 ### Images, console, API access and logs
 
 | Key | Default | Meaning | Horizon |

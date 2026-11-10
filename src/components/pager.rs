@@ -456,6 +456,14 @@ pub fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
     cols.into_iter().map(|c| match server_key(c.header) { Some(k) => c.server_sort(k), None => c }).collect()
 }
 
+/// A paged list's [`FilterBar`], and under it, when the server waited for a
+/// filter (`[admin] filter_first`, roadmap 89), why the table is empty.
+pub fn filter_bar(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyView {
+    let i18n = use_i18n();
+    let note = needs_filter.then(|| view! { <p class="muted filter-first" role="status">{move || i18n.t(K::FilterFirstNote)}</p> });
+    view! { <FilterBar list=list scope=scope/> {note} }.into_any()
+}
+
 /// The table of a paged list (roadmap 88), Admin or Project (`scope`): one page
 /// with the filter bar and *Previous* / *Next*, or, when the server sent the whole
 /// list (`page_size = 0`, or a Project panel with `paged_lists = "admin"`), the
@@ -482,7 +490,7 @@ pub fn paged_table<T: Clone + Send + Sync + 'static>(
         };
     }
     let footer = view! { <Pager list=list next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack scope=scope/> }.into_any();
-    let bar = view! { <FilterBar list=list scope=scope/> }.into_any();
+    let bar = filter_bar(list, scope, page.needs_filter);
     let sort = server_sort(list);
     let cols = with_server_keys(cols);
     match select {

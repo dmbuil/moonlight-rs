@@ -101,7 +101,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 86  | ✅ Usage Summary: localised thousands separators                                                  | —        | XS   | 23, 60                      |
 | 87  | ✅ Long bulk actions run in the background, with a progress notification                         | —        | M    | —                           |
 | 88  | ✅ Server-side paging and filters for the big Admin lists (Instances, Volumes, Floating IPs…) ([#10])     | —        | L    | 85                          |
-| 89  | 🚧 Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
+| 89  | ✅ Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | —        | M    | 85, 88                      |
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
 | 92  | ✅ Heat Template Generator (from item 62) ([#14])                                                        | —        | L    | 62                          |
@@ -113,6 +113,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 98 | Subtle CSS motion on tabs, nav bars, menus and dialogs | P3 | S | 96 |
 | 99 | 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | P2 | S | 31 |
 | 100 | Network Topology: a note instead of the drawing when the project sees too many networks | P3 | S | 20, 29 |
+| 101 | Phone view: fold the header's bars and menus into one or two buttons | P3 | M | 39, 96 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -135,7 +136,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 92, 96**.
+85, 86, 87, 88, 89, 92, 96**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -5479,11 +5480,13 @@ stay whole. Measure Project › Instances on the production cloud's size class i
 
 > 🔗 **Issue:** [#11]
 >
-> 🚧 **In progress.** Bullets 5, 6 and 7 done (2026-11-08); 1, 2, 3, 4, 8, 9 and 10 are left, in
-> that order. **5:** a multi field (`dialog.rs`, `Kind::Multi`) keeps the values that were ticked
-> when the dialog opened but are missing from its set as rows of their own, labelled by ID
-> (`with_unknown`, test `multi_keeps_selected_values_missing_from_the_set`): *Modify Access* on a
-> flavor shared with a deleted project shows that ID ticked, and unticking it removes it.
+> ✅ **Done** (2026-11-10). Bullets 5, 6 and 7 on 2026-11-08, the rest on 2026-11-10; bullet 10
+> was already built and is left as it is (below). `[admin] filter_first` stays, off by
+> default; the user doesn't want it on. **5:** a multi field (`dialog.rs`, `Kind::Multi`) keeps
+> the values that were ticked when the dialog opened but are missing from its set as rows of their own,
+> labelled by ID (`with_unknown`, test `multi_keeps_selected_values_missing_from_the_set`):
+> *Modify Access* on a flavor shared with a deleted project shows that ID ticked, and unticking
+> it removes it.
 > **6:** `AllAssociablePorts` choices are keyed by `model::associable_port_key(project, pool)`, one
 > per pool that reaches the port; `FloatingIpRow.pool_id` is new and the admin *Associate* dialog
 > asks for the owner's ports its pool reaches. With `[network] fip_topology_check` (default on)
@@ -5504,6 +5507,93 @@ stay whole. Measure Project › Instances on the production cloud's size class i
 > 80.80.80.242 on the same pool offers none, rightly: pokemon's free instance ports sit behind
 > its gateways on two other pools, and poke-gw-4 reaches none of them. **7** Admin › Networks
 > has no *DHCP Agents* column on this OVN cloud.
+>
+> 2026-11-10, checked in Brave on ttcp-dev (nothing submitted):
+>
+> - **1** Item 85's fixes, as intended: admin *Create Network* and *Create Router* show *Select
+>   a project* and no zone hints (no zones here); *Create RBAC Policy* its placeholders and
+>   help; *Live Migrate* offers 5 hosts, not the instance's own; *Migrate Volume* shows the
+>   current pool and offers the other two; the 3 protected images have no *Delete Image* and
+>   a disabled checkbox (28 others both). Admin › Overview against Horizon's *Usage Overview*
+>   for 2026-11-09 → 2026-11-10: the same 54 projects, VCPUs, disk and RAM equal row by row,
+>   the hours ahead by the same 0.0104 h per VCPU everywhere (Moonlight read ~37 s later).
+>   One difference, fixed: Horizon writes a project Keystone no longer has as
+>   `<id> (Deleted)`; `ProjectUsage.deleted` (set only when Keystone named other projects,
+>   so a failed lookup marks none) adds `K::DeletedSuffix` in the table and `(Deleted)` in
+>   the CSV (tests `tenant_usages_merge_pages_and_name_projects`,
+>   `global_usage_totals_every_project_and_csv_has_a_line_each`). Seen after the
+>   reload: `dc87707b… (Deleted)` in the table and the CSV.
+> - **2** `fetch::admin_rbac_policies` also names `address_scope`, `subnetpool` and
+>   `address_group` objects, each list read only when a policy uses that type (test
+>   `rbac_policies_name_projects_networks_and_the_wildcard`). Horizon's *Create RBAC Policy*
+>   offers only networks and QoS policies, as Moonlight's: no new pickers. ttcp-dev has only
+>   network and QoS policies (41, still 4 API calls).
+> - **3** Admin *Edit Router* (`ops::edit_router_item(.., admin)`) adds *Router Type* (with
+>   `dvr`) and *High Availability* (with `l3-ha`) when Neutron returns the router's
+>   `distributed` / `ha` (`RouterRow`, admins only), each with "only while down" help; a
+>   change on a router that is up is refused in the dialog (Neutron checks the stored state,
+>   so unticking *Enable Admin State* in the same save isn't enough). `RouterUpdate` sends
+>   `distributed` / `ha` only when they change (dry-run test `ports_routers_and_interfaces`,
+>   dialog test `admin_edit_router_changes_type_and_ha_only_while_down`). ttcp-dev has
+>   `l3-ha` but no `dvr`: the dialog shows *High Availability* only, as admin *Create Router*.
+> - **8** Admin › Images › *Create Image* (`ops::admin_create_image_dialog`): Project's form
+>   plus a *Project* picker (`ChoiceSet::AllProjects`, empty = the session's), sent as
+>   Glance's `owner` (`ImageSpec.owner`; dry-run test `image_create_records_then_imports_the_url`,
+>   dialog test `admin_create_image_picks_the_owner`). Opened on ttcp-dev, not submitted.
+>
+> - **4** Metadata Definitions › a namespace (`/admin/metadata_defs/{namespace}`,
+>   `pages/admin.rs::MetadefDetailPage`; the list's *Name* links to it), Horizon's two tabs:
+>   *Overview* (display name, namespace, description, public, protected, created, updated;
+>   the resource types with prefix and properties target) and *Contents* (properties: name,
+>   title, type, default, allowed values, description; objects with their properties'
+>   names; the definition's JSON, collapsed). The header has the row's menu. Data:
+>   `api::get_metadef_namespace` (admins) → `fetch::metadef_namespace`, one raw
+>   `GET metadefs/namespaces/{ns}` (name checked by `fetch::plain_namespace`, shared with
+>   `metadata_options`) → `mapping::metadef_namespace_detail` → `MetadefNamespaceDetail`
+>   (test `metadef_namespace_detail_lists_properties_objects_and_associations`; nav test: the
+>   detail is under System › Metadata Definitions and the Glance gate). *Update
+>   Associations* has a *Prefixes* key/value field (resource type → prefix, prefilled from the
+>   list's new `MetadefNamespace.prefixes`); a changed prefix removes and re-adds the
+>   association (Glance has no update), so `MetadefNamespaceSetTypes` now sends removals
+>   first and a `prefix` with each addition (dry-run test
+>   `metadata_definitions_import_edit_associate_and_delete`, dialog test
+>   `metadef_menu_hides_delete_when_protected_and_sends_association_changes`). Checked on
+>   ttcp-dev: `OS::Compute::LibvirtImage` has 16 properties and no objects, as Horizon's
+>   page; CPU Pinning shows its three associations with `hw_`, `hw_`, `hw:`, and *Update
+>   Associations* opens with them (cancelled).
+>
+> - **9** A new `[admin]` section (`prefs::AdminPrefs`, read and checked in `settings.rs`,
+>   documented in `CONFIGURATION.md` and `moonlight.conf.example`). `flavor_edit` (default
+>   `false`, Horizon's `ENABLE_FLAVOR_EDIT`) puts *Edit Flavor* first in a flavor's menu
+>   (`ops::admin_flavor_menu`): *Create Flavor*'s two steps prefilled, without the ID;
+>   saving is `OsAction::FlavorReplace`, Horizon's `UpdateFlavor`: `DELETE /flavors/{id}`,
+>   `POST /flavors` with the same ID, its extra specs, then `addTenantAccess`. The create
+>   request and the extra specs are checked before the delete (`actions::flavor_request`,
+>   shared with *Create Flavor*), so a refused value leaves the flavor as it was. Tests: dry
+>   run in `flavors_are_created_private_for_projects_and_edited_like_horizon`, dialog
+>   `edit_flavor_only_when_enabled_and_recreates_with_the_same_id`. `filter_first` (default
+>   `[]`, Horizon's `FILTER_DATA_FIRST`) names paged Admin lists (`PagedList::KEYS`:
+>   `instances`, `volumes`, …) that answer with an empty page and no OpenStack call until the
+>   query has a filter (`api::waits_for_filter`, `Page.needs_filter`); the table says why
+>   (`pager::filter_bar`, `K::FilterFirstNote`). Only for paged lists: with `page_size = 0`
+>   the whole list loads and is searched in the browser. Settings test
+>   `admin_section_is_horizons_flavor_edit_and_filter_first`. Checked on ttcp-dev with a
+>   temporary `~/.moonlight/moonlight.conf.d/` file (`filter_first = ["instances"]`): Admin ›
+>   Instances shows the note and *0 API*; `?f=name&q=prueba2` lists it (2 API). With
+>   `flavor_edit = true`, *Edit Flavor* didn't show at first: the settings reach the browser
+>   in an `Effect` after the server-rendered table built its menus with the defaults, and
+>   `dialog::prefs()` reads them untracked. Fixed with `dialog::prefs_tracked()` (the menu is
+>   rebuilt once they arrive). Then on `test-vms`: *Edit Flavor* first in the menu; the
+>   dialog shows the ID and the re-creation warning, prefilled 3 VCPUs, 5000 MB, 10 GB, 0, 0,
+>   1; *Flavor Access* has its one project ticked (the deleted `99c95913…` of bullet 5, which
+>   a save would add back, as Horizon's would). Cancelled; the temporary file is removed.
+> - **10** Already built: `fetch::admin_resource_providers` reads each host's first GPU's
+>   traits, and the host's other GPUs only when that one has a `CUSTOM_*` trait. ttcp-dev now
+>   has vGPU types (`CUSTOM_NVIDIA_H100_47C`, `CUSTOM_NVIDIA_L4_24Q`…), so every GPU is
+>   read: *Resource Provider* took 520 calls, 1.42 s (6 hosts, 169 GPUs: 1 + 2 × 175 + 169).
+>   Reading one GPU per host (6 instead of 169) would assume one vGPU type per host; not done.
+>
+> Both clippy runs clean, 579 tests pass.
 
 **Goal.** Close the gaps item 85 left in the Admin dashboard, found by reading Horizon and the
 browser pass on ttcp-dev (2026-11-01). None blocks daily use; each is a place where Horizon shows
@@ -6247,6 +6337,65 @@ available over the limit (then step 3 must keep fetching devices and links, and 
 drawings are replaced). Whether shared and external networks count towards the limit or only
 the project's own (the request says every network the project sees; external ones are usually
 few, shared ones may be many).
+
+## 101. Phone view: fold the header's bars and menus into one or two buttons
+
+**Goal.** On a phone the header takes most of the screen. Below 720px the utility bar wraps
+(brand, region, project and user menus on one row, *Project / Admin / Identity* on another),
+then come the primary bar (panel groups: *Compute*, *Volumes*, *Network*…) and the secondary
+bar (the group's panels), and `.header` is `position: sticky`, so all of it stays on screen
+while scrolling. At phone width it should fold into one slim bar: the brand, the current place
+(e.g. *Compute › Instances*), and one or two buttons that open the rest:
+
+- **☰ Navigation**: the dashboards (*Project*, *Admin* for admins, *Identity*), and under the
+  current one its groups and panels as a two-level list, the current panel marked. Picking a
+  panel navigates and closes it.
+- **Account / context** (the project name or the user icon): *Region*, *Project* (with its
+  search), and what the user menu holds today (*Language*, *Theme*, *Help*, *Change Password*,
+  *Sign Out*).
+
+Wider screens are unchanged. Horizon's Bootstrap header collapses behind a toggle on narrow
+screens too (check how its side menu behaves before copying it). The read-only / dry-run badge,
+hidden today below 720px (`.badge-ro { display: none; }`), must stay visible in the slim bar
+(the eye icon alone): it is a safety signal, not decoration.
+
+**Implementation.** Where the header is: `Layout`, `PrimaryNav`, `RegionMenu`, `ProjectMenu`,
+`UserMenu` in `src/components/layout.rs`; navigation data in `src/components/nav.rs`
+(`dashboard(path)`, `active(path)`, `Group::visible(&caps)`); CSS in `style/main.css`
+(`.utility-bar`, `.dashboards`, `.primary-bar`, `.secondary-bar`, the
+`@media (max-width: 720px)` block).
+
+1. Decide the layout by CSS, not by JS. The server does not know the screen width, so a
+   width signal would render one header on the server and another after hydration (a
+   hydration mismatch, AGENTS.md). Render both: the current bars and a new
+   `<div class="mobile-bar">`; the media query shows one and hides the other (`display: none`
+   keeps the hidden copy out of the accessibility tree and tab order).
+2. Menus as native `<details class="menu">`, like the others, so they work before hydration
+   and get the existing outside-click and Escape handling (`install_menu_dismissal` in
+   `components/dialog.rs`). The ☰ panel is a full-width sheet under the bar
+   (`position: fixed`, `max-height` of the viewport, scrolling inside), not a dropdown.
+3. Reuse, don't copy: build the ☰ list from the same `nav::dashboard` / `visible(&caps)` data
+   `PrimaryNav` uses (from `info`, in a `<Transition>`, so SSR and client agree, as item 85
+   learned), and extract the menus' bodies (`RegionMenu`'s list, `ProjectMenu`'s search and
+   list, `UserMenu`'s items, `ThemeChoices`, `LanguageChoices`) into components used by both
+   headers. Close the sheet on navigation (watch `location.pathname`).
+4. The slim bar's text: the project name (from `info`, as `ProjectMenu` shows it) and the
+   current place, `nav::active(path)`'s group and panel labels (detail pages fall back to the
+   group). Two short lines, or one line `project · Compute › Instances`, each part with its
+   own ellipsis so a long project name can't push out the panel.
+5. Sticky: only the slim bar stays sticky at phone width (≈44px; measure today's full
+   header height first, to report the gain).
+6. i18n: `K::Navigation`, `K::Account` (or reuse existing keys) for the buttons'
+   `aria-label`s, EN + ES.
+7. Verify in the browser at 390×844 and 360×740 (Chrome DevTools device emulation) and at
+   721px and up (unchanged): every dashboard, group and panel reachable, the project switch
+   and sign-out work, the dry-run eye shows, no horizontal scroll, keyboard and screen reader
+   reach both buttons, light and dark. Also check a page that already has its own tab bar
+   (item 96) and the jobs tray (item 87) at phone width.
+
+**Decided with the user (2026-11-10).** Two buttons for now (☰ *Navigation* and *Account*),
+the fold at the existing 720px breakpoint, and the slim bar shows the project name as well as
+the current place.
 
 ## Also pending (from the PoC)
 

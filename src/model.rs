@@ -433,6 +433,10 @@ pub struct Page<T> {
     /// Rows per page that was asked for; `0` when not paged.
     #[serde(default)]
     pub page_size: u32,
+    /// `[admin] filter_first` (roadmap 89): empty because no filter was given;
+    /// OpenStack was not asked.
+    #[serde(default)]
+    pub needs_filter: bool,
 }
 
 /// What *Count all* found (roadmap 88): the rows matching a paged list's filter.
@@ -609,6 +613,22 @@ pub enum PagedList {
     VolumeGroups,
     /// Admin › Volume › Group Snapshots (Cinder `group_snapshots/detail?all_tenants`).
     GroupSnapshots,
+}
+
+impl PagedList {
+    /// The name `[admin] filter_first` uses for it (roadmap 89).
+    pub const KEYS: &[(&str, PagedList)] = &[
+        ("instances", PagedList::Instances),
+        ("volumes", PagedList::Volumes),
+        ("snapshots", PagedList::Snapshots),
+        ("floating_ips", PagedList::FloatingIps),
+        ("networks", PagedList::Networks),
+        ("routers", PagedList::Routers),
+        ("trunks", PagedList::Trunks),
+        ("images", PagedList::Images),
+        ("volume_groups", PagedList::VolumeGroups),
+        ("group_snapshots", PagedList::GroupSnapshots),
+    ];
 }
 
 /// Whose rows a paged list shows (roadmap 88): an Admin panel's, every project's;
@@ -1372,6 +1392,12 @@ pub struct RouterRow {
     pub snat: Option<bool>,
     pub admin_up: bool,
     pub availability_zones: Vec<String>,
+    /// `distributed` / `ha`: Neutron shows them to admins only, and only with
+    /// the `dvr` / `l3-ha` extensions; `None` when absent (roadmap 89).
+    #[serde(default)]
+    pub distributed: Option<bool>,
+    #[serde(default)]
+    pub ha: Option<bool>,
 }
 
 /// An Octavia load balancer, as on Horizon's *Load Balancers* list.
@@ -3681,6 +3707,61 @@ pub struct MetadefNamespace {
     /// `visibility` is `public`.
     pub public: bool,
     pub protected: bool,
+    /// The associations that have a `prefix` (`OS::Nova::Flavor` → `hw:`), for
+    /// *Update Associations* (roadmap 89).
+    #[serde(default)]
+    pub prefixes: Vec<(String, String)>,
+}
+
+/// Admin › Metadata Definitions › a namespace (roadmap 89): Glance's
+/// `GET metadefs/namespaces/{namespace}`, shown as Horizon's *Overview* and
+/// *Contents* tabs.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MetadefNamespaceDetail {
+    /// The list's fields (for the row menu, too).
+    pub namespace: MetadefNamespace,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub associations: Vec<MetadefAssociation>,
+    /// The namespace's own properties, by name.
+    pub properties: Vec<MetadefProperty>,
+    /// Its objects, by name.
+    pub objects: Vec<MetadefObject>,
+    /// The whole definition, pretty-printed (Horizon's *Contents* shows it).
+    pub raw: String,
+}
+
+/// A resource type a namespace applies to, with how its properties are named there.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MetadefAssociation {
+    pub name: String,
+    /// Put before each property's name on that resource type (`hw:`).
+    pub prefix: Option<String>,
+    /// Where on the resource they go (`image`, `scheduler_hints`…).
+    pub properties_target: Option<String>,
+}
+
+/// A metadef property: the key a resource can carry and what its value may be.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MetadefProperty {
+    pub name: String,
+    pub title: Option<String>,
+    /// JSON-schema `type` (`string`, `integer`, `boolean`, `array`…).
+    pub kind: String,
+    pub description: Option<String>,
+    /// The default, as text (JSON for a non-string).
+    pub default: Option<String>,
+    /// `enum` (or an array's `items.enum`), as text.
+    pub allowed: Vec<String>,
+}
+
+/// A metadef object: a named group of properties.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MetadefObject {
+    pub name: String,
+    pub description: Option<String>,
+    /// Its properties' names, sorted.
+    pub properties: Vec<String>,
 }
 
 /// How a catalog property is typed (Glance metadef `type`): picks the value input of the
@@ -4489,10 +4570,18 @@ pub enum OsAction {
     MetadefNamespaceUpdate { id: String, display_name: Option<String>, description: Option<String>, public: bool, protected: bool },
     /// `DELETE …/namespaces/{id}` (Glance refuses a protected one).
     MetadefNamespaceDelete { id: String },
-    /// *Update Associations*: `POST …/{id}/resource_types` per added resource
-    /// type, `DELETE …/{id}/resource_types/{name}` per removed one (names such
-    /// as `OS::Nova::Flavor`, in `*_type_ids` so `check_ids` vets them).
-    MetadefNamespaceSetTypes { id: String, add_type_ids: Vec<String>, remove_type_ids: Vec<String> },
+    /// *Update Associations*: `DELETE …/{id}/resource_types/{name}` per removed
+    /// resource type, then `POST …/{id}/resource_types` per added one (names
+    /// such as `OS::Nova::Flavor`, in `*_type_ids` so `check_ids` vets them).
+    /// `prefixes` gives an added type its `prefix` (roadmap 89); Glance can't
+    /// change one in place, so a new prefix is a removal and an addition.
+    MetadefNamespaceSetTypes {
+        id: String,
+        add_type_ids: Vec<String>,
+        remove_type_ids: Vec<String>,
+        #[serde(default)]
+        prefixes: Vec<(String, String)>,
+    },
     // Instances
     ServerLaunch(LaunchSpec),
     ServerUpdate { id: String, name: String },
@@ -4678,6 +4767,13 @@ pub enum OsAction {
         /// wants the network in the same `external_gateway_info`.
         #[serde(default)]
         snat: Option<(String, bool)>,
+        /// Admin *Edit Router* (roadmap 89): the new router type (`true` =
+        /// distributed) and HA mode, only when they change. Neutron accepts
+        /// them only while the router is down.
+        #[serde(default)]
+        distributed: Option<bool>,
+        #[serde(default)]
+        ha: Option<bool>,
     },
     RouterSetGateway { id: String, network_id: String },
     RouterClearGateway { id: String },
@@ -4712,6 +4808,10 @@ pub enum OsAction {
     // Admin › Compute (roadmap 85); every one `admin_only`.
     /// *Create Flavor*: `POST /flavors`, then `addTenantAccess` per project.
     FlavorCreate(Box<FlavorSpec>),
+    /// *Edit Flavor* (`[admin] flavor_edit`, roadmap 89), Horizon's: Nova can't
+    /// change a flavor, so `DELETE /flavors/{id}`, `POST /flavors` with the same
+    /// ID (`spec.flavor_id`), then its `extra_specs` and `addTenantAccess` back.
+    FlavorReplace { spec: Box<FlavorSpec>, extra_specs: Vec<(String, String)> },
     /// `DELETE /flavors/{id}`.
     FlavorDelete { id: String },
     /// *Update Metadata* of a flavor: `POST …/os-extra_specs` with `set`, then
@@ -5220,6 +5320,7 @@ impl OsAction {
             | OsAction::AdminFloatingIpAllocate { .. }
             | OsAction::AdminRouterCreate(_)
             | OsAction::FlavorCreate(_)
+            | OsAction::FlavorReplace { .. }
             | OsAction::FlavorDelete { .. }
             | OsAction::FlavorSetExtraSpecs { .. }
             | OsAction::FlavorSetAccess { .. }
@@ -5908,6 +6009,10 @@ pub struct ProjectUsage {
     /// The project's name, else its ID (a deleted project keeps its usage).
     pub project: String,
     pub servers: Vec<ServerUsage>,
+    /// Keystone named other projects but not this one: Horizon's "(Deleted)"
+    /// after the ID (roadmap 89). `false` when no names could be read.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 impl ProjectUsage {
@@ -5965,7 +6070,8 @@ impl GlobalUsage {
         out += &format!("This Period's RAM-Hours:,{}\n\n", n(all.ram_mb_hours()));
         out += "Project Name,VCPUs,RAM (MB),Disk (GB),Usage (Hours)\n";
         for p in &self.projects {
-            out += &format!("{},{},{},{},{}\n", field(&p.project), p.vcpus(), p.memory_mb(), p.local_gb(), n(p.vcpu_hours()));
+            let name = if p.deleted { format!("{} (Deleted)", p.project) } else { p.project.clone() };
+            out += &format!("{},{},{},{},{}\n", field(&name), p.vcpus(), p.memory_mb(), p.local_gb(), n(p.vcpu_hours()));
         }
         out
     }
@@ -6087,7 +6193,7 @@ mod usage_tests {
 
     #[test]
     fn global_usage_totals_every_project_and_csv_has_a_line_each() {
-        let p = |name: &str, servers| ProjectUsage { project_id: name.into(), project: name.into(), servers };
+        let p = |name: &str, servers| ProjectUsage { project_id: name.into(), project: name.into(), servers, deleted: false };
         let g = GlobalUsage {
             start: "2026-10-01".into(),
             end: "2026-10-30".into(),
@@ -6098,6 +6204,8 @@ mod usage_tests {
         let csv = g.csv();
         assert!(csv.starts_with("Usage Report For Period:,2026-10-01,2026-10-30\nActive Instances:,2\n"), "{csv}");
         assert!(csv.contains("Project Name,VCPUs,RAM (MB),Disk (GB),Usage (Hours)\n\"a, b\",2,2048,10,20.00\nc,1,2048,10,7.00\n"), "{csv}");
+        let gone = GlobalUsage { projects: vec![ProjectUsage { deleted: true, ..p("dc87", vec![u("x", 2, 1.0, "active")]) }], ..g };
+        assert!(gone.csv().ends_with("dc87 (Deleted),2,2048,10,2.00\n"), "Horizon's label (roadmap 89)");
     }
 
     #[test]
@@ -6165,6 +6273,10 @@ pub struct ImageSpec {
     /// this is what the dry-run preview, the size limit and the mode checks go by. Excludes `url`.
     #[serde(default)]
     pub upload_bytes: Option<u64>,
+    /// Admin › Images' *Create Image* (roadmap 89): the owning project; `None`
+    /// = the session's, as Project's.
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 impl OsAction {

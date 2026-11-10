@@ -1184,6 +1184,8 @@ pub fn routers_page(raw: &[Value], networks: &[Value]) -> Vec<RouterRow> {
                 snat: gw.and_then(|g| g.get("enable_snat")).and_then(Value::as_bool),
                 admin_up: b(r, "admin_state_up"),
                 availability_zones: strs(r, "availability_zones"),
+                distributed: r.get("distributed").and_then(Value::as_bool),
+                ha: r.get("ha").and_then(Value::as_bool),
             }
         })
         .collect()
@@ -2435,7 +2437,13 @@ pub fn tenant_usages(raw: &[Value], names: &HashMap<String, String>) -> Vec<Proj
         let servers = server_usages(t);
         match by_id.iter_mut().find(|p| p.project_id == id) {
             Some(p) => p.servers.extend(servers),
-            None => by_id.push(ProjectUsage { project: names.get(&id).cloned().unwrap_or_else(|| id.clone()), project_id: id, servers }),
+            None => by_id.push(ProjectUsage {
+                project: names.get(&id).cloned().unwrap_or_else(|| id.clone()),
+                // Only when Keystone answered: a failed lookup names no one.
+                deleted: !names.is_empty() && !names.contains_key(&id),
+                project_id: id,
+                servers,
+            }),
         }
     }
     by_id.sort_by_key(|a| a.project.to_lowercase());
@@ -3679,6 +3687,7 @@ pub fn metadef_namespaces(raw: &[Value]) -> Vec<MetadefNamespace> {
                 name: s_ne(v, "display_name").unwrap_or_else(|| namespace.clone()),
                 description: s_ne(v, "description"),
                 resource_types: arr(v, "resource_type_associations").iter().filter_map(|a| s(a, "name")).collect(),
+                prefixes: arr(v, "resource_type_associations").iter().filter_map(|a| Some((s(a, "name")?, s_ne(a, "prefix")?))).collect(),
                 public: s(v, "visibility").as_deref() == Some("public"),
                 protected: b(v, "protected"),
                 namespace,
@@ -3687,6 +3696,49 @@ pub fn metadef_namespaces(raw: &[Value]) -> Vec<MetadefNamespace> {
         .collect();
     out.sort_by_key(|n| n.name.to_lowercase());
     out
+}
+
+/// One namespace's definition (`GET metadefs/namespaces/{ns}`, no `resource_type`):
+/// the list's fields, dates, associations, properties and objects (roadmap 89).
+/// `None` without a `namespace`.
+pub fn metadef_namespace_detail(v: &Value) -> Option<MetadefNamespaceDetail> {
+    let namespace = metadef_namespaces(std::slice::from_ref(v)).into_iter().next()?;
+    let text = |x: &Value| x.as_str().map_or_else(|| x.to_string(), str::to_string);
+    let property = |name: &str, p: &Value| MetadefProperty {
+        name: name.to_string(),
+        title: s_ne(p, "title"),
+        kind: s(p, "type").unwrap_or_default(),
+        description: s_ne(p, "description"),
+        default: p.get("default").filter(|d| !d.is_null()).map(text),
+        allowed: arr(p, "enum").iter().chain(p.get("items").map(|i| arr(i, "enum")).unwrap_or(&[])).map(text).collect(),
+    };
+    let mut properties: Vec<MetadefProperty> = v
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|m| m.iter().map(|(k, p)| property(k, p)).collect())
+        .unwrap_or_default();
+    properties.sort_by_key(|p| p.name.to_lowercase());
+    let mut objects: Vec<MetadefObject> = arr(v, "objects")
+        .iter()
+        .filter_map(|o| {
+            let mut props: Vec<String> = o.get("properties").and_then(Value::as_object).map(|m| m.keys().cloned().collect()).unwrap_or_default();
+            props.sort_by_key(|p| p.to_lowercase());
+            Some(MetadefObject { name: s(o, "name")?, description: s_ne(o, "description"), properties: props })
+        })
+        .collect();
+    objects.sort_by_key(|o| o.name.to_lowercase());
+    Some(MetadefNamespaceDetail {
+        namespace,
+        created_at: s_ne(v, "created_at"),
+        updated_at: s_ne(v, "updated_at"),
+        associations: arr(v, "resource_type_associations")
+            .iter()
+            .filter_map(|a| Some(MetadefAssociation { name: s(a, "name")?, prefix: s_ne(a, "prefix"), properties_target: s_ne(a, "properties_target") }))
+            .collect(),
+        properties,
+        objects,
+        raw: serde_json::to_string_pretty(v).unwrap_or_default(),
+    })
 }
 
 /// The properties one metadef namespace offers for a resource type (roadmap 25): the body of
@@ -3976,7 +4028,8 @@ pub fn group_type_rows(raw: &[Value]) -> Vec<GroupTypeRow> {
 
 /// Neutron `rbac-policies` → *RBAC Policies*, projects and networks named.
 /// `objects` holds, per RBAC `object_type` (`network`, `qos_policy`,
-/// `security_group`), the list that names its objects; an object of another
+/// `security_group`, `address_scope`, `subnetpool`, `address_group`), the list
+/// that names its objects; an object of another
 /// type, or one the list lacks, keeps its ID.
 pub fn rbac_policies(raw: &[Value], objects: &[(&str, &[Value])], names: &HashMap<String, String>) -> Vec<RbacPolicyRow> {
     let by_type: HashMap<&str, HashMap<String, String>> = objects.iter().map(|(ty, list)| (*ty, names_by_id(list))).collect();
@@ -5875,6 +5928,8 @@ mod tests {
         let names = HashMap::from([("p1".to_string(), "zeta".to_string())]);
         let out = tenant_usages(&raw, &names);
         assert_eq!(out.iter().map(|p| p.project.as_str()).collect::<Vec<_>>(), ["p2", "zeta"], "one line per project, by name; unnamed → ID");
+        assert_eq!(out.iter().map(|p| p.deleted).collect::<Vec<_>>(), [true, false], "Keystone names zeta, not p2: Horizon's (Deleted)");
+        assert!(tenant_usages(&raw, &HashMap::new()).iter().all(|p| !p.deleted), "no names at all: nothing marked");
         let zeta = &out[1];
         assert_eq!(zeta.servers.len(), 2, "the split project is merged");
         assert_eq!((zeta.vcpus(), zeta.memory_mb(), zeta.local_gb()), (2, 1024, 10), "sizes count only servers that still exist");
@@ -5948,18 +6003,59 @@ mod tests {
         let names = HashMap::from([("p1".to_string(), "admin".to_string()), ("p2".to_string(), "demo".to_string())]);
         let nets = [json!({"id": "n1", "name": "public"})];
         let qos = [json!({"id": "q1", "name": "gold"})];
+        let (pools, groups) = ([json!({"id": "sp1", "name": "v4-pool"})], [json!({"id": "ag1", "name": "web"})]);
         let out = rbac_policies(&[
             json!({"id": "r1", "project_id": "p1", "object_type": "network", "object_id": "n1", "target_tenant": "*", "action": "access_as_external"}),
             json!({"id": "r2", "project_id": "p1", "object_type": "qos_policy", "object_id": "q1", "target_tenant": "p2", "action": "access_as_shared"}),
             json!({"id": "r3", "project_id": "p1", "object_type": "qos_policy", "object_id": "q9", "target_tenant": "p2", "action": "access_as_shared"}),
             json!({"id": "r4", "project_id": "p1", "object_type": "address_scope", "object_id": "n1", "target_tenant": "p2", "action": "access_as_shared"}),
-        ], &[("network", &nets[..]), ("qos_policy", &qos[..])], &names);
+            json!({"id": "r5", "project_id": "p1", "object_type": "subnetpool", "object_id": "sp1", "target_tenant": "p2", "action": "access_as_shared"}),
+            json!({"id": "r6", "project_id": "p1", "object_type": "address_group", "object_id": "ag1", "target_tenant": "p2", "action": "access_as_shared"}),
+        ], &[("network", &nets[..]), ("qos_policy", &qos[..]), ("subnetpool", &pools[..]), ("address_group", &groups[..])], &names);
         assert_eq!(
             out.iter().map(|r| (r.object.name.as_str(), r.target.as_str())).collect::<Vec<_>>(),
-            [("n1", "demo"), ("public", "*"), ("gold", "demo"), ("q9", "demo")],
-            "QoS policies named like networks; an unknown one, or another type's object with the same ID, keeps its ID"
+            [("web", "demo"), ("n1", "demo"), ("public", "*"), ("gold", "demo"), ("q9", "demo"), ("v4-pool", "demo")],
+            "QoS policies, subnet pools and address groups named like networks; an unknown one, or another type's object with the same ID, keeps its ID"
         );
-        assert_eq!(out.iter().map(|r| r.target_id.as_str()).collect::<Vec<_>>(), ["p2", "*", "p2", "p2"], "the target's ID, for Edit Policy");
+        assert_eq!(out.iter().map(|r| r.target_id.as_str()).collect::<Vec<_>>(), ["p2", "p2", "*", "p2", "p2", "p2"], "the target's ID, for Edit Policy");
+    }
+
+    #[test]
+    fn metadef_namespace_detail_lists_properties_objects_and_associations() {
+        // Shaped like Glance's OS::Compute::Watchdog (properties) and OS::Software::DBMS (objects).
+        let watchdog = json!({
+            "namespace": "OS::Compute::Watchdog", "display_name": "Watchdog Behavior", "description": "Compute drivers…",
+            "visibility": "public", "protected": true, "created_at": "2026-01-02T03:04:05Z", "updated_at": "2026-01-02T03:04:05Z",
+            "resource_type_associations": [
+                {"name": "OS::Glance::Image"},
+                {"name": "OS::Nova::Flavor", "prefix": "hw:", "properties_target": "image"}
+            ],
+            "properties": {"hw_watchdog_action": {"title": "Watchdog Action", "type": "string", "enum": ["disabled", "reset", "poweroff", "pause", "none"]},
+                           "count": {"type": "integer", "default": 2}}
+        });
+        let d = metadef_namespace_detail(&watchdog).unwrap();
+        assert_eq!((d.namespace.name.as_str(), d.namespace.protected, d.created_at.as_deref()), ("Watchdog Behavior", true, Some("2026-01-02T03:04:05Z")));
+        assert_eq!(d.associations[1], MetadefAssociation { name: "OS::Nova::Flavor".into(), prefix: Some("hw:".into()), properties_target: Some("image".into()) });
+        assert_eq!(d.associations[0].prefix, None);
+        assert_eq!(d.namespace.prefixes, [("OS::Nova::Flavor".to_string(), "hw:".to_string())], "for Update Associations");
+        assert_eq!(d.properties.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["count", "hw_watchdog_action"], "by name");
+        assert_eq!((d.properties[0].kind.as_str(), d.properties[0].default.as_deref()), ("integer", Some("2")), "a non-string default as JSON");
+        assert_eq!(d.properties[1].allowed.len(), 5);
+        assert_eq!(d.properties[1].title.as_deref(), Some("Watchdog Action"));
+        assert!(d.objects.is_empty() && d.raw.contains("\"hw_watchdog_action\""));
+        let dbms = json!({
+            "namespace": "OS::Software::DBMS", "visibility": "public",
+            "objects": [
+                {"name": "PostgreSQL", "description": "Object-relational DBMS", "properties": {"sw_database_postgresql_version": {"type": "string"}, "sw_database_postgresql_listen_port": {"type": "integer"}}},
+                {"name": "MySQL", "properties": {"sw_database_mysql_version": {"type": "array", "items": {"type": "string", "enum": ["5.6", "5.7"]}}}}
+            ]
+        });
+        let d = metadef_namespace_detail(&dbms).unwrap();
+        assert_eq!(d.namespace.name, "OS::Software::DBMS", "no display name: the namespace");
+        assert_eq!(d.objects.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["MySQL", "PostgreSQL"]);
+        assert_eq!(d.objects[1].properties, ["sw_database_postgresql_listen_port", "sw_database_postgresql_version"]);
+        assert!(d.properties.is_empty());
+        assert!(metadef_namespace_detail(&json!({"properties": {}})).is_none(), "no namespace");
     }
 
     #[test]

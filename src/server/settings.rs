@@ -12,7 +12,7 @@ use toml::Table;
 
 use crate::i18n::Lang;
 use crate::model::{Plugin, WriteMode};
-use crate::prefs::{ConsolePrefs, ImagePrefs, LaunchPrefs, LoginPrefs, NetworkPrefs, PagedLists, Prefs, SsoChoice, VISIBILITIES};
+use crate::prefs::{AdminPrefs, ConsolePrefs, ImagePrefs, LaunchPrefs, LoginPrefs, NetworkPrefs, PagedLists, Prefs, SsoChoice, VISIBILITIES};
 use crate::theme::Theme;
 use crate::server::config::Config;
 
@@ -43,12 +43,22 @@ pub struct Settings {
     pub network: NetworkPrefs,
     pub images: ImagePrefs,
     pub console: ConsolePrefs,
+    pub admin: AdminSettings,
     pub api_access: ApiAccess,
     pub plugins: Plugins,
     pub key_manager: KeyManager,
     pub cache: CacheSettings,
     pub log: Log,
     pub websso: WebSso,
+}
+
+/// `[admin]` (roadmap 89): Horizon's `ENABLE_FLAVOR_EDIT` and `FILTER_DATA_FIRST`.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AdminSettings {
+    pub flavor_edit: bool,
+    /// Names of [`crate::model::PagedList::KEYS`].
+    pub filter_first: Vec<String>,
 }
 
 /// `[keystone]`: where to sign in.
@@ -705,6 +715,16 @@ impl Settings {
         if self.launch.sources().is_empty() {
             return Err("[launch] at least one boot source must stay enabled".into());
         }
+        let mut filter_first = Vec::new();
+        for name in &self.admin.filter_first {
+            let Some((_, list)) = crate::model::PagedList::KEYS.iter().find(|(k, _)| *k == name.trim()) else {
+                let known = crate::model::PagedList::KEYS.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(", ");
+                return Err(format!("[admin] filter_first: unknown list {name:?} (one of {known})"));
+            };
+            if !filter_first.contains(list) {
+                filter_first.push(*list);
+            }
+        }
         let net = &self.network;
         for (version, list) in [("ipv4", &net.allowed_private_subnet_cidr.ipv4), ("ipv6", &net.allowed_private_subnet_cidr.ipv6)] {
             for c in list {
@@ -801,6 +821,7 @@ impl Settings {
                     ..img.clone()
                 },
                 console: self.console.clone(),
+                admin: AdminPrefs { flavor_edit: self.admin.flavor_edit, filter_first },
             },
         })
     }
@@ -939,6 +960,19 @@ mod tests {
 
     fn parse(text: &str) -> Result<Config, String> {
         toml::from_str::<Settings>(&format!("[keystone]\nurl = \"https://k\"\n{text}")).map_err(|e| e.to_string())?.config()
+    }
+
+    #[test]
+    fn admin_section_is_horizons_flavor_edit_and_filter_first() {
+        use crate::model::PagedList;
+        let none = parse("").unwrap().prefs.admin;
+        assert!(!none.flavor_edit && none.filter_first.is_empty(), "both off by default, as Horizon");
+        let a = parse("[admin]\nflavor_edit = true\nfilter_first = [\"instances\", \" volumes \", \"instances\"]").unwrap().prefs.admin;
+        assert!(a.flavor_edit);
+        assert_eq!(a.filter_first, [PagedList::Instances, PagedList::Volumes], "trimmed, each once");
+        let err = parse("[admin]\nfilter_first = [\"flavors\"]").unwrap_err();
+        assert!(err.contains("filter_first") && err.contains("floating_ips"), "names the known lists: {err}");
+        assert!(parse("[admin]\nfilter_data_first = true").is_err(), "unknown keys are refused");
     }
 
     #[test]
