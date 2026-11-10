@@ -1352,7 +1352,12 @@ fn FieldView(
         }
         Kind::Multi(src) => {
             let src2 = src.clone();
-            let opts = move || resolve(&src2, values, choices);
+            // Values ticked when the dialog opened but missing from the set (a
+            // project deleted since it was given flavor access) stay as rows of
+            // their own, labelled by ID: otherwise the count says *1 selected*
+            // with nothing ticked, and saving drops them unseen (roadmap 89).
+            let initial = get_untracked_value(values, name);
+            let opts = move || resolve(&src2, values, choices).map(|l| with_unknown(l, &initial));
             let src3 = src.clone();
             let long = move || resolve(&src3, values, choices).is_some_and(|l| l.len() > MULTI_FILTER_FROM);
             // Hidden rows keep their ticks: the filter only narrows what is shown.
@@ -1421,6 +1426,17 @@ fn FieldView(
 /// A checkbox list longer than this gets a filter box (e.g. *Flavor Access*'s
 /// projects, every domain's).
 const MULTI_FILTER_FROM: usize = 8;
+
+/// `list` plus a choice for every comma-separated value of `selected` it
+/// lacks, labelled by the value itself, after the known ones.
+fn with_unknown(mut list: Vec<Choice>, selected: &str) -> Vec<Choice> {
+    for v in selected.split(',').filter(|v| !v.is_empty()) {
+        if !list.iter().any(|c| c.value == v) {
+            list.push(Choice::new(v, v));
+        }
+    }
+    list
+}
 
 /// Whether a choice matches a filter: case-insensitive, on its label or value
 /// (an ID pasted from elsewhere finds its project); every word must match.
@@ -1956,6 +1972,15 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn multi_keeps_selected_values_missing_from_the_set() {
+        let known = vec![Choice::new("p1", "pokemon"), Choice::new("p2", "admin2")];
+        let got = with_unknown(known.clone(), "p2,gone,,gone");
+        let values: Vec<_> = got.iter().map(|c| (c.value.as_str(), c.label.as_str())).collect();
+        assert_eq!(values, [("p1", "pokemon"), ("p2", "admin2"), ("gone", "gone")], "a deleted project shows as its ID, once");
+        assert_eq!(with_unknown(known.clone(), ""), known, "nothing selected adds nothing");
+    }
 
     #[test]
     fn admin_project_pickers_make_the_user_choose() {

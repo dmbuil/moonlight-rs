@@ -1380,6 +1380,7 @@ pub fn floating_ips_page(raw: &[Value], networks: &[Value], servers: &[Value]) -
                 .filter(|_| s(&details, "device_owner").is_some_and(|o| o.starts_with("compute:")));
             let pool_id = s(f, "floating_network_id").unwrap_or_default();
             FloatingIpRow {
+                pool_id: pool_id.clone(),
                 id: s(f, "id").unwrap_or_default(),
                 ip: s(f, "floating_ip_address").unwrap_or_default(),
                 fixed_ip: s_ne(f, "fixed_ip_address"),
@@ -1889,10 +1890,6 @@ pub fn network_choices(nets: &[Value], subnets: &[Value]) -> Vec<Choice> {
     )
 }
 
-/// Instance ports (`compute:*`), labelled "server: ip". The first cell is the
-/// instance ID (for `Source::Of`), the second the port's security group IDs,
-/// comma-separated (to prefill the editor). `without_fip` drops ports that
-/// already have a floating IP (association).
 /// Networks a router with an external gateway is attached to: the only ones
 /// whose ports a floating IP can reach (Horizon's `enable_fip_topology_check`).
 /// `ports` must include the routers' interface ports.
@@ -1904,13 +1901,40 @@ pub fn externally_reachable_networks(ports: &[Value], routers: &[Value]) -> std:
         .collect();
     ports
         .iter()
-        .filter(|p| s(p, "device_owner").is_some_and(|o| o.starts_with("network:router_interface")))
+        .filter(|p| is_router_interface(p))
         .filter(|p| s(p, "device_id").is_some_and(|d| gateways.contains(&d)))
         .filter_map(|p| s(p, "network_id"))
         .collect()
 }
 
-/// Instance ports; `reachable` (when set) keeps only those on those networks.
+/// A router's interface port: plain, DVR (`…_distributed`) or an HA router's
+/// (`network:ha_router_replicated_interface`), as Horizon's
+/// `ROUTER_INTERFACE_OWNERS`.
+fn is_router_interface(port: &Value) -> bool {
+    s(port, "device_owner").is_some_and(|o| o.starts_with("network:router_interface") || o == "network:ha_router_replicated_interface")
+}
+
+/// For each external network (floating IP pool), the subnets that a router
+/// with its gateway there has an interface on: a floating IP of that pool
+/// reaches only ports on them (Neutron refuses the others; Horizon's
+/// `FloatingIpManager._get_reachable_subnets`). `ports` must include the
+/// routers' interface ports.
+pub fn reachable_subnets_by_pool(ports: &[Value], routers: &[Value]) -> HashMap<String, std::collections::HashSet<String>> {
+    let gateway: HashMap<String, String> =
+        routers.iter().filter_map(|r| Some((s(r, "id")?, s_ne(r.get("external_gateway_info")?, "network_id")?))).collect();
+    let mut out: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
+    for p in ports.iter().filter(|p| is_router_interface(p)) {
+        let Some(pool) = s(p, "device_id").and_then(|d| gateway.get(&d)) else { continue };
+        out.entry(pool.clone()).or_default().extend(arr(p, "fixed_ips").iter().filter_map(|f| s(f, "subnet_id")));
+    }
+    out
+}
+
+/// Instance ports (`compute:*`), labelled "server: ip". The first cell is the
+/// instance ID (for `Source::Of`), the second the port's security group IDs,
+/// comma-separated (to prefill the editor). `without_fip` drops ports that
+/// already have a floating IP (association); `reachable` (when set) keeps only
+/// those on those networks.
 pub fn instance_port_choices(
     ports: &[Value],
     fips: &[Value],
@@ -1940,13 +1964,38 @@ pub fn instance_port_choices(
     )
 }
 
-/// [`instance_port_choices`] (without a floating IP) for every project, each
-/// choice's port project put first in its cells (`AllAssociablePorts`).
-pub fn owned_port_choices(ports: &[Value], fips: &[Value], servers: &HashMap<String, String>) -> Vec<Choice> {
-    let owner: HashMap<String, String> = ports.iter().filter_map(|p| Some((s(p, "id")?, s_ne(p, "project_id").or_else(|| s_ne(p, "tenant_id"))?))).collect();
-    let mut out = instance_port_choices(ports, fips, servers, true, None);
-    for c in &mut out {
-        c.cells.insert(0, owner.get(&c.value).cloned().unwrap_or_default());
+/// Which pools reach a port, for [`owned_port_choices`].
+pub enum PoolReach<'a> {
+    /// `[network] fip_topology_check`: the pools whose gateway routers have an
+    /// interface on one of the port's subnets ([`reachable_subnets_by_pool`]).
+    Subnets(&'a HashMap<String, std::collections::HashSet<String>>),
+    /// The check is off: every one of these pools (the external networks).
+    Every(&'a [String]),
+}
+
+/// [`instance_port_choices`] (without a floating IP) for every project, once
+/// per pool that reaches the port, keyed first by `model::associable_port_key`
+/// (`AllAssociablePorts`).
+pub fn owned_port_choices(ports: &[Value], fips: &[Value], servers: &HashMap<String, String>, reach: PoolReach) -> Vec<Choice> {
+    let by_id: HashMap<String, &Value> = ports.iter().filter_map(|p| Some((s(p, "id")?, p))).collect();
+    let mut out = Vec::new();
+    for c in instance_port_choices(ports, fips, servers, true, None) {
+        let Some(p) = by_id.get(&c.value) else { continue };
+        let owner = s_ne(p, "project_id").or_else(|| s_ne(p, "tenant_id")).unwrap_or_default();
+        let pools: Vec<&String> = match &reach {
+            PoolReach::Every(pools) => pools.iter().collect(),
+            PoolReach::Subnets(by_pool) => {
+                let subnets: Vec<String> = arr(p, "fixed_ips").iter().filter_map(|f| s(f, "subnet_id")).collect();
+                let mut v: Vec<&String> = by_pool.iter().filter(|(_, reached)| subnets.iter().any(|sn| reached.contains(sn))).map(|(pool, _)| pool).collect();
+                v.sort();
+                v
+            }
+        };
+        for pool in pools {
+            let mut c = c.clone();
+            c.cells.insert(0, crate::model::associable_port_key(&owner, pool));
+            out.push(c);
+        }
     }
     out
 }
@@ -5732,9 +5781,36 @@ mod tests {
             json!({"id": "pd", "project_id": "p1", "device_owner": "compute:nova", "device_id": "s3", "fixed_ips": [{"ip_address": "10.0.0.7"}]}),
         ];
         let fips = vec![json!({"id": "f", "port_id": "pd"})];
-        let got: Vec<(String, String)> = owned_port_choices(&ports, &fips, &HashMap::new()).into_iter().map(|c| (c.value, c.cells[0].clone())).collect();
+        let pools = ["public".to_string()];
+        let got: Vec<(String, String)> =
+            owned_port_choices(&ports, &fips, &HashMap::new(), PoolReach::Every(&pools)).into_iter().map(|c| (c.value, c.cells[0].clone())).collect();
         assert_eq!(got.len(), 2, "no DHCP port, no port that has a floating IP: {got:?}");
-        assert!(got.contains(&("pa".into(), "p1".into())) && got.contains(&("pb".into(), "p2".into())), "older Neutron says tenant_id: {got:?}");
+        assert!(got.contains(&("pa".into(), "p1 public".into())) && got.contains(&("pb".into(), "p2 public".into())), "older Neutron says tenant_id: {got:?}");
+    }
+
+    #[test]
+    fn admin_associate_offers_the_ports_the_pool_reaches() {
+        let ports = vec![
+            json!({"id": "a", "project_id": "p1", "device_owner": "compute:nova", "device_id": "s1", "fixed_ips": [{"subnet_id": "routed"}]}),
+            json!({"id": "b", "project_id": "p1", "device_owner": "compute:nova", "device_id": "s1", "fixed_ips": [{"subnet_id": "isolated"}]}),
+            json!({"id": "c", "project_id": "p1", "device_owner": "compute:nova", "device_id": "s1", "fixed_ips": [{"subnet_id": "both"}]}),
+            json!({"id": "ri1", "device_owner": "network:router_interface", "device_id": "r1", "fixed_ips": [{"subnet_id": "routed"}, {"subnet_id": "both"}]}),
+            json!({"id": "ri2", "device_owner": "network:ha_router_replicated_interface", "device_id": "r2", "fixed_ips": [{"subnet_id": "both"}]}),
+            json!({"id": "ri3", "device_owner": "network:router_interface", "device_id": "r3", "fixed_ips": [{"subnet_id": "isolated"}]}),
+        ];
+        let routers = vec![
+            json!({"id": "r1", "external_gateway_info": {"network_id": "public"}}),
+            json!({"id": "r2", "external_gateway_info": {"network_id": "lab"}}),
+            json!({"id": "r3", "external_gateway_info": null}),
+        ];
+        let reach = reachable_subnets_by_pool(&ports, &routers);
+        assert_eq!(reach.len(), 2, "a router without a gateway reaches nothing: {reach:?}");
+        assert!(reach["lab"].contains("both"), "an HA router's interface counts, as in Horizon");
+        let mut got: Vec<(String, String)> =
+            owned_port_choices(&ports, &[], &HashMap::new(), PoolReach::Subnets(&reach)).into_iter().map(|c| (c.cells[0].clone(), c.value)).collect();
+        got.sort();
+        let want = [("p1 lab", "c"), ("p1 public", "a"), ("p1 public", "c")].map(|(k, v)| (k.to_string(), v.to_string()));
+        assert_eq!(got, want, "an isolated port is offered for no pool; one behind two routers for both");
     }
 
     #[test]

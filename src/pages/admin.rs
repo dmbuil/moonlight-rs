@@ -628,6 +628,16 @@ fn admin_network_columns() -> Vec<Col<Owned<NetworkRow>>> {
     cols
 }
 
+/// `cols` without *DHCP Agents* when no row has a count: the cloud has no DHCP
+/// agent (OVN), lacks `dhcp_agent_scheduler`, or counting failed. Every row has
+/// one otherwise, so a column of `-` or `0` says nothing (roadmap 89).
+fn drop_empty_dhcp_col(cols: Vec<Col<Owned<NetworkRow>>>, rows: &[Owned<NetworkRow>]) -> Vec<Col<Owned<NetworkRow>>> {
+    if rows.iter().any(|o| o.row.dhcp_agents.is_some()) {
+        return cols;
+    }
+    cols.into_iter().filter(|c| c.header != K::DhcpAgents).collect()
+}
+
 /// Search text: project, host and the row's own fields.
 fn admin_network_search(o: &Owned<NetworkRow>) -> String {
     owned_search(o, format!("{} {} {}", o.row.name, o.row.id, o.row.subnets.join(" ")))
@@ -657,7 +667,10 @@ pub fn AdminNetworksPage() -> impl IntoView {
                 open=Arc::new(move || ops::admin_create_network_dialog(i18n.lang()))/>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
-            {move || render(data.get(), move |t| paged_table(t, PagedList::Networks, ListScope::Admin, available(columns.get_value(), &caps()), admin_network_search, Some(select), None, stack, Callback::new(move |_| data.refetch())))}
+            {move || render(data.get(), move |t| {
+                let cols = drop_empty_dhcp_col(available(columns.get_value(), &caps()), &t.data.rows);
+                paged_table(t, PagedList::Networks, ListScope::Admin, cols, admin_network_search, Some(select), None, stack, Callback::new(move |_| data.refetch()))
+            })}
         </Transition>
     }
 }
@@ -1349,5 +1362,22 @@ mod tests {
     #[test]
     fn defaults_tabs_use_horizons_names() {
         assert_eq!([QuotaService::Compute, QuotaService::Volume, QuotaService::Network].map(defaults_tab), [K::ComputeQuotas, K::VolumeQuotas, K::NetworkQuotas]);
+    }
+
+    #[test]
+    fn dhcp_agents_column_only_with_counts() {
+        let net = |c: Option<usize>| Owned {
+            project: "-".into(),
+            host: None,
+            project_id: None,
+            row: NetworkRow {
+                id: "n1".into(), name: "n".into(), subnets: vec![], shared: false, external: false, status: "ACTIVE".into(), admin_up: true,
+                availability_zones: vec![], owned: false, dhcp_agents: c, provider: None,
+            },
+        };
+        let has = |rows: &[Owned<NetworkRow>]| drop_empty_dhcp_col(admin_network_columns(), rows).iter().any(|c| c.header == K::DhcpAgents);
+        assert!(has(&[net(Some(0)), net(Some(2))]), "ML2/OVS: counted, zeros included");
+        assert!(!has(&[net(None), net(None)]), "OVN has no DHCP agent: no column of dashes");
+        assert!(!has(&[]), "an empty page has nothing to count");
     }
 }

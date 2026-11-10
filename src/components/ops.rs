@@ -2267,8 +2267,9 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
         }));
     } else if let Some(owner) = project_id {
         // The owner's instance ports (Neutron needs the port and the floating
-        // IP in one project), not the session project's.
-        let (i, ip, owner) = (f.id.clone(), f.ip.clone(), owner.to_string());
+        // IP in one project), not the session project's, and only those the
+        // IP's pool reaches through a router, as Horizon (roadmap 89).
+        let (i, ip, owner) = (f.id.clone(), f.ip.clone(), crate::model::associable_port_key(owner, &f.pool_id));
         items.push(MenuItem::dialog(t(lang, K::Associate), move || {
             let i = i.clone();
             let mut d = Dialog::form(
@@ -5278,6 +5279,7 @@ mod tests {
             instance_id: None,
             instance_name: None,
             pool: "public".into(),
+            pool_id: "net-public".into(),
             status: "DOWN".into(),
             description: None,
             dns_name: None,
@@ -5291,7 +5293,7 @@ mod tests {
         assert_eq!(admin(&row), ["Associate", "Release Floating IP"], "Admin: Associate among the owner's ports");
         let items = admin_floating_ip_items(Lang::EnUs, &row, Some("p9"));
         let d = dialog_of(&items, "Associate");
-        assert!(matches!(&d.fields[0].kind, Kind::Select(Source::Of(ChoiceSet::AllAssociablePorts, p)) if p == "p9"), "the owner's ports, not the session's");
+        assert!(matches!(&d.fields[0].kind, Kind::Select(Source::Of(ChoiceSet::AllAssociablePorts, p)) if p == "p9 net-public"), "the owner's ports its pool reaches, not the session's");
         assert_eq!(admin_floating_ip_items(Lang::EnUs, &row, None).len(), 1, "no owner known: no Associate");
         assert_eq!(admin(&associated), ["Disassociate", "Release Floating IP"], "Horizon's admin menu");
     }

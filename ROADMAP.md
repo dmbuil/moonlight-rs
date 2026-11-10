@@ -101,7 +101,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 86  | ✅ Usage Summary: localised thousands separators                                                  | —        | XS   | 23, 60                      |
 | 87  | ✅ Long bulk actions run in the background, with a progress notification                         | —        | M    | —                           |
 | 88  | ✅ Server-side paging and filters for the big Admin lists (Instances, Volumes, Floating IPs…) ([#10])     | —        | L    | 85                          |
-| 89  | Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
+| 89  | 🚧 Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
 | 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
@@ -110,6 +110,9 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
 | 96 | ✅ Tab bars show a pointless scroll control | — | XS | — |
 | 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
+| 98 | Subtle CSS motion on tabs, nav bars, menus and dialogs | P3 | S | 96 |
+| 99 | 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | P2 | S | 31 |
+| 100 | Network Topology: a note instead of the drawing when the project sees too many networks | P3 | S | 20, 29 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -5475,6 +5478,32 @@ stay whole. Measure Project › Instances on the production cloud's size class i
 ## 89. Admin dashboard refinements
 
 > 🔗 **Issue:** [#11]
+>
+> 🚧 **In progress.** Bullets 5, 6 and 7 done (2026-11-08); 1, 2, 3, 4, 8, 9 and 10 are left, in
+> that order. **5:** a multi field (`dialog.rs`, `Kind::Multi`) keeps the values that were ticked
+> when the dialog opened but are missing from its set as rows of their own, labelled by ID
+> (`with_unknown`, test `multi_keeps_selected_values_missing_from_the_set`): *Modify Access* on a
+> flavor shared with a deleted project shows that ID ticked, and unticking it removes it.
+> **6:** `AllAssociablePorts` choices are keyed by `model::associable_port_key(project, pool)`, one
+> per pool that reaches the port; `FloatingIpRow.pool_id` is new and the admin *Associate* dialog
+> asks for the owner's ports its pool reaches. With `[network] fip_topology_check` (default on)
+> the fetch also lists every project's routers, and `mapping::reachable_subnets_by_pool` keeps
+> the subnets a router with its gateway on that pool has an interface on (Horizon's
+> `_get_reachable_subnets`, subnet-level); with it off, every external network reaches every
+> port (`PoolReach::Every`, one `networks?router:external` call). HA routers' interfaces
+> (`network:ha_router_replicated_interface`) now count, in the Project check too
+> (`is_router_interface`). Test `admin_associate_offers_the_ports_the_pool_reaches`. **7:**
+> `fetch::dhcp_agent_counts` returns no counts when the cloud has no *DHCP agent* (OVN still
+> advertises `dhcp_agent_scheduler`), and `AdminNetworksPage` drops the column when no row has a
+> count (`drop_empty_dhcp_col`, test `dhcp_agents_column_only_with_counts`); a failed count hides
+> it too. Both clippy runs clean, 572 tests pass. Checked in Brave on ttcp-dev (2026-11-10,
+> nothing submitted): **5** *Modify Access* on `test-vms` lists 140 projects, the extra one a
+> deleted project shown by its ID and ticked ("1 selected"); the other private flavors show
+> none. **6** the server returned 64 choices under 18 project/pool keys; 80.80.80.116 (PROYECTO
+> QA CC 001 AUTOGEST, `public-dummy-alh1`) offers `qaimagennewwin01: 10.10.0.42`, and pokemon's
+> 80.80.80.242 on the same pool offers none, rightly: pokemon's free instance ports sit behind
+> its gateways on two other pools, and poke-gw-4 reaches none of them. **7** Admin › Networks
+> has no *DHCP Agents* column on this OVN cloud.
 
 **Goal.** Close the gaps item 85 left in the Admin dashboard, found by reading Horizon and the
 browser pass on ttcp-dev (2026-11-01). None blocks daily use; each is a place where Horizon shows
@@ -5491,8 +5520,13 @@ or offers a bit more:
 3. **Admin Edit Router.** Admin's *Edit Router* is Project's: no *Router Type* (distributed) or
    *High Availability* changes. Neutron allows them only with the router down, so the dialog
    says so, and they need the `dvr` / `l3-ha` extensions (`needs::…`).
-4. **Metadata Definitions.** No namespace detail page (properties, objects, as Horizon's
-   *Overview* / *Contents*), and *Update Associations* can't set the per-resource-type prefix.
+4. **Metadata Definitions.** The rows are not clickable: there is no namespace detail view.
+   As in Horizon (`/admin/metadata_defs/<namespace>/detail`), the *Name* links to a page with
+   two tabs: *Overview* (display name, namespace, description, public, protected, created and
+   updated, and the associated resource types with their prefix and properties target) and
+   *Contents* (the namespace's properties and objects, Horizon shows the definition's JSON).
+   The row menu stays the same and the detail header offers it too. Separately, *Update
+   Associations* can't set the per-resource-type prefix.
 5. **Flavor Modify Access with deleted projects.** A flavor whose access list names a project
    that no longer exists says *1 selected* but shows nothing ticked, and saving silently drops
    it. Show unknown selected IDs as their own rows (ID as label), as the multi-select does for
@@ -5520,9 +5554,23 @@ refuse a user's change), 1, 7, 2, 3, 8, then 4, 9 and 10.
   `subnetpools`, `address-groups`, each `soft()`), and `ChoiceSet`s for their pickers.
 - 3: new `OsAction` fields on the admin router update (`distributed`, `ha`), with a dry-run test;
   `ops.rs` admin router items; gate on the extensions.
-- 4: a `/admin/metadata_defs/{namespace}` page (`image::v2::metadef` namespace GET with
-  properties and objects); prefixes in `MetadefResourceTypes` associations (`prefix` in the
-  association body).
+- 4: route `metadata_defs/:id` in `app.rs` (under `/admin`) to a new `MetadefDetailPage` in
+  `pages/admin.rs`, shaped like `heat_catalog::ResourceTypeDetailPage` (`DetailHeader` with
+  `ops::metadef_items` as its menu, `Tabs` as `identity.rs`'s detail pages, `Card` / `Kv` for
+  the overview). In `metadef_columns` the *Name* cell becomes a `link` to
+  `/admin/metadata_defs/{namespace}`. Data: a server fn `get_metadef_namespace(id)` in `api.rs`
+  (admin, like `list_metadef_namespaces`) calling a new `fetch::metadef_namespace`, one raw
+  `GET metadefs/namespaces/{namespace}` (the call `fetch::metadata_options` already makes,
+  without `resource_type`; reuse its check on the name's characters) and a
+  `mapping::metadef_namespace_detail` into a new `model::MetadefNamespaceDetail`: the list
+  fields, `created_at` / `updated_at`, `resource_type_associations` (name, `prefix`,
+  `properties_target`), properties (name, title, type, description, default, enum) and objects
+  (name, description, their properties), plus the pretty JSON for a collapsed *Raw* block as
+  the resource type page has. Contents as two `DataTable`s (properties; objects with their
+  property names). Mapping test with a Glance fixture (`OS::Compute::Watchdog` has properties,
+  `OS::Software::DBMS` objects); nav test that the detail is under the Glance gate.
+  Prefixes in associations: `MetadefResourceTypes` choices with a `prefix` (the `prefix` field of
+  the association body), with a dry-run test.
 - 5: `dialog.rs` multi field: selected values missing from the loaded set become extra choices
   labelled by ID (test in `dialog.rs`).
 - 6: a new `ChoiceSet` (or a filter on `AllAssociablePorts`) keyed by the floating IP's network;
@@ -5968,3 +6016,141 @@ bilingual (they should: code is English throughout).
   the connection cache keyed by Keystone URL.
 - Instance resize, rebuild, migrate. (Console and log: item 31; image upload: item 45.)
 - Container image and OpenShift deployment; optional shared cache.
+## 98. Subtle CSS motion on tabs, nav bars, menus and dialogs
+
+**Goal.** Switching a tab, a panel group (primary bar) or a panel (secondary bar), opening a
+menu or a dialog changes state instantly today: the active underline or background just jumps.
+A short, quiet transition makes the change easier to follow without slowing anyone down.
+Moonlight is a tool for operators, so the motion must stay barely noticeable: 100 to 160 ms,
+no bounce, no slide-ins across the page, nothing that delays a click or a keyboard user.
+Horizon has none of this (Bootstrap's own fades aside); this is polish, not parity.
+
+Hard limit: the animations must never load the browser. Only `opacity`, `transform` and colours
+are animated (compositor or paint only, never `width`, `height`, `left`, `top`, `padding` or
+`margin`, which re-run layout); no new infinite animations; no `transition: all`; no permanent
+`will-change`; nothing on table rows (lists reach hundreds of rows, item 88); and everything
+off under `prefers-reduced-motion: reduce`.
+
+**Implementation.** CSS only, in `style/main.css`; Rust only where an element needs a class.
+
+1. Motion tokens on `:root` next to the colour tokens: `--motion-fast: 120ms`,
+   `--motion: 160ms`, `--ease: cubic-bezier(.2, 0, 0, 1)`; one global
+   `@media (prefers-reduced-motion: reduce)` block that sets them to `0ms`, so new rules
+   inherit the opt-out (the per-rule `reduced-motion` blocks that exist today can stay).
+2. Tabs (`.tabs button`, `.tabs a`, `Tabs` in `pages/details.rs`) and the secondary bar
+   (`.secondary-bar .panel`): transition `color` and `border-bottom-color`. The underline
+   fades in place rather than sliding from the old tab: a sliding indicator needs a measured
+   position (JS, layout reads) and that is the kind of cost to avoid.
+3. Primary bar (`.primary-bar .group`, `PrimaryNav` in `components/layout.rs`) and the
+   utility bar's `.dashboards > *` and `.menu > summary`: transition `background-color` and
+   `color` on hover and active.
+4. Tab content: when the active tab changes, fade the new pane in (`opacity` 0 → 1 with a
+   2–4px `translateY`, `--motion`) with a one-shot `@keyframes` on the pane's wrapper. Find
+   where each `Tabs` user renders its pane (details pages, instance tabs, volume tabs) and give
+   the wrapper a `tab-pane` class; the animation replays because Leptos inserts a new node.
+   Check it does not replay on every refetch of a polled detail (item 46): only when the pane
+   node is replaced.
+5. Menus (`.menu-list` under `details.menu[open]` and `.row-menu`, and the custom dropdown in
+   `components/select.rs`): one-shot fade plus 4px `translateY` on open. No close animation
+   (the native `<details>` removes the list at once; faking it needs JS).
+6. Dialogs (`.modal-backdrop`, `.modal` in `components/dialog.rs`): backdrop fades in, the
+   dialog fades and scales from `.98`, on open only. The wizard's step change (`.wizard-pane`)
+   can reuse the `tab-pane` fade.
+7. Buttons (`.btn`): `background-color`, `border-color` and `color` on hover, `--motion-fast`.
+8. While there, the busy bar (`.busy-bar`, item 11) animates `left`, which triggers layout on
+   every frame for every busy row: switch it to `transform: translateX(…)` with the same look.
+9. Check: Chrome DevTools *Performance* trace of switching tabs and opening a menu and a dialog
+   shows no *Layout* or *Recalculate Style* caused by the animations beyond the class change,
+   and *Rendering › Paint flashing* only flashes the changed control. Test light and dark
+   (item 18), with `prefers-reduced-motion` emulated, and on a list with many rows.
+
+**Open questions.** Whether the tab pane fade (4) and the dialog scale (6) are wanted at all,
+or only the colour transitions on the controls themselves; decide by looking at them in the
+browser.
+
+## 99. 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off
+
+**Goal.** The instance *Console* tab (item 31) shows noVNC in an iframe, but the remote screen
+is not scaled to the frame: the bottom rows of the console (the prompt you are typing at) fall
+below the frame's edge. Today the only ways to work with it are scrolling inside the frame
+(which hides the top while you read the bottom) or *open alone*, a full browser tab.
+The console in the tab should be usable as it is: the whole remote screen visible inside the
+frame, scaled down when the frame is smaller than the guest's resolution, at any window size,
+and following the window when it is resized, with no scrollbar inside the frame. *Open alone*
+stays for those who want it bigger.
+
+**Implementation.** Where it is now: `ConsoleTab` in `pages/instance_detail.rs` renders
+`<iframe class="console-frame" src=c.url>` (`c: RemoteConsole`, `model.rs`, from
+`server/console.rs`); `.console-frame` in `style/main.css` is `width: 100%;
+height: min(75vh, 820px)`. The frame is another origin (Nova's noVNC proxy), so Moonlight
+cannot reach inside it; the fix goes through noVNC's own URL options and the frame's size.
+
+1. Ask noVNC to scale. noVNC reads options from the query string: `vnc_lite.html` (and the
+   old `vnc_auto.html`) take `scale=true` (`rfb.scaleViewport`); `vnc.html` takes
+   `resize=scale` (and `resize=remote` would ask the guest to change its resolution: don't,
+   it changes the instance). Add a pure `fn console_frame_url(url: &str) -> String` next to
+   `remote_console` in `server/console.rs` (or in the page) that keeps every existing query
+   parameter (the `token` above all) and appends `scale=true&resize=scale` for a noVNC URL
+   (`protocol` `vnc`, `type` `novnc`); unknown options are ignored by both pages. Leave SPICE
+   (`spice_auto.html` has no such option) unchanged. Use it for the iframe only; *open alone*
+   keeps Nova's URL as it is (or also scaled: decide when testing). Tests: token kept, a URL
+   with and without `?`, an existing `scale`/`resize` not duplicated, SPICE untouched.
+2. Size the frame to the space left, not a fixed cap: `height: calc(100dvh - <header, tabs and
+   console bar>)` with a sensible `min-height` (≈ 360px), so scaling has room and the page
+   itself does not scroll to reach the console. Optionally `resize: vertical` so the user can
+   enlarge it. noVNC rescales on its own window's resize, so the frame following the window is
+   enough.
+3. Check first on the test cloud which page `novncproxy_base_url` serves (`vnc_lite.html`,
+   `vnc_auto.html` or `vnc.html`) and the noVNC version, then verify in the browser: the full
+   screen visible in the tab at a laptop-size window and a narrow one, text still readable,
+   keyboard input works after a click, *open alone* unchanged. Opening the tab creates a
+   console token, so it only works with `[console] enabled = true` and `[writes] mode = on`
+   (item 31): do this on the test cloud only.
+
+**Open questions.** Whether an old noVNC on the cloud honours `scale` (if not, the fallback is
+only the larger frame from step 2). Whether to offer a *Fit / 1:1* toggle in `.console-bar` for
+small fonts that become hard to read when scaled down.
+
+## 100. Network Topology: a note instead of the drawing when the project sees too many networks
+
+**Goal.** *Project › Network › Network Topology* (item 20) draws every network the project can
+see (its own, shared and external ones, as on the Networks panel) with their routers and
+instances. With many networks the *Topology* columns and the *Graph* become unreadable, slow to
+lay out and heavy for the browser (one SVG node per network, device and link). Above a limit
+set by the operator, both tabs show a note instead of the drawing: the project sees *N*
+networks, more than the topology draws (the limit), with a link to the *Networks* panel.
+Under the limit nothing changes. Horizon has no such limit (it just draws everything).
+
+**Implementation.**
+
+1. Setting: `[network] topology_max_networks = 50` (`0` = no limit) in `NetworkPrefs`
+   (`src/prefs.rs`, default in its `Default`, a defaults test), documented in
+   `moonlight.conf.example` and `moonlight.conf` next to `fip_topology_check`, and in
+   `server/settings.rs` if it lists the keys. It reaches the page through `dialog::prefs()`
+   like the other `[network]` options.
+2. What counts: the networks the drawing would show, `Topology.networks` as
+   `mapping::topology` builds it from `fetch::topology` (`server/fetch.rs`, own + shared +
+   external from `net_lookups`). The session is scoped to one region, so this is already the
+   count per region.
+3. Server side, so a big project costs neither the client nor the cloud: in
+   `fetch::topology`, run `net_lookups` first; when the count is over the limit, skip the
+   router, port, server and floating IP GETs and return a `Topology` with no devices or links
+   and a new `too_many: Option<usize>` (the count; `None` when drawn). The price is one
+   sequential round trip before the others for every project; if that shows in the timing
+   chip, keep the five GETs in parallel and only drop devices and links from the reply.
+   Decide by measuring.
+4. Page: in `TopoBody` (`pages/topology.rs`), when `too_many` is set, render a
+   `<p class="muted topo-empty">` note (new `K::TopologyTooMany` with the count and the limit,
+   EN + ES) and a link to `/project/networks` instead of `ColumnsView` / `GraphView`. Disable
+   the drawing toolbar buttons (size, labels, collapse, centre) while the note is shown.
+5. Tests: a pure `fn over_limit(count, max) -> bool` (0 = never; at the limit is still drawn)
+   and the mapping/fetch path that leaves devices and links empty; i18n keys in both languages.
+   In the browser: set the limit below the test project's network count in `moonlight.conf`
+   and check both tabs show the note, then restore it.
+
+**Open questions.** Whether the *List* view (`TopoList`, a table, cheap to render) should stay
+available over the limit (then step 3 must keep fetching devices and links, and only the two
+drawings are replaced). Whether shared and external networks count towards the limit or only
+the project's own (the request says every network the project sees; external ones are usually
+few, shared ones may be many).
+

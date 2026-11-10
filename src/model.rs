@@ -3307,6 +3307,10 @@ pub struct FloatingIpRow {
 }
 
 /// A floating IP port forwarding rule (Neutron `floating-ip-port-forwarding`).
+    /// The pool's network ID (`floating_network_id`): admin *Associate* offers
+    /// only the ports it reaches (roadmap 89).
+    #[serde(default)]
+    pub pool_id: String,
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PortForwardingRow {
     pub id: String,
@@ -5302,8 +5306,9 @@ pub enum ChoiceSet {
     /// Glance's metadata definition resource types (`OS::Nova::Flavor`…), by name
     MetadefResourceTypes,
     /// Every project's instance ports without a floating IP, for an admin's
-    /// *Associate*; the first cell is the port's project, so the dialog keeps
-    /// the floating IP owner's with `Source::Of(set, project_id)`
+    /// *Associate*. The first cell is [`associable_port_key`]: a port reached
+    /// from several pools comes once per pool, and the dialog keeps the
+    /// floating IP owner's ports its pool reaches with `Source::Of`
     AllAssociablePorts,
     VolumeTypes,
     AvailableVolumes,
@@ -5404,6 +5409,14 @@ pub struct Facts {
     pub min_ram_mb: Option<i64>,
     pub vcpus: Option<i64>,
     pub ram_mb: Option<i64>,
+/// The `Source::Of` key of a [`ChoiceSet::AllAssociablePorts`] choice: the
+/// port's project and a floating IP pool (external network ID) that reaches it.
+/// Neutron associates only within one project and through a router with its
+/// gateway on the pool (roadmap 89).
+pub fn associable_port_key(project_id: &str, pool_id: &str) -> String {
+    format!("{project_id} {pool_id}")
+}
+
     pub disk_gb: Option<i64>,
 }
 

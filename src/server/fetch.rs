@@ -2038,7 +2038,7 @@ pub async fn admin_networks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: 
     let (page, names, agents) = tokio::join!(
         page_raw(os, PagedList::Networks, None, q, page_size, None),
         project_names(os, &[]),
-        async { if dhcp { dhcp_agent_counts(os).await.ok() } else { None } }
+        async { if dhcp { dhcp_agent_counts(os).await.ok().flatten() } else { None } }
     );
     let RawPage { rows: ne, next, .. } = page?;
     let sub = neutron_where(os, "subnets", "network_id", mapping::row_ids(&ne), &["id", "name", "cidr"]).await;
@@ -2298,7 +2298,7 @@ pub async fn admin_networks(os: &AsyncOpenStack, dhcp: bool) -> R<Timed<Vec<Owne
         all_networks(os),
         list_all!(os, openstack_sdk::api::network::v2::subnet::list, "subnets (all)"),
         project_names(os, &[]),
-        async { if dhcp { dhcp_agent_counts(os).await.ok() } else { None } }
+        async { if dhcp { dhcp_agent_counts(os).await.ok().flatten() } else { None } }
     );
     let ne = ne?;
     let mut rows = mapping::networks(&ne, &soft(sub), "");
@@ -2311,8 +2311,14 @@ pub async fn admin_networks(os: &AsyncOpenStack, dhcp: bool) -> R<Timed<Vec<Owne
 }
 
 /// Networks per DHCP agent, counted by network ID (see [`admin_networks`]).
-async fn dhcp_agent_counts(os: &AsyncOpenStack) -> R<std::collections::HashMap<String, usize>> {
+async fn dhcp_agent_counts(os: &AsyncOpenStack) -> R<Option<std::collections::HashMap<String, usize>>> {
     let raw = list_where!(os, openstack_sdk::api::network::v2::agent::list, "DHCP agents", |b| b.agent_type("DHCP agent")).await?;
+    // OVN serves DHCP itself and has no DHCP agent, yet may still advertise
+    // `dhcp_agent_scheduler`: no counts then, and the page drops the column
+    // rather than show 0 on every network (roadmap 89).
+    if raw.is_empty() {
+        return Ok(None);
+    }
     let mut tasks = Bounded::new(FAN_OUT);
     for id in raw.iter().filter_map(|a| a.get("id").and_then(Value::as_str)) {
         let (os, id) = (os.clone(), id.to_string());
@@ -2324,7 +2330,7 @@ async fn dhcp_agent_counts(os: &AsyncOpenStack) -> R<std::collections::HashMap<S
         }).await;
     }
     let per_agent = tasks.join_all().await.into_iter().collect::<R<Vec<Value>>>()?;
-    Ok(mapping::dhcp_agent_counts(&per_agent))
+    Ok(Some(mapping::dhcp_agent_counts(&per_agent)))
 }
 
 /// Admin › Network › Routers: every project's.
@@ -2816,14 +2822,39 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
         ChoiceSet::RouterZones => mapping::zone_choices(&list_all!(os, openstack_sdk::api::network::v2::availability_zone::list, "router AZs").await?, "router"),
         ChoiceSet::QosSpecs => ch(&list_all!(os, openstack_sdk::api::block_storage::v3::qos_spec::list, "qos-specs").await?, "id", label_name),
         // One call each, every project's: on ttcp-dev about as large as Admin ›
-        // Trunks' port list (2 s). Filtered to the owner in the dialog.
+        // Trunks' port list (2 s). Filtered to the owner and the floating IP's
+        // pool in the dialog. Routers (every project's: Neutron accepts any
+        // router between the subnet and the pool) only with the topology
+        // check, the external networks only without it (roadmap 89).
         ChoiceSet::AllAssociablePorts => {
-            let (po, sv, fi) = tokio::join!(
+            let topology = super::config::state().config.prefs.network.fip_topology_check;
+            let routers = async {
+                if !topology {
+                    return Ok(Vec::new());
+                }
+                list_all!(os, openstack_sdk::api::network::v2::router::list, "routers (all)").await
+            };
+            let pools = async {
+                if topology {
+                    return Ok(Vec::new());
+                }
+                list_where!(os, openstack_sdk::api::network::v2::network::list, "networks?router:external", |b| b.router_external(true)).await
+            };
+            let (po, sv, fi, ro, pl) = tokio::join!(
                 list_all!(os, openstack_sdk::api::network::v2::port::list, "ports (all)"),
                 all_servers_brief(os),
-                list_all!(os, openstack_sdk::api::network::v2::floatingip::list, "floatingips (all)")
+                list_all!(os, openstack_sdk::api::network::v2::floatingip::list, "floatingips (all)"),
+                routers,
+                pools
             );
-            mapping::owned_port_choices(&po?, &soft(fi), &mapping::server_names(&soft(sv)))
+            let (po, names) = (po?, mapping::server_names(&soft(sv)));
+            if topology {
+                let reach = mapping::reachable_subnets_by_pool(&po, &ro?);
+                mapping::owned_port_choices(&po, &soft(fi), &names, mapping::PoolReach::Subnets(&reach))
+            } else {
+                let pools: Vec<String> = pl?.iter().filter_map(|n| n.get("id").and_then(Value::as_str).map(str::to_string)).collect();
+                mapping::owned_port_choices(&po, &soft(fi), &names, mapping::PoolReach::Every(&pools))
+            }
         }
         ChoiceSet::MetadefResourceTypes => {
             use super::actions::JsonRequest;
