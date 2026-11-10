@@ -821,6 +821,60 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .stack-form .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .stack-form .file-load { align-self: flex-start; }
 .preview-list li { padding: 3px 0; }
+/* Template Generator (roadmap 92): palette beside the draft's cards. */
+.tg { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.tg-palette { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.tg-palette h2, .tg-card h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+.tg-service { margin: 4px 0 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.tg-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.tg-type {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--surface); color: var(--accent); cursor: pointer; font-size: 11.5px; line-height: 1.2;
+}
+.tg-type span { color: var(--ink); text-align: center; }
+.tg-type:hover, .tg-type:focus-visible { border-color: var(--accent); background: var(--selected-bg); }
+.tg-icon { flex: none; color: var(--accent); }
+.tg-initials { font-size: 17px; }
+.tg-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.tg-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.tg-row .grow { flex: 1 1 260px; }
+.tg-resources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tg-resources li { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; }
+.tg-resources li.active { border-color: var(--accent); background: var(--selected-bg); }
+.tg-pick {
+  flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 10px; border: 0;
+  background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; flex-wrap: wrap;
+}
+.tg-editor { display: flex; flex-direction: column; gap: 12px; }
+.tg-editor h3 { margin: 4px 0 0; font-size: 14px; }
+.tg-editor-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tg-editor-head .mono { font-size: 12.5px; font-weight: 400; }
+.tg-editor fieldset { border: 0; margin: 0; padding: 0; }
+.tg-editor legend { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.tg-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.tg-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
+.tg-props { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px 16px; }
+.tg-value { display: flex; gap: 6px; }
+.tg-value > :last-child { flex: 1; min-width: 0; }
+.tg-source { flex: none; max-width: 120px; }
+.tg-kind { font-size: 11px; font-weight: 500; }
+.tg-editor > .btn { align-self: flex-start; }
+.tg-table { width: 100%; border-collapse: collapse; }
+.tg-table th { text-align: left; font-size: 12.5px; color: var(--ink-2); font-weight: 600; padding: 6px 8px; }
+.tg-table td { padding: 4px 8px; }
+.tg-table input[type=text], .tg-table select {
+  width: 100%; min-width: 110px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--line-2); border-radius: 6px;
+  font: inherit; color: var(--ink); background: var(--surface);
+}
+.tg-card > .btn { margin-top: 10px; }
+.tg-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tg-preview-head h2 { margin: 0; }
+.tg-problems { margin: 10px 0; padding-left: 20px; color: var(--danger-ink); font-size: 13.5px; }
+.tg-yaml { margin: 10px 0 0; max-height: 480px; overflow: auto; }
+@media (max-width: 760px) {
+  .tg { grid-template-columns: minmax(0, 1fr); }
+  .tg-palette { position: static; }
+}
 /* Stack topology (roadmap 62): draw.io's OpenStack icons, coloured by status. */
 .stack-node { color: var(--ok); cursor: default; }
 .stack-node.link { cursor: pointer; }
@@ -881,3 +935,33 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .job-stop { color: var(--alert-err-ink); }
 .job-failures { margin: 0; padding-left: 18px; max-height: 8em; overflow-y: auto; font-size: 0.9em; }
 .job-requests summary { cursor: pointer; }
+/* Template Generator canvas (roadmap 92). Icons are heat-dashboard's: ink, white cut-outs. */
+.hot-icon { color: inherit; }
+.hot-icon .bg-f { fill: var(--surface); }
+.hot-icon .bg-s { stroke: var(--surface); }
+.tg-icon { overflow: visible; }
+.tg-canvas-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tg-help { margin: 0 0 8px; font-size: 13px; }
+.tg-canvas { position: relative; margin-bottom: 12px; }
+.tg-node { cursor: move; color: var(--accent); }
+.tg-node.incomplete { color: var(--ink-3); }
+.tg-node:focus { outline: none; }
+.tg-node-bg { fill: transparent; stroke: none; }
+.tg-node.sel .tg-node-bg, .tg-node:focus-visible .tg-node-bg { fill: var(--selected-bg); stroke: var(--accent); stroke-width: 2; }
+.tg-node-name { paint-order: stroke; stroke: var(--bg-soft); stroke-width: 3px; fill: var(--ink); font-weight: 600; }
+.tg-handle { cursor: crosshair; opacity: 0; transition: opacity .15s; }
+.tg-node:hover .tg-handle, .tg-node.sel .tg-handle, .tg-node:focus-visible .tg-handle { opacity: 1; }
+.tg-handle circle { fill: var(--primary); }
+.tg-handle path { stroke: var(--primary-ink); stroke-width: 2; stroke-linecap: round; }
+.tg-edge { cursor: pointer; }
+.tg-edge-hit { stroke: transparent; stroke-width: 12; }
+.tg-edge.sel .stack-edge, .tg-edge:hover .stack-edge { stroke: var(--accent); stroke-width: 2.4; }
+.tg-edge-label { fill: var(--ink-2); font-size: 10.5px; paint-order: stroke; stroke: var(--bg-soft); stroke-width: 3px; pointer-events: none; }
+.tg-rubber { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+.tg-link-menu {
+  position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  min-width: 200px; padding: 8px; background: var(--surface); border: 1px solid var(--line-2);
+  border-radius: var(--radius); box-shadow: 0 12px 32px var(--shadow);
+}
+.tg-link-menu p { margin: 0 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.tg-link-menu .btn { justify-content: flex-start; text-align: left; }

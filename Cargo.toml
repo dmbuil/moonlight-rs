@@ -22,7 +22,7 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
-web-sys = { version = "0.3", features = ["HtmlDocument", "Location", "Window", "HtmlDetailsElement", "DomRect", "Element", "NodeList", "Node", "Navigator", "Clipboard", "HtmlTextAreaElement", "CssStyleDeclaration", "HtmlInputElement", "FileList", "File", "Blob", "XmlHttpRequest", "XmlHttpRequestUpload", "XmlHttpRequestResponseType", "ProgressEvent", "EventTarget", "Event"] }
+web-sys = { version = "0.3", features = ["HtmlDocument", "Location", "Window", "HtmlDetailsElement", "DomRect", "Element", "NodeList", "Node", "Navigator", "Clipboard", "HtmlTextAreaElement", "CssStyleDeclaration", "HtmlInputElement", "FileList", "File", "Blob", "XmlHttpRequest", "XmlHttpRequestUpload", "XmlHttpRequestResponseType", "ProgressEvent", "EventTarget", "Event", "Storage", "DragEvent", "DataTransfer"] }
 
 # server (ssr) only
 axum = { version = "0.8", optional = true }

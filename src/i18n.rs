@@ -819,6 +819,46 @@ translations! {
     Aliases => "Aliases", "Alias";
     Function => "Function", "Función";
     Minutes => "min", "min";
+    // Template Generator (roadmap 92)
+    TemplateGenerator => "Template Generator", "Generador de plantillas";
+    TgOtherType => "Other type…", "Otro tipo…";
+    TgAddResource => "Add a resource", "Añadir un recurso";
+    TgResources => "Resources", "Recursos";
+    TgNoResourcesYet => "Add a resource from the palette.", "Añade un recurso desde la paleta.";
+    TgPickResource => "Select a resource to edit its properties.", "Selecciona un recurso para editar sus propiedades.";
+    TgNoProperties => "This type has no properties.", "Este tipo no tiene propiedades.";
+    TgShowAll => "Show all properties", "Mostrar todas las propiedades";
+    TgShowSet => "Show only required and set properties", "Mostrar solo las obligatorias y las que tienen valor";
+    TgFromValue => "Value", "Valor";
+    TgFromParam => "Parameter", "Parámetro";
+    TgFromResource => "Resource", "Recurso";
+    TgValueSource => "Value source", "Origen del valor";
+    TgJsonHelp => "JSON, for example [{\"network\": {\"get_resource\": \"net_1\"}}].", "JSON, por ejemplo [{\"network\": {\"get_resource\": \"net_1\"}}].";
+    TgDependsHelp => "Created after these, besides the resources its properties point at.", "Se crea después de estos, además de los recursos a los que apuntan sus propiedades.";
+    TgNameTaken => "Another resource already has that name.", "Ya hay otro recurso con ese nombre.";
+    TgAddParameter => "Add Parameter", "Añadir parámetro";
+    TgAddOutput => "Add Output", "Añadir salida";
+    TgAttribute => "Attribute", "Atributo";
+    TgHidden => "Hidden", "Oculto";
+    TgNoParameters => "No parameters: every value is in the template.", "Sin parámetros: todos los valores están en la plantilla.";
+    TgNoOutputs => "No outputs.", "Sin salidas.";
+    TgClear => "Clear", "Vaciar";
+    TgClearConfirm => "Remove every resource, parameter and output of the draft?", "¿Quitar todos los recursos, parámetros y salidas del borrador?";
+    TgDraftKept => "The draft is kept in this browser until you clear it.", "El borrador se guarda en este navegador hasta que lo vacíes.";
+    TgNoProblems => "Nothing Heat would refuse was found; Launch Stack validates it with Heat.", "No se ha encontrado nada que Heat rechace; Lanzar pila la valida con Heat.";
+    TgPNoResources => "A template needs at least one resource.", "Una plantilla necesita al menos un recurso.";
+    TgPEmptyName => "Every parameter, resource and output needs a name.", "Cada parámetro, recurso y salida necesita un nombre.";
+    TgPDuplicate => "Name used twice:", "Nombre repetido:";
+    TgPMissing => "Required property not set:", "Propiedad obligatoria sin valor:";
+    TgPBadValue => "Not a valid value of its type:", "No es un valor válido de su tipo:";
+    TgPCycle => "Circular dependency:", "Dependencia circular:";
+    TgPOutput => "Output without a resource or attribute:", "Salida sin recurso o atributo:";
+    TgCanvas => "Template canvas", "Lienzo de la plantilla";
+    TgCanvasHelp => "Drag a type from the palette onto the canvas, or click it. Drag a resource to move it; drag its + handle onto another resource to link them. Gray resources still lack required properties.", "Arrastra un tipo de la paleta al lienzo, o haz clic en él. Arrastra un recurso para moverlo; arrastra su asa + hasta otro recurso para enlazarlos. Los recursos en gris aún no tienen todas sus propiedades obligatorias.";
+    TgLinkHandle => "Drag onto another resource to link them", "Arrastra hasta otro recurso para enlazarlos";
+    TgLinkAs => "Link as:", "Enlazar como:";
+    TgRemoveLink => "Remove link", "Quitar enlace";
+    TgLinkFailed => "That list property is not a JSON list; fix it in the form first.", "Esa propiedad de lista no es una lista JSON; corrígela antes en el formulario.";
 
     // Alarming (Aodh, roadmap 79)
     Monitoring => "Monitoring", "Monitorización";

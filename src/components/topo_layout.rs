@@ -273,6 +273,10 @@ pub type ViewBox = (f64, f64, f64, f64);
 /// Zooms by `factor` (> 1 zooms in) keeping the point at `(fx, fy)` — its
 /// position as a fraction of the drawing — still under the pointer.
 pub fn zoom(v: ViewBox, factor: f64, fx: f64, fy: f64, full: (f64, f64)) -> ViewBox {
+    // An empty view has no aspect ratio to keep (h would be 0 / 0).
+    if v.2 <= 0.0 || v.3 <= 0.0 {
+        return v;
+    }
     // Between 1/10 and 4× the whole drawing.
     let w = (v.2 / factor).clamp(full.0 / 10.0, full.0 * 4.0);
     let h = w * v.3 / v.2;
@@ -483,5 +487,12 @@ mod tests {
         assert_eq!(pan((0.0, 0.0, 500.0, 250.0), 100.0, -50.0, 1000.0), (-50.0, 25.0, 500.0, 250.0));
         // A 1000x500 drawing in a 1200x300 box: height-bound, centred horizontally.
         assert_eq!(fit((0.0, 0.0, 1000.0, 500.0), 1200.0, 300.0), (0.6, 300.0));
+    }
+
+    #[test]
+    fn zoom_leaves_an_empty_view_alone() {
+        // A view measured before layout (0 x 0) used to become `-100 NaN 100 NaN`.
+        let empty = (0.0, 0.0, 0.0, 0.0);
+        assert_eq!(zoom(empty, 1.2, 1.0, 1.0, (1000.0, 500.0)), empty);
     }
 }

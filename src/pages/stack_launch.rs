@@ -5,6 +5,7 @@
 //! asks Heat what would be created; *Launch*/*Update* opens the usual
 //! confirmation dialog, which runs the `OsAction` (and shows it in dry-run).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use leptos::prelude::*;
@@ -69,6 +70,22 @@ pub fn initial_values(params: &[TemplateParam], current: &[(String, String)]) ->
         .collect()
 }
 
+thread_local! {
+    /// A template the Template Generator hands to the next *Launch Stack*
+    /// (roadmap 92). Browser only: set by a click there, taken by the page it
+    /// navigates to; the server never sets it, so SSR always starts empty.
+    static HANDED: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Opens the next *Launch Stack* with `template` as its direct input.
+pub fn hand_template(template: String) {
+    HANDED.with(|h| *h.borrow_mut() = Some(template));
+}
+
+fn take_handed() -> Option<String> {
+    HANDED.with(|h| h.borrow_mut().take())
+}
+
 /// Orchestration › Stacks › *Launch Stack*.
 #[component]
 pub fn StackLaunchPage() -> impl IntoView {
@@ -95,7 +112,8 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
     let current = StoredValue::new(existing.as_ref().map(|d| d.parameters.clone()).unwrap_or_default());
     let stack_id = existing.as_ref().map(|d| d.stack.id.clone()).unwrap_or_default();
     let use_url = RwSignal::new(false);
-    let template = RwSignal::new(existing.as_ref().map(|d| d.template.clone()).unwrap_or_default());
+    let handed = if update { None } else { take_handed() };
+    let template = RwSignal::new(existing.as_ref().map(|d| d.template.clone()).or(handed).unwrap_or_default());
     let url = RwSignal::new(String::new());
     let env = RwSignal::new(String::new());
     let name = RwSignal::new(existing.as_ref().map(|d| d.stack.name.clone()).unwrap_or_default());

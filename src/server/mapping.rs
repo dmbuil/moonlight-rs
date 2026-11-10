@@ -3089,6 +3089,12 @@ pub fn resource_type_detail(v: &Value) -> ResourceTypeDetail {
             default: p.get("default").filter(|d| !d.is_null()).map(|d| heat_value(Some(d))),
             description: s_ne(&p, "description"),
             constraints: arr(&p, "constraints").iter().filter_map(heat_constraint).collect(),
+            allowed: arr(&p, "constraints")
+                .iter()
+                .flat_map(|c| arr(c, "allowed_values"))
+                .map(|x| x.as_str().map_or_else(|| x.to_string(), str::to_string))
+                .collect(),
+            custom: arr(&p, "constraints").iter().find_map(|c| s_ne(c, "custom_constraint")),
             name,
         })
         .collect();
@@ -4142,6 +4148,8 @@ mod tests {
         assert_eq!((count.kind.as_str(), count.required, count.update_allowed, count.default.as_deref()), ("integer", false, false, Some("1")));
         assert_eq!(count.constraints, [r#"range: {"min":0}"#, "allowed_values: [1,2]"], "descriptions left out");
         assert_eq!(d.properties[1].constraints, ["custom_constraint: nova.flavor"]);
+        assert_eq!((count.allowed.as_slice(), count.custom.as_deref()), (["1".to_string(), "2".to_string()].as_slice(), None));
+        assert_eq!((d.properties[1].allowed.len(), d.properties[1].custom.as_deref()), (0, Some("nova.flavor")));
         assert_eq!(d.properties[1].default, None);
         assert_eq!(d.attributes[1].kind, None, "old Heat reports no attribute types");
         assert!(d.raw.contains("\"OS::Nova::Server\""));

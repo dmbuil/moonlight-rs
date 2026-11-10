@@ -41,16 +41,28 @@ pub fn Canvas(
     };
     // First view: actual size from the top left when fitting everything would make
     // the text too small to read; *Center Topology* always fits everything.
+    let fit = (0.0, 0.0, full.0, full.1);
+    let first_view = move || match rect() {
+        Some((_, _, w, h)) if w > 0.0 && h > 0.0 && geo::fit(fit, w, h).0 < 0.8 => (0.0, 0.0, w, h),
+        _ => fit,
+    };
     Effect::new(move |_| {
-        let fit = (0.0, 0.0, full.0, full.1);
         let first = center.get() == c0;
         if first && kept.is_some() {
             return;
         }
-        vb.set(match rect() {
-            Some((_, _, w, h)) if first && geo::fit(fit, w, h).0 < 0.8 => (0.0, 0.0, w, h),
-            _ => fit,
-        });
+        if !first {
+            vb.set(fit);
+            return;
+        }
+        vb.set(first_view());
+        // A canvas created inside a reactive closure can run this before the browser
+        // has laid it out (0 × 0): measure again on the next frame.
+        if rect().is_none_or(|(_, _, w, h)| w <= 0.0 || h <= 0.0) {
+            request_animation_frame(move || {
+                vb.try_set(first_view());
+            });
+        }
     });
     Effect::new(move |_| {
         let v = vb.get();

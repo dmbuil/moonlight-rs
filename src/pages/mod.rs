@@ -14,6 +14,7 @@ pub mod overview;
 pub mod qos;
 pub mod quotas;
 pub mod stack_launch;
+pub mod template_generator;
 pub mod stacks;
 pub mod firewall;
 pub mod trunks;

@@ -26,8 +26,11 @@ fn type_columns() -> Vec<Col<ResourceTypeRow>> {
 pub fn ResourceTypesPage() -> impl IntoView {
     let data = Resource::new(data_version, |_| list_resource_types());
     let columns = StoredValue::new(type_columns());
+    let i18n = use_i18n();
     view! {
-        <PageHeader/>
+        <PageHeader>
+            <a class="btn" href="/project/template_generator">{move || i18n.t(K::TemplateGenerator)}</a>
+        </PageHeader>
         <Transition fallback=|| view! { <Skeleton/> }>
             {move || render(data.get(), move |td| view! {
                 <DataTable

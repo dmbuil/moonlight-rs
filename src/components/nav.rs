@@ -100,7 +100,7 @@ pub const PROJECT_NAV: &[Group] = &[
         requires: crate::model::needs::KEY_MANAGER,
     },
     // Heat (roadmap 62). Resource Types and Template Versions come next.
-    Group { label: K::Orchestration, panels: &[p(K::Stacks, "/project/stacks"), p(K::ResourceTypes, "/project/resource_types"), p(K::TemplateVersions, "/project/template_versions")], requires: crate::model::needs::ORCHESTRATION },
+    Group { label: K::Orchestration, panels: &[p(K::Stacks, "/project/stacks"), p(K::ResourceTypes, "/project/resource_types"), p(K::TemplateVersions, "/project/template_versions"), p(K::TemplateGenerator, "/project/template_generator")], requires: crate::model::needs::ORCHESTRATION },
     // Aodh (roadmap 79). Horizon has no maintained Alarming panel; the group
     // leaves room for other telemetry panels.
     Group { label: K::Monitoring, panels: &[p(K::Alarms, "/project/alarms")], requires: crate::model::needs::ALARMING },
@@ -296,6 +296,8 @@ mod tests {
         assert_eq!(g.label, K::NetworkGroup);
         let (g, p) = active("/project/stacks/s1").unwrap();
         assert_eq!((g.label, p.label), (K::Orchestration, K::Stacks));
+        let (g, p) = active("/project/template_generator").unwrap();
+        assert_eq!((g.label, p.label), (K::Orchestration, K::TemplateGenerator), "roadmap 92");
         let (_, p) = active("/project/network_topology").unwrap();
         assert_eq!(p.label, K::NetworkTopology, "not taken by the Networks panel");
         // prefix must stop at a path boundary

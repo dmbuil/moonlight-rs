@@ -2,6 +2,8 @@ pub mod assignment_rows;
 pub mod datetime;
 pub mod dialog;
 pub mod heat_icons;
+pub mod hot;
+pub mod hot_icons;
 pub mod jobs;
 pub mod layout;
 pub mod member_rows;

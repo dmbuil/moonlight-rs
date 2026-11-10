@@ -104,7 +104,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 89  | 🚧 Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
-| 92  | Heat Template Generator (from item 62) ([#14])                                                           | P3       | L    | 62                          |
+| 92  | 🚧 Heat Template Generator (from item 62) ([#14])                                                        | P3       | L    | 62                          |
 | 93  | 🚧 Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
 | 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
@@ -5647,6 +5647,98 @@ gets them as `os:scheduler_hints`. Moonlight sends only the server group hint to
 ## 92. Heat Template Generator
 
 > 🔗 **Issue:** [#14]
+>
+> 🚧 **In progress.** Slice 1 (model and form) and slice 2 (the canvas) are built and checked
+> in the browser (2026-11-10); Spanish UI and phone width are left.
+>
+> *Orchestration › Template Generator* (`/project/template_generator`, `pages/template_generator.rs`,
+> panel after *Template Versions*, `needs::ORCHESTRATION` like the rest of the group; *Resource
+> Types* links to it). Reads only: the type list, the template versions and each type's schema
+> (`get_resource_type`, once per type in the draft); nothing is sent to Heat from the page.
+>
+> - Palette: Horizon's 18 generator types, by service, with heat-dashboard's own SVG icons
+>   (`components/hot_icons.rs`, see slice 2; `TypeIcon`), less the types this Heat doesn't
+>   list. *Other type…* (a `Combo`) adds any of the cloud's types, drawn with their initials.
+> - Each resource's form comes from its type's schema: required properties first, then
+>   *Show all properties*. `TypeProperty` gained `allowed` (select) and `custom`
+>   (`custom_constraint`), tested in `mapping::resource_type_schema_tables`. A string
+>   property's value is typed, a `get_param`, or a `get_resource` to a draft resource of the
+>   type its constraint names (`hot::constraint_types`; any resource when unconstrained);
+>   `list`/`map` take JSON. Plus name (rename follows every reference), `depends_on`,
+>   parameters and outputs (`get_attr`, attributes from the schema) as small tables.
+> - The pure model is `components/hot.rs`: `Draft` → HOT YAML (own small writer: keys in
+>   template order, flow style for `get_*` and lists of scalars, literal blocks for
+>   `user_data`, YAML 1.1 quoting), `problems` (no resources, empty or duplicate names,
+>   missing required properties, values that don't fit their type, dependency cycles through
+>   `depends_on` and `get_resource`, incomplete outputs), 14 tests.
+> - Live preview with the problems, *Copy*, *Download* (`data:` URL, `template.yaml`) and
+>   *Launch Stack*, which opens *Launch Stack* with the template as direct input
+>   (`stack_launch::hand_template`). The draft is kept in `localStorage` (web-sys `Storage`).
+>
+> Checked in Brave on ttcp-dev (dry-run): Net, Subnet and Server added; the subnet's `network`
+> offers only the Net; renaming it to `private` rewrote `{get_resource: private}`; a `flavor`
+> parameter used by the server; an output on `server_1.addresses`; no problems left, and
+> *Launch Stack* opened with the same YAML (*Next* not pressed). The draft survived a reload.
+> Fixed then: selects whose options load later (version, parameters, resources, attributes)
+> now mark the chosen option `selected`. That last fix passed both clippy runs and the
+> tests, but the browser connection dropped before it could be rechecked in the page.
+>
+> Slice 2, the canvas (`DraftCanvas` in the *Resources* card, on `topo_canvas::Canvas`; the
+> list stays under it for the keyboard):
+>
+> - Icons: heat-dashboard's own SVGs (`template_generator/js/resources/os__*/os__*.svg`,
+>   Apache 2.0), not draw.io's look-alikes that `heat_icons.rs` keeps for the stack *Topology*.
+>   `scripts/gen_hot_icons.py <heat-dashboard checkout>` writes `components/hot_icons.rs`
+>   (markup per type, inserted with `inner_html`; black → `currentColor`, white → classes
+>   `bg-f`/`bg-s`), so CSS colours them: accent, or gray while the resource has missing or bad
+>   properties (Horizon's gray until edited). Other types keep their initials in a ring.
+> - Nodes at `DraftResource.pos` (`Draft::add` takes the first free cell of a 130-unit grid,
+>   6 to a row; `Draft::positions` places drafts saved without one). Drag a node to move it
+>   (committed on release); drag a palette type onto the canvas (HTML drag and drop, web-sys
+>   `DragEvent`/`DataTransfer`) or click it. Pan and zoom are the shared canvas'.
+> - Links: drag a node's + handle onto another. `Draft::link_choices` applies the only
+>   reference that fits, either way round (port → server still sets the server's
+>   `networks[].port`), falls back to `depends_on`, or asks in a small menu. Choices come from
+>   `link_options`: string properties whose `custom_constraint` names the target's type (or,
+>   unconstrained, whose name contains it: `floatingip_id`), then the list items of
+>   `hot::NESTED` (server `networks[].port/network/subnet/floating_ip`,
+>   `block_device_mapping_v2[].volume_id`, `security_groups[]`; port `fixed_ips[].subnet`,
+>   `security_groups[]`), then `depends_on`.
+> - One arrow per pair (`edge_pairs`, labels joined, dashed when only `depends_on`); clicking it
+>   offers *Remove link* (`Draft::unlink`). `get_resource` inside `list`/`map` JSON now counts
+>   everywhere: edges, `needs` and so cycles, `rename` (rewrites the JSON, keys re-sorted by
+>   serde_json) and `remove` (drops the items that point at it; an emptied list is unset).
+> - Tests: 6 new in `hot` (edges inside lists, link options, link choices, unlink/rename/remove
+>   in lists, grid cells, pairs and hit testing) and `hot_icons::every_palette_type_has_an_icon`.
+>   Both clippy runs clean, 569 tests pass.
+>
+> Browser pass (2026-11-10, Brave on ttcp-dev, nothing sent to Heat): the `selected` fix holds
+> after a reload (version, parameter type, output resource and attribute). Found and fixed:
+>
+> - **The canvas had no usable `viewBox`.** `topo_canvas::Canvas` measured its `<svg>` before
+>   layout (0 × 0), so the first view was `0 0 0 0`; the browser ignores that and draws in raw
+>   units, so it *looked* right, but `to_world` mapped every pointer wrong: linking by the +
+>   handle never found the target, drops and moves landed elsewhere, and a wheel zoom turned it
+>   into `-104 NaN 104 NaN` (`zoom` computed `h = w · 0 / 0`). Moves then saved `y` = `NODE_R`
+>   for every node (NaN clamped by `max`). Now a 0 × 0 box is measured again on the next frame
+>   (`request_animation_frame`), `zoom` leaves an empty view alone (test
+>   `zoom_leaves_an_empty_view_alone`), and `to_world` drops non-finite points. *Network
+>   Topology* shares the canvas and still opens at actual size.
+> - **Two links between the same nodes, one each way** (a `depends_on` against a
+>   `get_resource`) were drawn on the same line, labels on top of each other. `hot::edge_place`
+>   moves each `EDGE_GAP` to its own right, with its label further out on that side
+>   (`text-anchor` start/end beside a rather vertical line); test
+>   `edges_both_ways_are_drawn_apart`. Labels are drawn after the nodes, so a short edge's
+>   label is no longer hidden by them.
+>
+> Then checked: adding from the palette (a Port, gray until `network` is set; while selected the
+> selection ring makes it look blue), linking port → net by the handle (sets `network`, the
+> problem goes away), a `depends_on` link the other way (the cycle is reported), *Remove link*,
+> and moving nodes (they land where dropped). Both clippy runs clean, 574 tests pass.
+>
+> Left: Spanish UI and phone width (the canvas has mouse events only, no touch); palette
+> drag-and-drop onto the canvas was not tried with a real mouse. Possibly: the stack *Topology*
+> could move to these icons too.
 
 **Goal.** Horizon's *Orchestration › Template Generator*: a drag-and-drop canvas where the
 user adds resources (from the *Resource Types* list), connects them, fills their properties and
@@ -5990,32 +6082,6 @@ and almost everything here is `pub` inside one crate, so it would also demand th
 and variants) or by review only. Whether doc comments may stay in English while the UI is
 bilingual (they should: code is English throughout).
 
-## Also pending (from the PoC)
-
-- Validate `MOONLIGHT_WRITES=on` end to end on DevStack or a lab project.
-- OIDC login (Keystone WebSSO, Horizon's `WEBSSO_*` settings): item 80. Token renewal: item 77.
-- The login page's `<Title text=…>` closure (`pages/login.rs`) sometimes panics during SSR
-  with `the sandboxed-arenas feature is active, but no Arena is active` (reactive_graph 0.2.16,
-  backtrace through `I18n::t`): it runs after its owner is gone. Seen twice per dev run while
-  testing item 80; sign-in unaffected. Likely the same disposed-signal pattern as AGENTS.md §6
-  (`try_get`).
-- Identity on clouds that enforce Keystone system scope (`[oslo_policy] enforce_scope = true`):
-  user and role admin calls need a system-scoped token, so a second, system-scoped connection in
-  `os.rs` (from item 57; ttcp-dev doesn't enforce it).
-- Admin dashboard: item 85.
-- `scripts/dev.sh status` said `stopped` while the `cargo leptos watch` started by `restart` was
-  still compiling (2026-10-31, after `target/` was deleted); `stop` killed it. The status check
-  should find the watch process during the first build too.
-- Disk: `target/` reached 35 GB on 2026-10-31 (19 GB free); per AGENTS.md, delete the
-  `incremental` directories first when space runs low.
-- Paging for large projects (from item 27): item 88 does it for the Admin lists; Project panels
-  can reuse it once a project nears ~1000 rows (in October 2026 the largest had 31, 0.3 s).
-- `[server] base_path` (Horizon's `WEBROOT`): serve Moonlight under a sub-path such as
-  `/dashboard` (routes, `/pkg` assets, server function URLs, cookie path).
-- Several Keystones selectable at login (Horizon's `AVAILABLE_REGIONS`): login form, session and
-  the connection cache keyed by Keystone URL.
-- Instance resize, rebuild, migrate. (Console and log: item 31; image upload: item 45.)
-- Container image and OpenShift deployment; optional shared cache.
 ## 98. Subtle CSS motion on tabs, nav bars, menus and dialogs
 
 **Goal.** Switching a tab, a panel group (primary bar) or a panel (secondary bar), opening a
@@ -6154,3 +6220,29 @@ drawings are replaced). Whether shared and external networks count towards the l
 the project's own (the request says every network the project sees; external ones are usually
 few, shared ones may be many).
 
+## Also pending (from the PoC)
+
+- Validate `MOONLIGHT_WRITES=on` end to end on DevStack or a lab project.
+- OIDC login (Keystone WebSSO, Horizon's `WEBSSO_*` settings): item 80. Token renewal: item 77.
+- The login page's `<Title text=…>` closure (`pages/login.rs`) sometimes panics during SSR
+  with `the sandboxed-arenas feature is active, but no Arena is active` (reactive_graph 0.2.16,
+  backtrace through `I18n::t`): it runs after its owner is gone. Seen twice per dev run while
+  testing item 80; sign-in unaffected. Likely the same disposed-signal pattern as AGENTS.md §6
+  (`try_get`).
+- Identity on clouds that enforce Keystone system scope (`[oslo_policy] enforce_scope = true`):
+  user and role admin calls need a system-scoped token, so a second, system-scoped connection in
+  `os.rs` (from item 57; ttcp-dev doesn't enforce it).
+- Admin dashboard: item 85.
+- `scripts/dev.sh status` said `stopped` while the `cargo leptos watch` started by `restart` was
+  still compiling (2026-10-31, after `target/` was deleted); `stop` killed it. The status check
+  should find the watch process during the first build too.
+- Disk: `target/` reached 35 GB on 2026-10-31 (19 GB free); per AGENTS.md, delete the
+  `incremental` directories first when space runs low.
+- Paging for large projects (from item 27): item 88 does it for the Admin lists; Project panels
+  can reuse it once a project nears ~1000 rows (in October 2026 the largest had 31, 0.3 s).
+- `[server] base_path` (Horizon's `WEBROOT`): serve Moonlight under a sub-path such as
+  `/dashboard` (routes, `/pkg` assets, server function URLs, cookie path).
+- Several Keystones selectable at login (Horizon's `AVAILABLE_REGIONS`): login form, session and
+  the connection cache keyed by Keystone URL.
+- Instance resize, rebuild, migrate. (Console and log: item 31; image upload: item 45.)
+- Container image and OpenShift deployment; optional shared cache.

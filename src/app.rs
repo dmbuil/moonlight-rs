@@ -12,6 +12,7 @@ use crate::pages::instances::InstancesPage;
 use crate::pages::key_manager::{ContainerDetailPage, SecretDetailPage};
 use crate::pages::heat_catalog::{ResourceTypeDetailPage, ResourceTypesPage, TemplateVersionDetailPage, TemplateVersionsPage};
 use crate::pages::stack_launch::{StackChangePage, StackLaunchPage};
+use crate::pages::template_generator::TemplateGeneratorPage;
 use crate::pages::stacks::{StackDetailPage, StacksPage};
 use crate::pages::alarms::{AlarmDetailPage, AlarmsPage};
 use crate::pages::lists::*;
@@ -127,6 +128,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("resource_types/:id") view=ResourceTypeDetailPage/>
                         <Route path=path!("template_versions") view=TemplateVersionsPage/>
                         <Route path=path!("template_versions/:id") view=TemplateVersionDetailPage/>
+                        <Route path=path!("template_generator") view=TemplateGeneratorPage/>
                         <Route path=path!("api_access") view=ApiAccessPage/>
                     </ParentRoute>
                     // Horizon's Admin dashboard (roadmap 85), Horizon's URLs; `/admin` is

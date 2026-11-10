@@ -1712,6 +1712,14 @@ pub struct TypeProperty {
     pub description: Option<String>,
     /// Each constraint compact (`allowed_values: [a, b]`, `custom_constraint: nova.flavor`).
     pub constraints: Vec<String>,
+    /// The `allowed_values` constraint's values as text, for a select in the
+    /// Template Generator (roadmap 92); empty when unconstrained.
+    #[serde(default)]
+    pub allowed: Vec<String>,
+    /// The `custom_constraint` (`neutron.network`, `nova.flavor`): what the value
+    /// names, so the Template Generator can offer a `get_resource` to a matching resource.
+    #[serde(default)]
+    pub custom: Option<String>,
 }
 
 /// One attribute of a resource type.
@@ -3299,6 +3307,10 @@ pub struct FloatingIpRow {
     pub instance_id: Option<String>,
     pub instance_name: Option<String>,
     pub pool: String,
+    /// The pool's network ID (`floating_network_id`): admin *Associate* offers
+    /// only the ports it reaches (roadmap 89).
+    #[serde(default)]
+    pub pool_id: String,
     pub status: String,
     pub description: Option<String>,
     /// `dns-integration` extension; absent otherwise.
@@ -3307,10 +3319,6 @@ pub struct FloatingIpRow {
 }
 
 /// A floating IP port forwarding rule (Neutron `floating-ip-port-forwarding`).
-    /// The pool's network ID (`floating_network_id`): admin *Associate* offers
-    /// only the ports it reaches (roadmap 89).
-    #[serde(default)]
-    pub pool_id: String,
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PortForwardingRow {
     pub id: String,
@@ -5401,14 +5409,6 @@ impl Choice {
     }
 }
 
-/// Numbers the launch wizard needs about images and flavors.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Facts {
-    pub size_bytes: Option<u64>,
-    pub min_disk_gb: Option<i64>,
-    pub min_ram_mb: Option<i64>,
-    pub vcpus: Option<i64>,
-    pub ram_mb: Option<i64>,
 /// The `Source::Of` key of a [`ChoiceSet::AllAssociablePorts`] choice: the
 /// port's project and a floating IP pool (external network ID) that reaches it.
 /// Neutron associates only within one project and through a router with its
@@ -5417,6 +5417,14 @@ pub fn associable_port_key(project_id: &str, pool_id: &str) -> String {
     format!("{project_id} {pool_id}")
 }
 
+/// Numbers the launch wizard needs about images and flavors.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Facts {
+    pub size_bytes: Option<u64>,
+    pub min_disk_gb: Option<i64>,
+    pub min_ram_mb: Option<i64>,
+    pub vcpus: Option<i64>,
+    pub ram_mb: Option<i64>,
     pub disk_gb: Option<i64>,
 }
 

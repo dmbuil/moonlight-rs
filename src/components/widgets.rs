@@ -520,7 +520,8 @@ where
 // Copy to clipboard
 // ---------------------------------------------------------------------------
 
-fn copy_to_clipboard(_text: &str) {
+/// Copies `_text` to the clipboard; best effort, silent when the browser refuses.
+pub fn copy_to_clipboard(_text: &str) {
     #[cfg(feature = "hydrate")]
     {
         use wasm_bindgen::{JsCast, JsValue};
