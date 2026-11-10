@@ -310,7 +310,7 @@ impl Draft {
 
     /// What a link drawn from `from` to `to` can set, most specific first:
     /// string properties whose constraint names `to`'s type (or, without one,
-    /// whose name contains it: `floatingip_id`), items of the [`NESTED`] lists,
+    /// whose name is the type's, `_id` or not: `floatingip_id`), items of the [`NESTED`] lists,
     /// then `depends_on`. Those already pointing at `to` are left out. Uses `from`'s
     /// schema when loaded; without it only the last two kinds.
     pub fn link_options(&self, schemas: &HashMap<String, ResourceTypeDetail>, from: &str, to: &str) -> Vec<Link> {
@@ -327,7 +327,7 @@ impl Draft {
                 .filter(|p| p.kind == "string" && a.prop(&p.name) != Some(&target))
                 .filter(|p| match p.custom.as_deref() {
                     Some(c) => constraint_types(c).contains(&b.kind.as_str()),
-                    None => p.name.replace('_', "").contains(&snake(&b.kind).replace('_', "")),
+                    None => names_type(&p.name, &b.kind),
                 })
                 .collect();
             props.sort_by(|x, y| y.required.cmp(&x.required).then_with(|| x.name.cmp(&y.name)));
@@ -655,6 +655,15 @@ pub fn edge_pairs(edges: &[Edge]) -> Vec<Edge> {
         }
     }
     out
+}
+
+/// Whether an unconstrained property's name says it holds a resource of
+/// `kind`: the type's name, underscores aside, maybe followed by `id`
+/// (`floatingip_id` for `OS::Neutron::FloatingIP`, `port` or `port_id` for a
+/// port), and not just any name containing it (`software_config_transport`).
+fn names_type(prop: &str, kind: &str) -> bool {
+    let (name, ty) = (prop.replace('_', ""), snake(kind).replace('_', ""));
+    name == ty || name == format!("{ty}id")
 }
 
 /// Where an edge's line and label go, given its trimmed segment. A pair that
@@ -1281,6 +1290,8 @@ outputs:
         let fip = d.add("OS::Neutron::FloatingIP");
         let assoc = d.add("OS::Neutron::FloatingIPAssociation");
         assert_eq!(d.link_options(&schemas, &assoc, &fip), [Link::Prop("floatingip_id".into()), Link::DependsOn]);
+        assert!(names_type("port_id", "OS::Neutron::Port") && names_type("port", "OS::Neutron::Port"));
+        assert!(!names_type("software_config_transport", "OS::Neutron::Port"), "a name merely containing the type's");
         assert_eq!(d.link_options(&schemas, &assoc, &port), [Link::Prop("port_id".into()), Link::DependsOn]);
         // Without a schema: only the fixed list items and depends_on.
         assert_eq!(d.link_options(&HashMap::new(), &port, "net_1"), [Link::DependsOn]);

@@ -104,7 +104,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 89  | 🚧 Admin dashboard refinements (item 85's leftovers) ([#11])                                                 | P3       | M    | 85, 88                      |
 | 90  | Volume Backups leftovers (from item 5) ([#12])                                                            | P3       | M    | 5                           |
 | 91  | Scheduler Hints step in Launch Instance (from item 5) ([#13])                                            | P3       | S    | 5, 2                        |
-| 92  | 🚧 Heat Template Generator (from item 62) ([#14])                                                        | P3       | L    | 62                          |
+| 92  | ✅ Heat Template Generator (from item 62) ([#14])                                                        | —        | L    | 62                          |
 | 93  | 🚧 Firewall (FWaaS v2): firewall groups, policies and rules ([#15]) | P2 | L | 19 |
 | 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
@@ -135,7 +135,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 96**.
+85, 86, 87, 88, 92, 96**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -5648,8 +5648,8 @@ gets them as `os:scheduler_hints`. Moonlight sends only the server group hint to
 
 > 🔗 **Issue:** [#14]
 >
-> 🚧 **In progress.** Slice 1 (model and form) and slice 2 (the canvas) are built and checked
-> in the browser (2026-11-10); Spanish UI and phone width are left.
+> ✅ **Done** (2026-11-10). Slice 1 (model and form) and slice 2 (the canvas), checked in the
+> browser on desktop, phone width with touch, and in Spanish.
 >
 > *Orchestration › Template Generator* (`/project/template_generator`, `pages/template_generator.rs`,
 > panel after *Template Versions*, `needs::ORCHESTRATION` like the rest of the group; *Resource
@@ -5736,9 +5736,37 @@ gets them as `os:scheduler_hints`. Moonlight sends only the server group hint to
 > problem goes away), a `depends_on` link the other way (the cycle is reported), *Remove link*,
 > and moving nodes (they land where dropped). Both clippy runs clean, 574 tests pass.
 >
-> Left: Spanish UI and phone width (the canvas has mouse events only, no touch); palette
-> drag-and-drop onto the canvas was not tried with a real mouse. Possibly: the stack *Topology*
-> could move to these icons too.
+> Phone and touch (2026-11-10, Brave emulating 390 × 844 with touch, real touch input through
+> DevTools' `Input.dispatchTouchEvent`):
+>
+> - The canvases use pointer events instead of mouse events: `topo_canvas::Canvas` (pan; a
+>   second finger is ignored, `is_primary`) and the generator's nodes, + handle and edges.
+>   *Network Topology* and the stack *Topology* pan by finger too. The handle has a
+>   finger-sized transparent target (`tg-handle-hit`, r = 16) around the visible one. Checked:
+>   a swipe on the empty canvas pans it by the swipe's length; dragging port_1 moves it by
+>   exactly the drag and doesn't pan; tapping selects it; dragging its handle onto server_1
+>   opens *Link as* (cancelled).
+> - The first view on a phone was the whole drawing at a third of its size: the canvas is
+>   laid out several frames after its `Effect` here, so the one-frame re-measure still saw
+>   0 × 0. It now retries each frame until the box has a size (up to 60 frames,
+>   `topo_canvas::after_layout`), and opens at actual size (`0 0 332 520`), panned for the rest.
+> - The layout is one column below 760 px with no horizontal page scroll; the parameter and
+>   output tables scroll in their own `table-wrap`.
+> - *Link as* offered `server_1.software_config_transport → port_1`: unconstrained properties
+>   matched any name *containing* the type's. Now the name must be the type's, `_id` or not
+>   (`hot::names_type`: `port`, `port_id`, `floatingip_id`), tested in
+>   `drawing_a_link_offers_what_fits_the_target`.
+>
+> Both clippy runs clean, 574 tests pass.
+>
+> Last checks (2026-11-10): in Spanish the whole page is translated (the palette keeps Heat's
+> type names, as Horizon); every string is a `K::` key, the only literals are `×`, `-` and `*`.
+> Palette drag-and-drop with a real mouse (DevTools' drag interception: `mousePressed` on
+> *Volume*, Chrome starts the HTML drag with `application/x-moonlight-heat-type`, dropped on
+> the canvas): volume_1 lands within 2 px of the drop point, selected. On a phone, where HTML
+> drag-and-drop isn't available, tapping a palette type adds it. Not done, a possible follow-up:
+> the stack *Topology* could move to these icons too; nodes placed very close let an edge label
+> cover a node's name (labels are drawn above nodes).
 
 **Goal.** Horizon's *Orchestration › Template Generator*: a drag-and-drop canvas where the
 user adds resources (from the *Resource Types* list), connects them, fills their properties and

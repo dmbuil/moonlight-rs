@@ -418,7 +418,7 @@ struct Pending {
 /// (`DraftResource.pos`).
 ///
 /// Handlers use the `try_` accessors (AGENTS.md §6): leaving the page disposes
-/// the signals while the elements still get `mouseup`/`mouseleave`.
+/// the signals while the elements still get `pointerup`/`pointerleave`.
 #[component]
 fn DraftCanvas(
     draft: RwSignal<Draft>,
@@ -493,7 +493,10 @@ fn DraftCanvas(
         dragged.try_set(None);
         rubber.try_set(None);
     };
-    let on_move = move |ev: leptos::ev::MouseEvent| {
+    let on_move = move |ev: leptos::ev::PointerEvent| {
+        if !ev.is_primary() {
+            return;
+        }
         let Some(d) = drag.try_get_value().flatten() else { return };
         let Some(w) = to_world(ev.client_x() as f64, ev.client_y() as f64) else { return };
         match d {
@@ -512,7 +515,7 @@ fn DraftCanvas(
             }
         }
     };
-    let on_up = move |ev: leptos::ev::MouseEvent| {
+    let on_up = move |ev: leptos::ev::PointerEvent| {
         let Some(d) = drag.try_get_value().flatten() else { return };
         match d {
             Drag::Move { .. } => {
@@ -580,7 +583,7 @@ fn DraftCanvas(
                 let title = format!("{} → {}: {}", e.from, e.to, e.label);
                 view! {
                     <g class="tg-edge" class:sel=is_sel
-                        on:mousedown=|ev| ev.stop_propagation()
+                        on:pointerdown=|ev| ev.stop_propagation()
                         on:click=move |_| { edge_sel.set(Some(pair.clone())); pending.set(None); }>
                         <title>{title}</title>
                         <line class="tg-edge-hit" x1=x1 y1=y1 x2=x2 y2=y2></line>
@@ -612,8 +615,8 @@ fn DraftCanvas(
                     <g class="tg-node" class:sel=sel.as_deref() == Some(name.as_str()) class:incomplete=inc.contains(&name)
                         transform=format!("translate({x},{y})") role="button" tabindex="0"
                         aria-label=format!("{name} ({kind})")
-                        on:mousedown=move |ev| {
-                            if ev.button() != 0 { return; }
+                        on:pointerdown=move |ev| {
+                            if ev.button() != 0 || !ev.is_primary() { return; }
                             ev.stop_propagation();
                             if let Some(w) = to_world(ev.client_x() as f64, ev.client_y() as f64) {
                                 drag.try_set_value(Some(Drag::Move { name: n1.clone(), start: w, orig: (x, y) }));
@@ -629,16 +632,18 @@ fn DraftCanvas(
                         <g transform=format!("translate({},{}) scale({k})", -NODE_R, -NODE_R)>{glyph(&kind)}</g>
                         <text class="topo-label tg-node-name" y=NODE_R + 16.0 text-anchor="middle">{name.clone()}</text>
                         <g class="tg-handle" transform=format!("translate({},{})", NODE_R * 0.8, -NODE_R * 0.8)
-                            on:mousedown={
+                            on:pointerdown={
                                 let name = name.clone();
                                 move |ev| {
-                                    if ev.button() != 0 { return; }
+                                    if ev.button() != 0 || !ev.is_primary() { return; }
                                     ev.stop_propagation();
                                     pending.set(None);
                                     drag.try_set_value(Some(Drag::Link { from: name.clone() }));
                                 }
                             }>
                             <title>{move || i18n.t(K::TgLinkHandle)}</title>
+                            // A finger-sized target around the small visible one.
+                            <circle class="tg-handle-hit" r="16"></circle>
                             <circle r="8"></circle>
                             <path d="M-4 0H4M0 -4V4"></path>
                         </g>
@@ -683,7 +688,7 @@ fn DraftCanvas(
         <p class="muted tg-help">{move || i18n.t(K::TgCanvasHelp)}</p>
         {move || link_error.get().then(|| view! { <p class="alert alert-error" role="alert">{move || i18n.t(K::TgLinkFailed)}</p> })}
         <div class="tg-canvas" node_ref=wrap
-            on:mousemove=on_move on:mouseup=on_up on:mouseleave=move |_| cancel()
+            on:pointermove=on_move on:pointerup=on_up on:pointercancel=move |_| cancel() on:pointerleave=move |_| cancel()
             on:dragover=|ev: leptos::ev::DragEvent| ev.prevent_default()
             on:drop=on_drop
             on:keydown=move |ev| if ev.key() == "Escape" { pending.set(None); edge_sel.set(None); }>

@@ -952,6 +952,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .tg-handle { cursor: crosshair; opacity: 0; transition: opacity .15s; }
 .tg-node:hover .tg-handle, .tg-node.sel .tg-handle, .tg-node:focus-visible .tg-handle { opacity: 1; }
 .tg-handle circle { fill: var(--primary); }
+.tg-handle circle.tg-handle-hit { fill: transparent; }
 .tg-handle path { stroke: var(--primary-ink); stroke-width: 2; stroke-linecap: round; }
 .tg-edge { cursor: pointer; }
 .tg-edge-hit { stroke: transparent; stroke-width: 12; }

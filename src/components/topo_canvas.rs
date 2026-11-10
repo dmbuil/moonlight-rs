@@ -16,7 +16,7 @@ pub type KeptView = StoredValue<Option<((f64, f64), ViewBox)>>;
 /// when the drawing size is the same.
 ///
 /// Its handlers use the `try_` accessors: navigating away disposes the signals while
-/// the element still gets `mouseup`/`mouseleave` (a panic there aborts the WASM app).
+/// the element still gets `pointerup`/`pointerleave` (a panic there aborts the WASM app).
 #[component]
 pub fn Canvas(
     full: (f64, f64),
@@ -57,9 +57,9 @@ pub fn Canvas(
         }
         vb.set(first_view());
         // A canvas created inside a reactive closure can run this before the browser
-        // has laid it out (0 × 0): measure again on the next frame.
-        if rect().is_none_or(|(_, _, w, h)| w <= 0.0 || h <= 0.0) {
-            request_animation_frame(move || {
+        // has laid it out (0 × 0): measure again once it has a size.
+        if !laid_out(rect()) {
+            after_layout(rect, 60, move || {
                 vb.try_set(first_view());
             });
         }
@@ -75,14 +75,17 @@ pub fn Canvas(
             viewBox=move || { let v = vb.get(); format!("{} {} {} {}", v.0, v.1, v.2, v.3) }
             preserveAspectRatio="xMidYMin meet"
             style=format!("height:{height}px")
-            on:mousedown=move |ev| {
-                if ev.button() == 0 {
+            // Pointer events, so a finger pans as a mouse does (`touch-action: none`
+            // keeps the page from scrolling instead); a second finger is ignored.
+            on:pointerdown=move |ev| {
+                if ev.button() == 0 && ev.is_primary() {
                     moved.try_set(false);
                     let Some(v) = vb.try_get_untracked() else { return };
                     drag.try_set_value(Some((ev.client_x() as f64, ev.client_y() as f64, v)));
                 }
             }
-            on:mousemove=move |ev| {
+            on:pointermove=move |ev| {
+                if !ev.is_primary() { return; }
                 let Some((x, y, start)) = drag.try_get_value().flatten() else { return };
                 let (dx, dy) = (ev.client_x() as f64 - x, ev.client_y() as f64 - y);
                 if !moved.try_get_untracked().unwrap_or(false) && dx.abs() + dy.abs() < 4.0 {
@@ -92,8 +95,9 @@ pub fn Canvas(
                 let (scale, _) = rect().map(|r| geo::fit(start, r.2, r.3)).unwrap_or((1.0, 0.0));
                 vb.try_set(geo::pan(start, dx, dy, start.2 * scale));
             }
-            on:mouseup=move |_| { drag.try_set_value(None); }
-            on:mouseleave=move |_| { drag.try_set_value(None); }
+            on:pointerup=move |_| { drag.try_set_value(None); }
+            on:pointercancel=move |_| { drag.try_set_value(None); }
+            on:pointerleave=move |_| { drag.try_set_value(None); }
             // On the element itself (Leptos' `delegation` feature is off), so it is not
             // passive and can stop the page from scrolling.
             on:wheel=move |ev: leptos::ev::WheelEvent| {
@@ -109,4 +113,20 @@ pub fn Canvas(
             {children()}
         </svg>
     }
+}
+
+fn laid_out(rect: Option<(f64, f64, f64, f64)>) -> bool {
+    rect.is_some_and(|(_, _, w, h)| w > 0.0 && h > 0.0)
+}
+
+/// Runs `then` on the first animation frame where `rect` has a size, giving up
+/// (and running it anyway) after `tries` frames, about a second for 60.
+fn after_layout(rect: impl Fn() -> Option<(f64, f64, f64, f64)> + Copy + 'static, tries: u32, then: impl FnOnce() + 'static) {
+    request_animation_frame(move || {
+        if tries > 0 && !laid_out(rect()) {
+            after_layout(rect, tries - 1, then);
+        } else {
+            then();
+        }
+    });
 }
