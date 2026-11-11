@@ -333,6 +333,10 @@ translations! {
     ViewFullLog => "View Full Log", "Ver registro completo";
     LogEmpty => "The log is empty.", "El registro está vacío.";
     ConsoleOnlyActive => "The console is available only while the instance is active.", "La consola solo está disponible mientras la instancia está activa.";
+    ConsoleSize => "Console size", "Tamaño de la consola";
+    ConsoleFit => "Fit", "Ajustar";
+    ConsoleFitHelp => "The whole screen, scaled to the frame", "Toda la pantalla, ajustada al marco";
+    ConsoleActualSize => "Actual size: sharper text, scroll to see the rest", "Tamaño real: texto más nítido, desplázate para ver el resto";
     ConsoleOpenAlone => "Open the console alone", "Abrir solo la consola";
     ConsoleKeyboardHint => "If the console does not respond to the keyboard, click inside it first.", "Si la consola no responde al teclado, haz clic dentro de ella primero.";
     Ram => "RAM", "RAM";

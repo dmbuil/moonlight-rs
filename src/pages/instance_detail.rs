@@ -200,19 +200,63 @@ fn LogTab(id: String) -> impl IntoView {
 fn ConsoleTab(id: String) -> impl IntoView {
     let i18n = use_i18n();
     let console = LocalResource::new(move || run_instance_console(id.clone()));
+    // *Fit* (noVNC scales the screen to the frame) or *1:1* (native size, scrolling
+    // inside the frame); the viewer's last choice, in this browser (roadmap 99).
+    let fit = RwSignal::new(console_fit());
+    let pick = move |on: bool| {
+        fit.set(on);
+        remember_console_fit(on);
+    };
     view! {
         <Transition fallback=|| view! { <Skeleton rows=6/> }>
             {move || console.get().map(|r| match console_reply(r) {
                 Err(v) => v,
-                Ok(c) => view! {
-                    <p class="console-bar">
-                        <span class="muted">{move || i18n.t(K::ConsoleKeyboardHint)}</span>
-                        <a href=c.url.clone() target="_blank" rel="noopener noreferrer">{move || i18n.t(K::ConsoleOpenAlone)}</a>
-                    </p>
-                    <iframe class="console-frame" src=c.url title=move || i18n.t(K::ConsoleTab)></iframe>
-                }.into_any(),
+                Ok(c) => {
+                    // Only noVNC can scale; SPICE's frame URL is Nova's.
+                    let (fitted, native) = (c.frame_url(), c.url.clone());
+                    let toggle = (fitted != native).then(|| view! {
+                        <span class="console-zoom" role="group" aria-label=move || i18n.t(K::ConsoleSize)>
+                            <button type="button" class:selected=move || fit.get() aria-pressed=move || fit.get().to_string()
+                                title=move || i18n.t(K::ConsoleFitHelp) on:click=move |_| pick(true)>{move || i18n.t(K::ConsoleFit)}</button>
+                            <button type="button" class:selected=move || !fit.get() aria-pressed=move || (!fit.get()).to_string()
+                                title=move || i18n.t(K::ConsoleActualSize) on:click=move |_| pick(false)>"1:1"</button>
+                        </span>
+                    });
+                    view! {
+                        <p class="console-bar">
+                            <span class="muted">{move || i18n.t(K::ConsoleKeyboardHint)}</span>
+                            {toggle}
+                            <a href=c.url.clone() target="_blank" rel="noopener noreferrer">{move || i18n.t(K::ConsoleOpenAlone)}</a>
+                        </p>
+                        // A new `src` reloads noVNC, which reconnects with the same token.
+                        // *Open alone* keeps Nova's URL.
+                        <iframe class="console-frame" src=move || if fit.get() { fitted.clone() } else { native.clone() }
+                            title=move || i18n.t(K::ConsoleTab)></iframe>
+                    }.into_any()
+                }
             })}
         </Transition>
+    }
+}
+
+/// Where the *Console* tab remembers *Fit* or *1:1* (roadmap 99).
+#[cfg(feature = "hydrate")]
+const CONSOLE_FIT_KEY: &str = "moonlight.console.fit";
+
+/// *Fit* unless this browser last picked *1:1* (or can't tell: storage blocked).
+fn console_fit() -> bool {
+    #[cfg(feature = "hydrate")]
+    if let Some(v) = window().local_storage().ok().flatten().and_then(|st| st.get_item(CONSOLE_FIT_KEY).ok().flatten()) {
+        return v != "false";
+    }
+    true
+}
+
+fn remember_console_fit(_fit: bool) {
+    // Best effort: a blocked storage only forgets the choice.
+    #[cfg(feature = "hydrate")]
+    if let Ok(Some(st)) = window().local_storage() {
+        let _ = st.set_item(CONSOLE_FIT_KEY, if _fit { "true" } else { "false" });
     }
 }
 

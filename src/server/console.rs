@@ -141,6 +141,19 @@ mod tests {
         assert_eq!(body(&r.requests[0]), json!({"os-getConsoleOutput": {}}));
     }
 
+    #[test]
+    fn the_frame_asks_novnc_to_scale_and_keeps_the_token() {
+        let c = |kind: &str, protocol: &str, url: &str| RemoteConsole { protocol: protocol.into(), kind: kind.into(), url: url.into() };
+        // The cloud's shape: the token is inside `path`.
+        let lite = c("novnc", "vnc", "https://nova.example:6080/vnc_lite.html?path=%3Ftoken%3Dabc");
+        assert_eq!(lite.frame_url(), "https://nova.example:6080/vnc_lite.html?path=%3Ftoken%3Dabc&scale=true&resize=scale");
+        assert_eq!(lite.url, "https://nova.example:6080/vnc_lite.html?path=%3Ftoken%3Dabc", "open alone keeps Nova's URL");
+        assert_eq!(c("novnc", "", "https://n/vnc_auto.html").frame_url(), "https://n/vnc_auto.html?scale=true&resize=scale", "no query yet; the old VNC action has no protocol");
+        assert_eq!(c("novnc", "vnc", "https://n/vnc.html?token=t&scale=false#x").frame_url(), "https://n/vnc.html?token=t&scale=false&resize=scale#x", "a set option is not repeated; the fragment stays last");
+        let spice = c("spice-html5", "spice", "https://n/spice_auto.html?token=t");
+        assert_eq!(spice.frame_url(), spice.url, "SPICE's page has no scaling option");
+    }
+
     #[tokio::test]
     async fn remote_console_previews_vnc_first() {
         let r = remote(WriteMode::DryRun, &on(), None, "vm1", true).await.unwrap();

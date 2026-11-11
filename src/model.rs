@@ -4196,6 +4196,35 @@ pub struct RemoteConsole {
     pub url: String,
 }
 
+impl RemoteConsole {
+    /// The URL for the *Console* tab's frame (roadmap 99): noVNC asked to scale
+    /// the remote screen to the frame (`scale=true` for `vnc_lite.html` and
+    /// `vnc_auto.html`, `resize=scale` for `vnc.html`; each page ignores the
+    /// other's). Never `resize=remote`, which changes the guest's resolution.
+    /// Every parameter Nova put there (the token) is kept, one already set is not
+    /// repeated, and SPICE's page, which has no such option, is left as it is.
+    pub fn frame_url(&self) -> String {
+        if !(self.kind == "novnc" || self.protocol == "vnc") {
+            return self.url.clone();
+        }
+        let (base, fragment) = self.url.split_once('#').map_or((self.url.as_str(), None), |(b, f)| (b, Some(f)));
+        let query = base.split_once('?').map(|(_, q)| q).unwrap_or("");
+        let has = |key: &str| query.split('&').any(|p| p.split('=').next() == Some(key));
+        let mut out = base.to_string();
+        for (key, value) in [("scale", "true"), ("resize", "scale")] {
+            if !has(key) {
+                out.push(if out.contains('?') { '&' } else { '?' });
+                out.push_str(&format!("{key}={value}"));
+            }
+        }
+        if let Some(f) = fragment {
+            out.push('#');
+            out.push_str(f);
+        }
+        out
+    }
+}
+
 /// What `run_action` did: the requests built (sent or not, per `mode`), a one-time
 /// secret, and per-item results for batches.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

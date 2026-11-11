@@ -111,7 +111,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 96 | ✅ Tab bars show a pointless scroll control | — | XS | — |
 | 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
 | 98 | Subtle CSS motion on tabs, nav bars, menus and dialogs | P3 | S | 96 |
-| 99 | 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | P2 | S | 31 |
+| 99 | ✅ 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | — | S | 31 |
 | 100 | Network Topology: a note instead of the drawing when the project sees too many networks | P3 | S | 20, 29 |
 | 101 | Phone view: fold the header's bars and menus into one or two buttons | P3 | M | 39, 96 |
 
@@ -136,7 +136,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96**.
+85, 86, 87, 88, 89, 92, 96, 99**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6253,6 +6253,25 @@ or only the colour transitions on the controls themselves; decide by looking at 
 browser.
 
 ## 99. 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off
+
+> ✅ **Done** (2026-11-10). ttcp-dev serves noVNC's `vnc_lite.html`, the token inside its `path`
+> parameter. The *Console* tab's frame loads `RemoteConsole::frame_url()` (`model.rs`): Nova's
+> URL with `scale=true&resize=scale` added for a noVNC console (`kind` `novnc` or `protocol`
+> `vnc`), every existing parameter kept, one already set not repeated, a fragment kept last,
+> SPICE untouched (test `the_frame_asks_novnc_to_scale_and_keeps_the_token` in
+> `server/console.rs`). *Open the console alone* keeps Nova's URL as it is. `.console-frame` is
+> `max(360px, calc(100dvh - 370px))` tall with `resize: vertical`: on a 1502 × 758 window the
+> page is exactly the window's height (it was 27px taller with a 340px offset, and the whole
+> frame ran past the bottom before), and the guest's 1024 × 768 screen shows whole, scaled
+> into the 388px frame. At 390px wide (emulated phone) it fits the frame's width with no
+> horizontal scroll; the page still scrolls there because of the tall header (item 101).
+> Keyboard input not typed into (an instance at its login prompt, in a shared project); the
+> change doesn't touch it. A *Fit / 1:1* toggle in `.console-bar` (`.console-zoom`, noVNC only,
+> since SPICE can't scale): *1:1* loads Nova's URL as it is (native size, sharp text, scrolling
+> inside the frame), *Fit* the scaled one; the choice is kept in this browser's
+> `localStorage` (`moonlight.console.fit`, best effort; *Fit* by default). A new `src` reloads
+> noVNC, which reconnects with the same token: checked both ways on ttcp-dev ("Connected to
+> QEMU" each time).
 
 **Goal.** The instance *Console* tab (item 31) shows noVNC in an iframe, but the remote screen
 is not scaled to the frame: the bottom rows of the console (the prompt you are typing at) fall

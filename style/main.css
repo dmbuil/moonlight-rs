@@ -681,7 +681,19 @@ small.over { color: var(--danger-ink); }
   margin: 0; padding: 12px 14px; max-height: 70vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
   background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 12px; line-height: 1.5;
 }
-.console-frame { width: 100%; height: min(75vh, 820px); border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); }
+/* *Fit* / *1:1* (roadmap 99): a small segmented control, like the menus' theme picker. */
+.console-zoom { display: inline-flex; margin-left: auto; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
+.console-zoom button { padding: 4px 10px; border: 0; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.console-zoom button + button { border-left: 1px solid var(--line-2); }
+.console-zoom button:hover { background: var(--bg-soft); }
+.console-zoom button.selected { background: var(--primary); color: var(--primary-ink); }
+/* The whole window below the page's header, tabs and console bar and the padding under it
+   (~370px on a desktop), never under 360px; noVNC scales the remote screen to it (roadmap 99).
+   Users may make it taller. */
+.console-frame {
+  display: block; width: 100%; height: max(360px, calc(100dvh - 370px)); resize: vertical;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg);
+}
 
 /* ---------- AZ pills, lock icon, flavor popover ---------- */
 .az-pill { display: inline-block; padding: 1px 9px; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: light-dark(var(--az), var(--az-dark)); font-size: 12px; font-weight: 600; white-space: nowrap; }
