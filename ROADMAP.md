@@ -119,6 +119,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 104 | ✅ Full lists send a page size of 1000; lookup-cache misses coalesce | — | S | 66 |
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
 | 106 | 🚧 Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
+| 107 | 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | P1 | M | 3, 49 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -6753,7 +6754,7 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 
 ## 106. Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules
 
-> 🚧 **In progress.** Steps 1 and 2 done (2026-11-11), one commit each, plus the parser merge.
+> 🚧 **In progress.** Steps 1, 2 and 3 done (2026-11-11), one commit each, plus the parser merge.
 >
 > **Step 1**: `src/model.rs` (9170 lines after item 105's reformat) is now `src/model/`, 18 files,
 > the largest `action.rs` (1487) and `mod.rs` (1123: `ProjectRef`/`SessionInfo`, `Capabilities` and
@@ -6790,8 +6791,27 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 > `validate` still names the range for 0). Not a method on `Values` as planned: it needs the label
 > and language. Nextest 589/589.
 >
-> Still open: step 3 (`actions.rs`, taking the body builders out of the model) and step 4
-> (`mapping.rs` tests).
+> **Step 3**: `src/server/actions.rs` (10 131 lines; `apply` alone 3800) is now
+> `src/server/actions/`, 17 files, the largest `network.rs` (1355). `mod.rs` (1258) keeps `Exec`,
+> `JsonRequest`, the shared helpers, `revoke_token`, `batch` and `apply`, now a dispatcher of one
+> line or so per variant: 212 block arms became `pub(super) async fn`s named after the variant
+> (`compute::server_reboot(x, id, hard)`), the 7 one-liners stay inline. Files: `admin`,
+> `admin_volume`, `compute` (with `launch`), `image`, `block_storage`, `network` (with
+> `create_subnet`, `create_rule`), `router`, `firewall`, `qos`, `keymgr`, `heat`, `alarm`,
+> `octavia`, `l7`, `identity`. Parameters are the variant's fields by reference, `&String` /
+> `&Vec<T>` / `&Box<T>` narrowed to `&str` / `&[T]` / `&T` (so 122 `.as_str()` and 5 `.clone()` were
+> rewritten); the 4 arms with more than 6 fields carry `#[allow(clippy::too_many_arguments)]`. The
+> match stays exhaustive, so a new variant still fails to compile until it has an arm. Helpers used
+> by one file moved there (the Octavia macros, stack, secret, image and metadef helpers). The
+> dry-run tests split by the variants they dry-run; `dry`, `dry_err`, `assert_paths_checked` and the
+> other shared helpers live in `actions/testing.rs`. `every_action_has_a_dry_run_test` now reads
+> every `.rs` file of the directory at test time and searches each one's `mod tests`; checked by
+> hiding one variant behind a type alias, which made it fail. Done by a script; a token-level diff
+> against the old file shows nothing removed but those rewrites and the `include_str!`. 81 tests
+> before and after; nextest 589/589.
+>
+> Still open: the request-body builders (`FirewallRuleSpec::body`, `AlarmSpec::body`, QoS) still sit
+> in the model and should move to `actions` (own commit); step 4 (`mapping.rs` tests).
 
 **Goal.** Also from the 2026-11-11 assessment. Four files hold 26 000 of the 58 000 lines:
 `src/model.rs` (7152), `src/components/ops.rs` (6988), `src/server/mapping.rs` (6188) and
@@ -6848,6 +6868,82 @@ are not mixed with reformatting.
 6. **Verify**: `git diff --stat` shows only moves and `pub use` lines (`git diff -M --stat`
    should show renames for the pure moves); test counts before and after match (nextest prints
    them); the WASM bundle size does not grow (`target/front/...wasm` before/after).
+
+## 107. HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal
+
+**Goal.** The OpenShift deployment (`moonlight-deploy`) needs end-to-end encryption: no
+plaintext between the router and the pod. Today the binary speaks only plain HTTP (SECURITY.md,
+*Deployment checklist*), so an edge Route leaves the router → pod hop in clear. RHOSO itself
+terminates TLS inside each pod (httpd) behind `reencrypt` Routes, with cert-manager
+certificates; Moonlight should fit the same pattern. Decided with the user (2026-11-11): TLS in
+the Moonlight process itself (no sidecar), with the certificate from **OpenShift's service CA**
+(`service.beta.openshift.io/serving-cert-secret-name` on the Service), which the router
+trusts for `reencrypt` without a `destinationCACertificate`. The service CA renews the Secret
+on its own and nothing restarts the pods, so Moonlight must pick up a renewed certificate by
+itself. Plain HTTP stays the default (dev server, Podman behind a proxy).
+
+**Implementation.**
+
+1. **Settings.** New `[server]` section (`settings.rs::Server`, first field of `Settings`;
+   the name also suits the pending `[server] base_path`): `tls_cert_file` (PEM chain, leaf
+   first) and `tls_key_file` (PKCS#8, PKCS#1 or SEC1). `Server::tls_files()` returns
+   `Ok(Some((cert, key)))`, `Ok(None)` when both are unset or blank, and an error naming the
+   missing one when only one is set, so a typo can't fall back to plain HTTP. Environment:
+   `MOONLIGHT_TLS_CERT_FILE`, `MOONLIGHT_TLS_KEY_FILE` in `ENV`. The listen address stays
+   Leptos's (`LEPTOS_SITE_ADDR`).
+2. **Dependencies**, all already in `Cargo.lock` through `reqwest` (so `cargo deny` sees no
+   new crate, but run it): `rustls` 0.23 (`default-features = false`, `std`, `tls12`,
+   `aws_lc_rs`: the provider the tree already uses; don't add `ring`), `tokio-rustls` 0.26
+   (`tls12`, `aws_lc_rs`), `hyper-util` 0.1 (`server-auto`, `service`, `tokio`, `http1`,
+   `http2`); `tokio` gains `net` and `io-util` (the latter for the test client). All under the
+   `ssr` feature. PEM parsing uses `rustls::pki_types::pem::PemObject` (no `rustls-pemfile`).
+3. **`server/listen.rs`.** `Tls::load(cert, key)` parses both files and builds a
+   `CertifiedKey::from_der` (which checks the key matches the leaf); errors name the file at
+   fault and never include key bytes. A `ResolvesServerCert` holding
+   `RwLock<Arc<CertifiedKey>>` serves the current pair, so the `ServerConfig` is built once
+   (`builder_with_provider(aws_lc_rs)`, safe default versions, no client auth, ALPN `h2` and
+   `http/1.1`). `reload_if_changed()` re-reads the files, compares a SHA-256 of both (the key
+   is not kept for comparison) and swaps only a changed **valid** pair; a half-written or
+   mismatched pair is logged at `warn` and the current certificate stays. A task calls it every
+   60 s (`RELOAD_EVERY`, `MissedTickBehavior::Delay`) and logs a reload at `info`. Connections
+   already open keep the old certificate. `serve(listener, app, tls)`: accept loop
+   (`set_nodelay`, back off 100 ms on accept errors such as `EMFILE`), handshake under a 10 s
+   timeout, then `hyper_util::server::conn::auto::Builder::serve_connection_with_upgrades`
+   with `TowerToHyperService::new(router)`. Handshake failures and closed connections are
+   `debug` (scanners, TCP probes). Nothing uses `ConnectInfo`, so `axum::serve`'s make-service
+   isn't needed.
+4. **`main.rs`.** After the router is built: `settings.server.tls_files()` → `Tls::load`;
+   errors exit with `configuration error: …` like the others. Log `Moonlight on https://…`
+   or `http://…`, then `listen::serve` or `axum::serve`.
+5. **Docs.** `CONFIGURATION.md` (both keys in the environment table and a `[server]`
+   section), `moonlight.conf.example` (`[server]`, commented), README *Container image* (TLS
+   bullet: either a proxy, or mount a certificate and set the two keys), SECURITY.md (replace
+   "the binary speaks plain HTTP" in the checklist; the *Web security* notes), ARCHITECTURE.md
+   (*Configuration and logging*: the reload). `[session] secure_cookies` and HSTS are
+   unchanged.
+6. **Deployment** (`moonlight-deploy`, once this ships): annotate the Service
+   `service.beta.openshift.io/serving-cert-secret-name: moonlight-tls`, port `https` 8443 →
+   container 3000; mount the Secret (`tls.crt`, `tls.key`) as a directory, never with
+   `subPath`, or renewals never reach the pod; set the two keys in the ConfigMap; Route
+   `termination: reencrypt`; probes `scheme: HTTPS` (the kubelet doesn't verify the
+   certificate).
+
+**Tests.** `settings.rs`: both-or-neither, blank = unset, the two variables. `listen.rs`, with
+fixtures in `src/server/testdata/tls/` (a test CA and two `localhost` leaves `a`, `b`, signed
+by it, valid for 100 years, keys committed and labelled throwaway in a README there). A
+self-signed leaf doesn't work: rustls refuses a CA certificate as the server's
+(`CaUsedAsEndEntity`), so the leaves need `basicConstraints=CA:FALSE` and
+`extendedKeyUsage=serverAuth`, and the CA key is deleted after signing. Cases: a matching pair
+loads; another certificate's key, a missing file, a file without a certificate and a
+certificate given as key each fail and name the file; reload returns `false` for unchanged
+files, `true` and the new leaf after swapping to `b`, and keeps `b` when the files become a
+mismatched pair or the key disappears; end to end, `serve` on `127.0.0.1:0` with a one-route
+router, a `tokio-rustls` client trusting only the test CA gets `200` and leaf `a`, then leaf
+`b` on a new connection after a reload. Then a real `cargo leptos build --release` and the
+container started with a mounted pair.
+
+**Open questions.** None. Out of scope: client certificates (mTLS), OCSP stapling, listening
+on HTTP and HTTPS at once.
 
 ## Also pending (from the PoC)
 

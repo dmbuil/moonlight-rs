@@ -208,7 +208,7 @@ Horizon equivalent; [`moonlight.conf.example`](moonlight.conf.example) is a read
 ## Writes: off / dry-run / on
 
 Every mutating action goes through one server function (`run_action`) and one executor
-(`src/server/actions.rs`). The mode is **enforced on the server**; the UI only reflects it.
+(`src/server/actions/`). The mode is **enforced on the server**; the UI only reflects it.
 
 - `off`: every action is rejected; action buttons are disabled and a “Read-only” badge shows.
 - `dry-run` *(default)*: each request is built with the SDK's typed endpoints (the same code

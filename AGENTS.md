@@ -111,7 +111,8 @@ src/server/os.rs     login (v3password, unscoped) → per-request v3token rescop
 src/server/fetch.rs  parallel GETs (tokio::join!) → mapping
 src/server/console.rs instance Log/Console: the only read-only POSTs, via Exec (§1.3)
 src/server/mapping.rs pure serde_json::Value → model (unit-tested with API-shaped JSON)
-src/server/actions.rs OsAction → typed SDK endpoints; Exec: Off | DryRun (preview) | On (send)
+src/server/actions/  OsAction → typed SDK endpoints, one file per service; mod.rs: Exec
+                     (Off | DryRun preview | On send) and `apply`, which dispatches each variant
 src/components/      layout, nav model, DataTable, dialog engine, ops (per-resource actions)
 src/pages/           login, overview, instances(+detail), lists, details
 ```
@@ -142,9 +143,10 @@ region. The server is stateless; in-process caches are disposable.
 ### Add a write action
 
 1. Variant in `OsAction` (`model/action.rs`).
-2. Arm in `server/actions.rs::apply` building the **typed SDK endpoint**; use `x.send(ep)`
-   or `x.create(ep, "what")` (returns the new ID, placeholder in dry-run).
-3. Test in `actions.rs` asserting method, path and the exact JSON body via `dry(...)`. Every
+2. An `async fn` in `server/actions/<service>.rs` building the **typed SDK endpoint**, called
+   from its arm in `actions::apply` (`mod.rs`); use `x.send(ep)` or `x.create(ep, "what")`
+   (returns the new ID, placeholder in dry-run).
+3. Test in that file's `mod tests` asserting method, path and the exact JSON body via `dry(...)`. Every
    variant needs one (`every_action_has_a_dry_run_test`), and `dry` also checks that no string
    field reaches the request path without `check_ids` (roadmap 67): name path parameters `id`
    or `*_id`, or add them to `OsAction::check_ids`.

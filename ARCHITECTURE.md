@@ -64,7 +64,7 @@ flowchart LR
         OS["os.rs<br/>connections + discovery"]
         FETCH["fetch.rs<br/>parallel GETs"]
         MAP["mapping.rs<br/>pure JSON → model"]
-        ACT["actions.rs<br/>Exec: off / dry-run / on"]
+        ACT["actions/<br/>Exec: off / dry-run / on"]
         CACHE[("moka caches")]
     end
     subgraph OpenStack
@@ -113,7 +113,8 @@ src/
 │   ├── os.rs          login, rescoping, discovery, capabilities, catalog
 │   ├── fetch.rs       GET-only data loading, lookups cache, call counting
 │   ├── mapping.rs     pure JSON → model mappers
-│   ├── actions.rs     OsAction → typed SDK endpoints; Exec
+│   ├── actions/       OsAction → typed SDK endpoints, one file per service; mod.rs:
+│   │                  Exec and `apply` (one arm per variant, calling the service's fn)
 │   ├── console.rs     instance Log / Console (read-only Nova POSTs, via Exec)
 │   ├── heat.rs        Heat validate / preview (read-only POSTs, via Exec)
 │   ├── upload.rs      image file upload: streamed proxy route, direct-mode ticket
@@ -423,7 +424,7 @@ risks and the deployment checklist. The browser-facing ones, in short:
 | Sign-in brute force                           | `throttle.rs` per username hash and client address hash               |
 | Client address behind proxies                 | `[log] client_ip_header` + `trusted_proxies` (counted from the right)  |
 | Error detail leakage                          | `sfe` → `errors::public`: full SDK text only with `[ui] show_error_details` |
-| Secrets in previews                           | `mask_secrets`, `hide_params` in `actions.rs`                          |
+| Secrets in previews                           | `mask_secrets`, `hide_params` in `actions/mod.rs`                 |
 
 ## In-process caches
 
