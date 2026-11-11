@@ -60,7 +60,12 @@
   --radius: 8px;
   --font: "Telefonica Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Motion (roadmap 98): short, no bounce; 0ms under reduced motion (below). */
+  --motion-fast: 120ms;
+  --motion: 160ms;
+  --ease: cubic-bezier(.2, 0, 0, 1);
 }
+@media (prefers-reduced-motion: reduce) { :root { --motion-fast: 0ms; --motion: 0ms; } }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
@@ -676,17 +681,17 @@ small.over { color: var(--danger-ink); }
 
 /* ---------- instance log and console (roadmap 31) ---------- */
 .log-bar, .console-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
-.log-bar input { width: 90px; }
-.console-log {
-  margin: 0; padding: 12px 14px; max-height: 70vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
-  background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 12px; line-height: 1.5;
-}
 /* *Fit* / *1:1* (roadmap 99): a small segmented control, like the menus' theme picker. */
 .console-zoom { display: inline-flex; margin-left: auto; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
 .console-zoom button { padding: 4px 10px; border: 0; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .console-zoom button + button { border-left: 1px solid var(--line-2); }
 .console-zoom button:hover { background: var(--bg-soft); }
 .console-zoom button.selected { background: var(--primary); color: var(--primary-ink); }
+.log-bar input { width: 90px; }
+.console-log {
+  margin: 0; padding: 12px 14px; max-height: 70vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 12px; line-height: 1.5;
+}
 /* The whole window below the page's header, tabs and console bar and the padding under it
    (~370px on a desktop), never under 360px; noVNC scales the remote screen to it (roadmap 99).
    Users may make it taller. */
@@ -732,10 +737,12 @@ small.over { color: var(--danger-ink); }
 /* ---------- Busy bar (ongoing task) ---------- */
 .task-cell { display: inline-flex; flex-direction: column; gap: 5px; min-width: 90px; }
 .busy { display: block; width: 100%; min-width: 80px; height: 4px; border-radius: 4px; background: var(--busy-track); overflow: hidden; position: relative; }
-.busy-bar { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 4px; background: var(--primary); animation: indeterminate 1.3s ease-in-out infinite; }
-@keyframes indeterminate { 0% { left: -40%; } 100% { left: 100%; } }
+/* `transform`, not `left`: the compositor moves it, no layout per frame on every busy row (roadmap
+   98). From -100% to 250% of its own 40% width is the old -40% to 100% of the track. */
+.busy-bar { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 4px; background: var(--primary); animation: indeterminate 1.3s ease-in-out infinite; }
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) {
-  .busy-bar { animation: none; left: 0; width: 100%; background: repeating-linear-gradient(45deg, var(--primary) 0 6px, var(--busy-stripe) 6px 12px); }
+  .busy-bar { animation: none; transform: none; width: 100%; background: repeating-linear-gradient(45deg, var(--primary) 0 6px, var(--busy-stripe) 6px 12px); }
 }
 .page-header h1 .busy { width: 120px; margin-left: 0; }
 /* Beside a status pill, not under it: a short bar on the pill's line. */
@@ -978,3 +985,24 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 }
 .tg-link-menu p { margin: 0 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
 .tg-link-menu .btn { justify-content: flex-start; text-align: left; }
+
+/* ---------- Motion (roadmap 98) ----------
+   Barely noticeable and never in the way: colours, opacity and transform only (no layout), one-shot
+   on open, nothing on table rows, all 0ms under prefers-reduced-motion (the tokens on :root). */
+.tabs button, .tabs a, .secondary-bar .panel {
+  transition: color var(--motion) var(--ease), border-bottom-color var(--motion) var(--ease);
+}
+.primary-bar .group, .dashboards > *, .menu > summary {
+  transition: background-color var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+.btn {
+  transition: background-color var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+}
+/* Menus and the custom dropdown when they open; the native <details> closes at once. */
+details[open] .menu-list, .combo-pop { animation: motion-drop var(--motion) var(--ease); }
+.modal-backdrop { animation: motion-fade var(--motion) var(--ease); }
+.modal { animation: motion-rise var(--motion) var(--ease); }
+@keyframes motion-fade { from { opacity: 0; } }
+@keyframes motion-drop { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes motion-rise { from { opacity: 0; transform: scale(.98); } }

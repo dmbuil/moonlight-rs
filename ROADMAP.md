@@ -110,7 +110,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
 | 96 | ✅ Tab bars show a pointless scroll control | — | XS | — |
 | 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
-| 98 | Subtle CSS motion on tabs, nav bars, menus and dialogs | P3 | S | 96 |
+| 98 | ✅ Subtle CSS motion on tabs, nav bars, menus and dialogs | — | S | 96 |
 | 99 | ✅ 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | — | S | 31 |
 | 100 | Network Topology: a note instead of the drawing when the project sees too many networks | P3 | S | 20, 29 |
 | 101 | Phone view: fold the header's bars and menus into one or two buttons | P3 | M | 39, 96 |
@@ -136,7 +136,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 99**.
+85, 86, 87, 88, 89, 92, 96, 98, 99**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6201,6 +6201,24 @@ and variants) or by review only. Whether doc comments may stay in English while 
 bilingual (they should: code is English throughout).
 
 ## 98. Subtle CSS motion on tabs, nav bars, menus and dialogs
+
+> ✅ **Done** (2026-11-10), CSS only (`style/main.css`). Tokens on `:root`: `--motion-fast` 120ms,
+> `--motion` 160ms, `--ease` `cubic-bezier(.2, 0, 0, 1)`, all `0ms` in one global
+> `prefers-reduced-motion: reduce` block. A *Motion* section at the end of the file: colour
+> transitions on tabs and the secondary bar (`color`, `border-bottom-color`: the underline
+> fades in place), the primary bar, the dashboards and the utility menus (`background-color`,
+> `color`) and `.btn` (`background-color`, `border-color`, `color`); one-shot `motion-drop`
+> (opacity and 4px `translateY`) on `details[open] .menu-list` (utility and row menus) and
+> `.combo-pop`; `motion-fade` on `.modal-backdrop` and `motion-rise` (opacity, `scale(.98)`) on
+> `.modal`, on open only. The busy bar animates `transform: translateX(-100% → 250%)` instead
+> of `left` (the same path; no layout per frame). Checked in Brave: the computed transitions
+> and the animations on a row menu and *Create Volume* (160ms each), every duration `0s` and
+> no animation under emulated reduced motion, the busy bar's keyframes `transform` only.
+> Left out on purpose: the tab pane fade (step 4) and the wizard step fade. Without a wrapper
+> per pane, `.tabs + *` would replay on every refetch of a polled detail page (item 46), and
+> giving every `Tabs` user a `tab-pane` wrapper wasn't worth it for this. No DevTools
+> *Performance* trace was recorded; the keyframes animate only `opacity` and `transform`, and
+> the transitions only colours.
 
 **Goal.** Switching a tab, a panel group (primary bar) or a panel (secondary bar), opening a
 menu or a dialog changes state instantly today: the active underline or background just jumps.
