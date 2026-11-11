@@ -110,7 +110,8 @@ src/model/           DTOs (serde) per service; OsAction (action.rs), ChoiceSet, 
 src/server/os.rs     login (v3password, unscoped) → per-request v3token rescope, cached (moka)
 src/server/fetch.rs  parallel GETs (tokio::join!) → mapping
 src/server/console.rs instance Log/Console: the only read-only POSTs, via Exec (§1.3)
-src/server/mapping.rs pure serde_json::Value → model (unit-tested with API-shaped JSON)
+src/server/mapping/  pure serde_json::Value → model, one file per service (unit-tested with
+                     API-shaped JSON; shared payloads in mapping/fixtures.rs)
 src/server/actions/  OsAction → typed SDK endpoints, one file per service; mod.rs: Exec
                      (Off | DryRun preview | On send) and `apply`, which dispatches each variant
 src/components/      layout, nav model, DataTable, dialog engine, ops (per-resource actions)
@@ -127,7 +128,7 @@ region. The server is stateless; in-process caches are disposable.
 ### Add a read-only panel or detail page
 
 1. Model in `model/<service>.rs` (`Clone, Debug, PartialEq, Serialize, Deserialize`).
-2. Pure mapper in `server/mapping.rs` + a test with JSON shaped like the real API
+2. Pure mapper in `server/mapping/<service>.rs` + a test with JSON shaped like the real API
    (include odd cases: missing name → fall back to ID, `""` vs `null`, string booleans).
 3. Fetcher in `server/fetch.rs`: lookups in parallel; use `soft()` for lists that only
    provide names so a failing lookup doesn't break the page; return `Timed<T>`.

@@ -39,7 +39,7 @@ working rules and gotchas for changing the code. Roadmap numbers (`roadmap 49`) 
    joins them in memory with pure functions. Instances = servers + flavors + images: three
    calls, whatever the number of VMs.
 6. **Pure mapping, tested without a network.** Raw JSON → model conversion lives in
-   `server/mapping.rs`, with no I/O, and is unit-tested with API-shaped payloads.
+   `server/mapping/` (one file per service), with no I/O, and is unit-tested with API-shaped payloads.
 7. **Secrets never persist.** Tokens are never logged or written to disk (the SDK's auth
    cache is disabled), cache keys are SHA-256 hashes, `Debug` impls mask tokens and keys.
 8. **Horizon's information architecture, better controls.** Same dashboards, panels, tabs
@@ -63,7 +63,7 @@ flowchart LR
         SESS["session.rs<br/>AES-GCM cookie"]
         OS["os.rs<br/>connections + discovery"]
         FETCH["fetch.rs<br/>parallel GETs"]
-        MAP["mapping.rs<br/>pure JSON → model"]
+        MAP["mapping/<br/>pure JSON → model"]
         ACT["actions/<br/>Exec: off / dry-run / on"]
         CACHE[("moka caches")]
     end
@@ -112,7 +112,7 @@ src/
 │   ├── throttle.rs    failed sign-in counting per username and address
 │   ├── os.rs          login, rescoping, discovery, capabilities, catalog
 │   ├── fetch.rs       GET-only data loading, lookups cache, call counting
-│   ├── mapping.rs     pure JSON → model mappers
+│   ├── mapping/       pure JSON → model mappers, one file per service
 │   ├── actions/       OsAction → typed SDK endpoints, one file per service; mod.rs:
 │   │                  Exec and `apply` (one arm per variant, calling the service's fn)
 │   ├── console.rs     instance Log / Console (read-only Nova POSTs, via Exec)
@@ -145,7 +145,7 @@ sequenceDiagram
     participant L as Leptos (SSR / server fn)
     participant S as session.rs
     participant O as os.rs + caches
-    participant F as fetch.rs / mapping.rs
+    participant F as fetch.rs / mapping/
     participant K as Keystone
     participant N as Nova, Neutron, …
 
@@ -369,7 +369,7 @@ All OpenStack access goes through gtema's `openstack_sdk` (`server/os.rs`):
 3. reuses name-only lists (flavors, images, networks, volumes…) from the `lookups` cache for
    `[cache] lookup_seconds`, keyed per token, project and region (roadmap 66); concurrent
    misses on one key share one fetch (moka `try_get_with`);
-4. hands the raw JSON to `mapping.rs` and returns `Timed<T>` (data, call count, seconds).
+4. hands the raw JSON to `mapping` and returns `Timed<T>` (data, call count, seconds).
 
 OpenStack quirks are handled once, here and in the mappers: admins see every project's Neutron
 resources, so lists filter by `tenant_id`; networks are own + shared + external, merged by

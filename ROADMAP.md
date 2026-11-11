@@ -118,7 +118,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 103 | 🚧 Tables keep filter, sort and drawers across refetches; keyed rows; debounced search | P2 | M | 46, 88 |
 | 104 | ✅ Full lists send a page size of 1000; lookup-cache misses coalesce | — | S | 66 |
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
-| 106 | 🚧 Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
+| 106 | ✅ Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | — | M | 105 |
 | 107 | 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | P1 | M | 3, 49 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
@@ -142,7 +142,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6754,7 +6754,12 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 
 ## 106. Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules
 
-> 🚧 **In progress.** Steps 1, 2 and 3 done (2026-11-11), one commit each, plus the parser merge.
+> ✅ **Done.** 2026-11-11, one commit per step plus the parser merge. None of the four is left
+> with a file over 1600 lines (they were 9170, 11 690, 10 131 and 8425 after item 105's
+> reformat); every `crate::model::X`, `ops::x`, `actions::x` and `mapping::x` path still
+> resolves, so no caller changed. Still over AGENTS.md §7's ~1500 lines, outside this item:
+> `server/fetch.rs` (4755), `components/dialog.rs` (2579), `i18n.rs` (2387), `pages/admin.rs`
+> (1948), `components/hot.rs` (1875).
 >
 > **Step 1**: `src/model.rs` (9170 lines after item 105's reformat) is now `src/model/`, 18 files,
 > the largest `action.rs` (1487) and `mod.rs` (1123: `ProjectRef`/`SessionInfo`, `Capabilities` and
@@ -6810,8 +6815,28 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 > against the old file shows nothing removed but those rewrites and the `include_str!`. 81 tests
 > before and after; nextest 589/589.
 >
-> Still open: the request-body builders (`FirewallRuleSpec::body`, `AlarmSpec::body`, QoS) still sit
-> in the model and should move to `actions` (own commit); step 4 (`mapping.rs` tests).
+> **Step 4**: `src/server/mapping.rs` (8425 lines, 3500 of them one test module) is now
+> `src/server/mapping/`, 16 files, the largest `network.rs` (1563, 25 tests). Over 3000 lines
+> without its tests, so the mappers were split too, along their `// --- X ---` banners: `identity`,
+> `compute`, `image`, `volume`, `network` (with trunks and QoS), `choices` (the launch wizard tables
+> and every other picker), `quota`, `firewall`, `keymgr`, `heat`, `octavia`, `alarm`, `admin`;
+> `mod.rs` keeps the small JSON helpers, `kv_pairs`, `ref_id`, `next_offset`, `utc_rfc3339`. Tests
+> were split by the mappers they call; `server_fixture`, `flavors`, `images_fixture` and `octavia`
+> live in `mapping/fixtures.rs`. Same script as step 2; a token-level diff against the old file
+> removes nothing. 116 tests before and after.
+>
+> Not done, on purpose: (1) moving the request-body builders (`FirewallRuleSpec::body`,
+> `AlarmSpec::body`, `QosRuleSpec::body`, `SubportSpec::body`) out of the model. The browser calls
+> them to validate before submitting (`ops/firewall.rs`, `alarms.rs`, `qos.rs`, `trunks.rs`), and
+> validation is interleaved with building, so it means rewriting each into `validate` + builder, not
+> a move; the gain, a few `json!` calls in the WASM bundle, was not measured. A new item if it is
+> ever worth it. (2) Shrinking the inline `"id": "s1"` payloads of the mapping tests against the
+> fixtures (optional in the plan). (3) Measuring the WASM bundle before and after (needs two release
+> `cargo leptos build`s): every step is a move, and the only code change on the client side is
+> `num_of`.
+>
+> Verified after every commit: both clippy variants, `cargo fmt --check`, nextest (588, then 589
+> with the `num_of` test), `rumdl check`.
 
 **Goal.** Also from the 2026-11-11 assessment. Four files hold 26 000 of the 58 000 lines:
 `src/model.rs` (7152), `src/components/ops.rs` (6988), `src/server/mapping.rs` (6188) and
