@@ -1995,11 +1995,63 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
             .into_any()
         }
     };
+    // The menu's items are built the first time it opens (roadmap 103): a table builds one
+    // `RowActions` per row, and most menus are never opened.
     let menu = (!rest.is_empty()).then(|| {
         let details = NodeRef::<leptos::html::Details>::new();
+        let opened = RwSignal::new(false);
+        let rest = StoredValue::new(rest);
+        let items = move || {
+            opened.get().then(|| {
+                rest.with_value(|rest| {
+                    rest.iter()
+                        .cloned()
+                        .map(|it| {
+                            let label = it.label.clone();
+                            let danger = it.danger;
+                            match it.kind.clone() {
+                                ItemKind::Link(href) => {
+                                    view! { <li><a class="menu-item" href=href>{label}</a></li> }.into_any()
+                                }
+                                ItemKind::Run(_) => view! {
+                                    <li>
+                                        <button type="button" role="menuitem" on:click=move |_| {
+                                            if let Some(d) = details.get_untracked() { d.set_open(false); }
+                                            run(&it)
+                                        }>{label}</button>
+                                    </li>
+                                }
+                                .into_any(),
+                                ItemKind::Dialog(_) => view! {
+                                    <li>
+                                        <button type="button" role="menuitem" class:danger=danger
+                                            disabled=move || dialogs.mode.get() == WriteMode::Off
+                                            on:click=move |_| {
+                                                if let Some(d) = details.get_untracked() { d.set_open(false); }
+                                                run(&it)
+                                            }>
+                                            {label}
+                                        </button>
+                                    </li>
+                                }
+                                .into_any(),
+                            }
+                        })
+                        .collect_view()
+                })
+            })
+        };
         view! {
             <details class="row-menu" node_ref=details
-                on:toggle=move |_| place_menu(details)
+                on:toggle=move |_| {
+                    if opened.get_untracked() {
+                        place_menu(details);
+                    } else {
+                        // Render the items, then measure them for placement.
+                        opened.set(true);
+                        request_animation_frame(move || place_menu(details));
+                    }
+                }
                 on:keydown=move |ev| {
                     if ev.key() == "Escape"
                         && let Some(d) = details.get_untracked()
@@ -2011,35 +2063,7 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
                 <summary class="btn btn-sm btn-caret" aria-label=move || i18n.t(K::More)>
                     <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"></path></svg>
                 </summary>
-                <ul class="menu-list" role="menu">
-                    {rest.into_iter().map(|it| {
-                        let label = it.label.clone();
-                        let danger = it.danger;
-                        match it.kind.clone() {
-                            ItemKind::Link(href) => view! { <li><a class="menu-item" href=href>{label}</a></li> }.into_any(),
-                            ItemKind::Run(_) => view! {
-                                <li>
-                                    <button type="button" role="menuitem" on:click=move |_| {
-                                        if let Some(d) = details.get_untracked() { d.set_open(false); }
-                                        run(&it)
-                                    }>{label}</button>
-                                </li>
-                            }.into_any(),
-                            ItemKind::Dialog(_) => view! {
-                                <li>
-                                    <button type="button" role="menuitem" class:danger=danger
-                                        disabled=move || dialogs.mode.get() == WriteMode::Off
-                                        on:click=move |_| {
-                                            if let Some(d) = details.get_untracked() { d.set_open(false); }
-                                            run(&it)
-                                        }>
-                                        {label}
-                                    </button>
-                                </li>
-                            }.into_any(),
-                        }
-                    }).collect_view()}
-                </ul>
+                <ul class="menu-list" role="menu">{items}</ul>
             </details>
         }
     });

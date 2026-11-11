@@ -54,6 +54,7 @@ pub fn Layout() -> impl IntoView {
     let info = Resource::new(|| (), |_| get_session_info());
     let dialogs = Dialogs::provide();
     crate::components::jobs::Jobs::provide();
+    crate::components::table::TableStates::provide();
     let location = use_location();
     let region_menu = NodeRef::<Details>::new();
     let other_regions = RwSignal::new(Vec::<String>::new());

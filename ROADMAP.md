@@ -115,7 +115,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 100 | ✅ Network Topology: a note instead of the drawing when the project sees too many networks | — | S | 20, 29 |
 | 101 | ✅ Phone view: fold the header's bars and menus into one or two buttons | — | M | 39, 96 |
 | 102 | 🔒 WebSSO login CSRF: the start route becomes a same-origin POST; optional strict origin | P1 | S | 80 |
-| 103 | Tables keep filter, sort and drawers across refetches; keyed rows; debounced search | P2 | M | 46, 88 |
+| 103 | 🚧 Tables keep filter, sort and drawers across refetches; keyed rows; debounced search | P2 | M | 46, 88 |
 | 104 | ✅ Full lists send a page size of 1000; lookup-cache misses coalesce | — | S | 66 |
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
 | 106 | Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
@@ -6534,6 +6534,37 @@ posting to the start route gets `403`.
 by default.
 
 ## 103. Tables keep filter, sort and drawers across refetches; keyed rows; debounced search
+
+> 🚧 **In progress.** 2026-11-11: steps 1, 3, 4 and 5 done, step 2 for filtering and sorting.
+> **State** (`components/table.rs`): instead of a prop on 78 call sites, `Layout` provides
+> `TableStates`, a map from `table_key(path, search fn address, column headers)` to a
+> `TableState` of `ArcRwSignal`s (typed text, filter, sort, open drawers). `DataTable` takes its
+> state from there (fresh when there is no context), so a table rebuilt by a refetch or a polling
+> round finds the same signals; reference-counted, so they outlive the rebuilt table, and the map
+> keeps only the current path's entries (leaving a page forgets its filter, as in Horizon).
+> Drawers are keyed by `row_keys` (the `Select` ID, else the search text, `#2`… on repeats)
+> instead of row positions; `toggle_open` / `retain_visible` are generic over the key.
+> **Keyed rows**: the body is a `<For>` over the visible rows keyed by `(lang, row key)`, inside
+> a block that re-renders only when the table turns empty or not, so a keystroke or a sort moves
+> rows instead of rebuilding them. **Debounce**: the box writes `typed`; a 150 ms
+> `set_timeout_with_handle` (per table, through the shared `ArcRwSignal`, so a keystroke still
+> lands if a refetch rebuilds the table meanwhile) copies it into `filter`. **Lazy menus**:
+> `RowActions` keeps its `Vec<MenuItem>` signature (60 callers unchanged) but renders the
+> menu's `<li>`s on first open, then places it in the next animation frame. Tests:
+> `drawers_stay_open_across_sorts_and_close_when_filtered_out` (keyed),
+> `row_keys_use_the_id_and_stay_unique`, `a_table_key_names_the_path_the_search_and_the_columns`,
+> `table_states_forget_other_pages`. Verified in the browser (dry-run, the test cloud, Images,
+> 33 rows): 33 right after typing `ubu` and 6 once the pause passed; descending sort, the filter
+> and an open drawer all survive *Refresh*; a row that stays visible keeps its DOM node while
+> the filter narrows; menus have no items until opened (then 1 item, placed); leaving for
+> Networks and coming back clears the filter; no console warnings. Instances had no servers, so
+> the polling round itself was not exercised (it rebuilds through the same path as *Refresh*).
+> `paged_table` (item 88) gets the same sort and drawer persistence for free; its filter was
+> already page-level. **Left:** a refetch still rebuilds the table's rows (state kept, DOM
+> redrawn), because pages mount `DataTable` inside `render(data.get(), …)`. Diffing on refetch
+> needs a long-lived table fed with `rows: Signal<Vec<T>>`, i.e. changing every page's
+> `render` closure; start with `list_page!` (`pages/lists.rs`) and `pages/instances.rs`, the
+> pages that poll, and measure Instances with the performance panel before and after.
 
 **Goal.** Found by the 2026-11-11 design and performance assessment. Every list page mounts its
 `DataTable` inside the `render(data.get(), …)` closure (`pages/lists.rs`, `pages/instances.rs`,

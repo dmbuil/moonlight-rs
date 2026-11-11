@@ -158,22 +158,96 @@ pub fn retain_present(picked: &mut Vec<(String, String)>, present: &[&str]) -> b
 /// Renders the drawer opened under a row (roadmap 56).
 pub type DrawerFn<T> = fn(&T, Lang) -> AnyView;
 
-/// Opens or closes the drawer of row `i` (an index into the table's rows,
-/// which a sort doesn't change, so drawers stay open across sorts).
-pub fn toggle_open(open: &mut Vec<usize>, i: usize) {
-    if let Some(p) = open.iter().position(|&x| x == i) {
+/// Opens or closes the drawer of the row with key `k` (its [`row_keys`] entry,
+/// which neither a sort nor a refetch changes, so drawers stay open across both).
+pub fn toggle_open<K: PartialEq + Clone>(open: &mut Vec<K>, k: &K) {
+    if let Some(p) = open.iter().position(|x| x == k) {
         open.remove(p);
     } else {
-        open.push(i);
+        open.push(k.clone());
     }
 }
 
-/// Closes the drawers of rows the filter hides. Returns whether anything changed.
-pub fn retain_visible(open: &mut Vec<usize>, visible: &[usize]) -> bool {
+/// Closes the drawers of rows the filter hides or a refetch removed. Returns
+/// whether anything changed.
+pub fn retain_visible<K: PartialEq>(open: &mut Vec<K>, visible: &[K]) -> bool {
     let before = open.len();
-    open.retain(|i| visible.contains(i));
+    open.retain(|k| visible.contains(k));
     open.len() != before
 }
+
+/// A stable key per row (roadmap 103), for the keyed `<For>` and the open
+/// drawers: the row's ID when it has one (`ids[i]`), else its search text. A
+/// repeated key gets `#2`, `#3`… so every key is unique, as `<For>` needs.
+pub fn row_keys(ids: &[Option<String>], haystacks: &[String]) -> Vec<String> {
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    ids.iter()
+        .zip(haystacks)
+        .map(|(id, hay)| {
+            let base = id.clone().unwrap_or_else(|| format!("~{hay}"));
+            let n = seen.entry(base.clone()).or_insert(0);
+            *n += 1;
+            if *n == 1 { base } else { format!("{base}#{n}") }
+        })
+        .collect()
+}
+
+/// What a table remembers when it is rebuilt (roadmap 103): every refetch (a
+/// dialog's `data_version` bump, a polling round) renders the page's
+/// `DataTable` anew, and with state of its own the filter, sort and open
+/// drawers were lost each time. Reference-counted signals, so they outlive the
+/// table that uses them and go away with the map entry.
+#[derive(Clone)]
+struct TableState {
+    /// What the filter box shows; `filter` follows it after [`FILTER_DEBOUNCE_MS`].
+    typed: ArcRwSignal<String>,
+    filter: ArcRwSignal<String>,
+    sort: ArcRwSignal<Option<(usize, bool)>>,
+    /// [`row_keys`] of the rows whose drawer is open.
+    open: ArcRwSignal<Vec<String>>,
+}
+
+impl TableState {
+    fn new() -> Self {
+        TableState {
+            typed: ArcRwSignal::new(String::new()),
+            filter: ArcRwSignal::new(String::new()),
+            sort: ArcRwSignal::new(None),
+            open: ArcRwSignal::new(Vec::new()),
+        }
+    }
+}
+
+/// The table states of the page being shown, provided once by `Layout`, keyed
+/// by [`table_key`]. Only the current path's are kept: leaving a page forgets
+/// its filters, as in Horizon.
+#[derive(Clone, Default)]
+pub struct TableStates(Arc<std::sync::Mutex<std::collections::HashMap<String, TableState>>>);
+
+impl TableStates {
+    pub fn provide() {
+        provide_context(TableStates::default());
+    }
+
+    fn get(&self, path: &str, key: String) -> TableState {
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let prefix = format!("{path}#");
+        map.retain(|k, _| k.starts_with(&prefix));
+        map.entry(key).or_insert_with(TableState::new).clone()
+    }
+}
+
+/// Identifies one table of a page across rebuilds: the path, the table's search
+/// function and its column headers. Two tables of one page share a key only if
+/// they search and show the same thing.
+pub fn table_key(path: &str, search: usize, headers: &[K]) -> String {
+    format!("{path}#{search:x}#{headers:?}")
+}
+
+/// How long the filter box waits after the last keystroke before filtering
+/// (roadmap 103), so typing in a long list stays smooth.
+#[cfg(feature = "hydrate")]
+const FILTER_DEBOUNCE_MS: u64 = 150;
 
 /// Indices of the rows to show, filtered by `query` and sorted by `sort`.
 /// Pure, so it is unit-tested.
@@ -243,14 +317,51 @@ where
             });
         }
     }
+    let ids: Vec<Option<String>> = if keys.is_empty() {
+        vec![None; rows.len()]
+    } else {
+        keys.iter().map(|k| k.as_ref().map(|(id, _)| id.clone())).collect()
+    };
+    let row_keys = StoredValue::new(row_keys(&ids, &haystacks));
+    // Filter, sort and open drawers survive the rebuild a refetch causes (roadmap 103).
+    let state = use_context::<TableStates>()
+        .map(|st| {
+            let path = leptos_router::hooks::use_location().pathname.get_untracked();
+            let headers: Vec<K> = columns.iter().map(|c| c.header).collect();
+            st.get(&path, table_key(&path, search as usize, &headers))
+        })
+        .unwrap_or_else(TableState::new);
     let keys = StoredValue::new(keys);
     let rows = StoredValue::new(rows);
     let haystacks = StoredValue::new(haystacks);
     let columns = StoredValue::new(columns);
-    let filter = RwSignal::new(String::new());
-    let sort: RwSignal<Option<(usize, bool)>> = RwSignal::new(None);
+    let filter_arc = state.filter.clone();
+    let filter: RwSignal<String> = state.filter.into();
+    let sort: RwSignal<Option<(usize, bool)>> = state.sort.into();
     let ncols = columns.with_value(|c| c.len()) + select.is_some() as usize + drawer.is_some() as usize;
-    let open: RwSignal<Vec<usize>> = RwSignal::new(Vec::new());
+    let open: RwSignal<Vec<String>> = state.open.into();
+    let typed: RwSignal<String> = state.typed.into();
+    #[cfg(feature = "hydrate")]
+    let pending = StoredValue::new(None::<TimeoutHandle>);
+    // Through the shared signal, so a keystroke still lands if a refetch rebuilds the table
+    // within the pause.
+    let on_type = move |v: String| {
+        typed.set(v.clone());
+        #[cfg(feature = "hydrate")]
+        {
+            let filter = filter_arc.clone();
+            let h = set_timeout_with_handle(
+                move || filter.set(v),
+                std::time::Duration::from_millis(FILTER_DEBOUNCE_MS),
+            )
+            .ok();
+            if let Some(old) = pending.try_update_value(|p| std::mem::replace(p, h)).flatten() {
+                old.clear();
+            }
+        }
+        #[cfg(not(feature = "hydrate"))]
+        filter_arc.set(v);
+    };
 
     let visible = Memo::new(move |_| {
         let q = filter.get();
@@ -269,9 +380,9 @@ where
 
     if drawer.is_some() {
         Effect::new(move |_| {
-            let vis = visible.get();
+            let vis: Vec<String> = row_keys.with_value(|k| visible.get().into_iter().map(|i| k[i].clone()).collect());
             // Untracked check first so an unchanged set doesn't re-render the drawers.
-            if open.with_untracked(|o| o.iter().any(|i| !vis.contains(i))) {
+            if open.with_untracked(|o| o.iter().any(|k| !vis.contains(k))) {
                 open.update(|o| {
                     retain_visible(o, &vis);
                 });
@@ -381,80 +492,96 @@ where
         })
     };
 
+    // Keyed rows (roadmap 103): a filter keystroke or a sort moves, adds or drops rows instead
+    // of rebuilding every one. The language is part of the key, so switching it redraws them.
+    let empty = Memo::new(move |_| visible.with(Vec::is_empty));
+    let stored = rows;
+    let row_view = move |lang: Lang, i: usize| {
+        let key = row_keys.with_value(|k| k[i].clone());
+        rows.with_value(|rows| {
+            columns.with_value(|cols| {
+                let r = &rows[i];
+                let check = select.map(|s| {
+                    let key = keys.with_value(|k| k[i].clone());
+                    let label = format!("{} {}", i18n.t(K::SelectRow), key.as_ref().map(|k| k.1.as_str()).unwrap_or(""));
+                    let id = key.as_ref().map(|k| k.0.clone()).unwrap_or_default();
+                    let picked = move || s.picked.with(|p| p.iter().any(|(x, _)| *x == id));
+                    view! {
+                        <td class="select">
+                            <input type="checkbox" aria-label=label disabled=key.is_none() prop:checked=picked
+                                on:change=move |ev| {
+                                    if let Some(k) = &key {
+                                        s.picked.update(|p| toggle(p, k, event_target_checked(&ev)));
+                                    }
+                                }/>
+                        </td>
+                    }
+                });
+                let k2 = key.clone();
+                let is_open = move || open.with(|o| o.contains(&k2));
+                let toggle = drawer.map(|_| {
+                    let is_open = is_open.clone();
+                    let is_open2 = is_open.clone();
+                    let is_open3 = is_open.clone();
+                    let key = key.clone();
+                    view! {
+                        <td class="drawer-toggle">
+                            <button type="button" class="btn-drawer" aria-expanded=move || is_open().to_string()
+                                aria-label=move || i18n.t(if is_open2() { K::HideDetails } else { K::ShowDetails })
+                                title=move || i18n.t(if is_open3() { K::HideDetails } else { K::ShowDetails })
+                                on:click=move |_| open.update(|o| toggle_open(o, &key))>
+                                <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m9 6 6 6-6 6"></path>
+                                </svg>
+                            </button>
+                        </td>
+                    }
+                });
+                // Its own reactive block, so opening one drawer doesn't
+                // re-render the table (and the toggle keeps keyboard focus).
+                let panel = drawer.map(|f| {
+                    let is_open = is_open.clone();
+                    move || {
+                        is_open().then(|| {
+                            let content = stored.with_value(|rows| f(&rows[i], i18n.lang()));
+                            view! { <tr class="drawer"><td colspan=ncols>{content}</td></tr> }
+                        })
+                    }
+                });
+                view! {
+                    <tr class:open=is_open>
+                        {toggle}
+                        {check}
+                        {cols
+                            .iter()
+                            .map(|c| view! { <td class=c.class>{(c.cell)(r, lang)}</td> })
+                            .collect_view()}
+                    </tr>
+                    {panel}
+                }
+            })
+        })
+    };
     let body = move || {
-        let lang = i18n.lang();
-        let idx = visible.get();
-        if idx.is_empty() {
+        if empty.get() {
             return view! {
                 <tr>
-                    <td class="empty" colspan=ncols>{i18n.t(K::NoItems)}</td>
+                    <td class="empty" colspan=ncols>{move || i18n.t(K::NoItems)}</td>
                 </tr>
             }
             .into_any();
         }
-        let stored = rows;
-        rows.with_value(|rows| {
-            columns.with_value(|cols| {
-                idx.into_iter()
-                    .map(|i| {
-                        let r = &rows[i];
-                        let check = select.map(|s| {
-                            let key = keys.with_value(|k| k[i].clone());
-                            let label = format!("{} {}", i18n.t(K::SelectRow), key.as_ref().map(|k| k.1.as_str()).unwrap_or(""));
-                            let id = key.as_ref().map(|k| k.0.clone()).unwrap_or_default();
-                            let picked = move || s.picked.with(|p| p.iter().any(|(x, _)| *x == id));
-                            view! {
-                                <td class="select">
-                                    <input type="checkbox" aria-label=label disabled=key.is_none() prop:checked=picked
-                                        on:change=move |ev| {
-                                            if let Some(k) = &key {
-                                                s.picked.update(|p| toggle(p, k, event_target_checked(&ev)));
-                                            }
-                                        }/>
-                                </td>
-                            }
-                        });
-                        let is_open = move || open.with(|o| o.contains(&i));
-                        let toggle = drawer.map(|_| {
-                            view! {
-                                <td class="drawer-toggle">
-                                    <button type="button" class="btn-drawer" aria-expanded=move || is_open().to_string()
-                                        aria-label=move || i18n.t(if is_open() { K::HideDetails } else { K::ShowDetails })
-                                        title=move || i18n.t(if is_open() { K::HideDetails } else { K::ShowDetails })
-                                        on:click=move |_| open.update(|o| toggle_open(o, i))>
-                                        <svg aria-hidden="true" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="m9 6 6 6-6 6"></path>
-                                        </svg>
-                                    </button>
-                                </td>
-                            }
-                        });
-                        // Its own reactive block, so opening one drawer doesn't
-                        // re-render the table (and the toggle keeps keyboard focus).
-                        let panel = drawer.map(|f| {
-                            move || {
-                                is_open().then(|| {
-                                    let content = stored.with_value(|rows| f(&rows[i], i18n.lang()));
-                                    view! { <tr class="drawer"><td colspan=ncols>{content}</td></tr> }
-                                })
-                            }
-                        });
-                        view! {
-                            <tr class:open=is_open>
-                                {toggle}
-                                {check}
-                                {cols
-                                    .iter()
-                                    .map(|c| view! { <td class=c.class>{(c.cell)(r, lang)}</td> })
-                                    .collect_view()}
-                            </tr>
-                            {panel}
-                        }
-                    })
-                    .collect_view()
-                    .into_any()
-            })
-        })
+        view! {
+            <For
+                each=move || {
+                    let lang = i18n.lang();
+                    row_keys.with_value(|k| visible.get().into_iter().map(|i| (lang, k[i].clone(), i)).collect::<Vec<_>>())
+                }
+                key=|(lang, k, _)| (*lang, k.clone())
+                children=move |(lang, _, i)| row_view(lang, i)
+            />
+        }
+        .into_any()
     };
 
     let count = move || displaying(i18n.lang(), visible.with(Vec::len));
@@ -475,8 +602,8 @@ where
                 <input
                     type="search"
                     placeholder=move || i18n.t(K::FilterPlaceholder)
-                    prop:value=filter
-                    on:input=move |ev| filter.set(event_target_value(&ev))
+                    prop:value=typed
+                    on:input=move |ev| on_type(event_target_value(&ev))
                 />
             </label>
             })}
@@ -613,19 +740,76 @@ mod tests {
 
     #[test]
     fn drawers_stay_open_across_sorts_and_close_when_filtered_out() {
-        let mut open = vec![];
-        toggle_open(&mut open, 2);
-        toggle_open(&mut open, 0);
-        // Row indices don't move when the table is re-sorted: same rows open.
-        let keys = vec![SortKey::Num(10), SortKey::Num(2), SortKey::Num(33)];
-        let sorted = visible_rows(&hay(), Some(&keys), "", false);
-        assert!(!retain_visible(&mut open, &sorted));
-        assert_eq!(open, [2, 0]);
-        toggle_open(&mut open, 2);
-        assert_eq!(open, [0], "a second click closes it");
-        let filtered = visible_rows(&hay(), None, "db", true);
-        assert!(retain_visible(&mut open, &filtered), "row 0 is hidden by the filter");
+        let keys = row_keys(&[None, None, None], &hay());
+        let mut open: Vec<String> = vec![];
+        toggle_open(&mut open, &keys[2]);
+        toggle_open(&mut open, &keys[0]);
+        // Keys don't move when the table is re-sorted: same rows open.
+        let sort = vec![SortKey::Num(10), SortKey::Num(2), SortKey::Num(33)];
+        let vis = |idx: Vec<usize>| idx.into_iter().map(|i| keys[i].clone()).collect::<Vec<_>>();
+        assert!(!retain_visible(
+            &mut open,
+            &vis(visible_rows(&hay(), Some(&sort), "", false))
+        ));
+        assert_eq!(open, [keys[2].clone(), keys[0].clone()]);
+        toggle_open(&mut open, &keys[2]);
+        assert_eq!(open, [keys[0].clone()], "a second click closes it");
+        assert!(
+            retain_visible(&mut open, &vis(visible_rows(&hay(), None, "db", true))),
+            "row 0 is hidden by the filter"
+        );
         assert!(open.is_empty());
+    }
+
+    /// Roadmap 103: a drawer follows its row's key, so a refetch that reorders or
+    /// adds rows keeps the same row open.
+    #[test]
+    fn row_keys_use_the_id_and_stay_unique() {
+        let ids = [Some("s1".to_string()), None, None, Some("s1".to_string())];
+        let hay = ["web".to_string(), "db".to_string(), "db".to_string(), "x".to_string()];
+        assert_eq!(row_keys(&ids, &hay), ["s1", "~db", "~db#2", "s1#2"]);
+        let before = row_keys(&[Some("a".into()), Some("b".into())], &["".into(), "".into()]);
+        let after = row_keys(
+            &[Some("c".into()), Some("b".into()), Some("a".into())],
+            &["".into(), "".into(), "".into()],
+        );
+        let mut open = vec![before[1].clone()];
+        assert!(!retain_visible(&mut open, &after), "b is still there after the refetch");
+        assert_eq!(open, ["b"]);
+    }
+
+    #[test]
+    fn a_table_key_names_the_path_the_search_and_the_columns() {
+        let a = table_key("/project/instances", 0x10, &[K::Name, K::Status]);
+        assert_eq!(
+            a,
+            table_key("/project/instances", 0x10, &[K::Name, K::Status]),
+            "stable across rebuilds"
+        );
+        assert_ne!(a, table_key("/project/instances", 0x20, &[K::Name, K::Status]));
+        assert_ne!(a, table_key("/project/instances", 0x10, &[K::Name]));
+        assert!(
+            a.starts_with("/project/instances#"),
+            "TableStates::get keeps a path's keys by this prefix"
+        );
+    }
+
+    #[test]
+    fn table_states_forget_other_pages() {
+        let st = TableStates::default();
+        let a = st.get("/a", table_key("/a", 1, &[]));
+        a.filter.set("web".into());
+        assert_eq!(
+            st.get("/a", table_key("/a", 1, &[])).filter.get_untracked(),
+            "web",
+            "same table, same state"
+        );
+        st.get("/b", table_key("/b", 1, &[]));
+        assert_eq!(
+            st.get("/a", table_key("/a", 1, &[])).filter.get_untracked(),
+            "",
+            "leaving /a forgot it"
+        );
     }
 
     #[test]
