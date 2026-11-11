@@ -120,6 +120,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
 | 106 | ✅ Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | — | M | 105 |
 | 107 | ✅ 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | — | M | 3, 49 |
+| 108 | Graceful shutdown on `SIGTERM`: stop accepting, drain open requests, flush the log | P2 | S | 81, 107 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -7004,6 +7005,61 @@ container started with a mounted pair.
 
 **Open questions.** None. Out of scope: client certificates (mTLS), OCSP stapling, listening
 on HTTP and HTTPS at once.
+
+## 108. Graceful shutdown on `SIGTERM`: stop accepting, drain open requests, flush the log
+
+**Goal.** Moonlight installs no signal handler. As PID 1 in a container the kernel then
+ignores `SIGTERM`, so `podman stop` waits 10 s and kills it, and on OpenShift every rollout,
+scale-down or node drain waits the pod's whole `terminationGracePeriodSeconds` (30 s) before a
+`SIGKILL` (measured on item 107's image, 2026-11-11, plain HTTP and HTTPS alike). The kill
+cuts whatever is in flight: a server function half-way through its OpenStack calls (a batch
+chunk of item 87 that sent two of its five writes, with the browser told nothing), a streamed
+image upload (roadmap 45), and the last lines of a `[log] file`, which item 81 left noted: the
+appender's guard is only dropped when `serve` returns. On `SIGTERM` (and `SIGINT`, for a
+terminal) Moonlight should stop accepting connections, let open requests finish within a
+deadline, close idle keep-alive connections, flush the log and exit 0. Not a Horizon
+behaviour (Apache/mod_wsgi does it for Horizon); P2 because the OpenShift deployment
+(`moonlight-deploy`) restarts pods on every config change.
+
+**Implementation.**
+
+1. **The signal.** `tokio` gains the `signal` feature. A `listen::shutdown_signal()` future
+   resolves on `SIGTERM` (`tokio::signal::unix::signal(SignalKind::terminate())`) or
+   `ctrl_c()`, and logs `shutting down (SIGTERM): no new connections, draining` at `info`.
+2. **One entry point.** Move the choice now in `main.rs` (`listen::serve` or `axum::serve`)
+   into `listen::run(listener, app, tls: Option<Arc<Tls>>, shutdown: impl Future)`, so both
+   paths drain the same way and are testable without `main`. `main.rs` passes
+   `shutdown_signal()` and returns after `run`, which drops `_log_guard` and flushes the file.
+3. **Plain HTTP.** `axum::serve(…).with_graceful_shutdown(shutdown)`: axum stops accepting and
+   waits for every connection, with no limit of its own, so `run` races it against the deadline
+   (below) once the signal has fired.
+4. **HTTPS** (`listen::serve`). `tokio::select!` the accept loop against `shutdown`; each
+   connection is registered with `hyper_util::server::graceful::GracefulShutdown`
+   (`hyper-util` feature `server-graceful`, already in the crate) via `watch(conn)`, which on
+   `shutdown()` sends HTTP/2 `GOAWAY` and closes idle HTTP/1.1 keep-alive connections after
+   their current response. Handshakes still in progress are dropped. The reload task ends with
+   the runtime.
+5. **The deadline.** `DRAIN_TIMEOUT` = 25 s: above `os::REQUEST_TIMEOUT` (20 s), so every server
+   function can finish, and below OpenShift's default 30 s grace, so Moonlight exits before the
+   `SIGKILL`. When it runs out, log at `warn` how many connections were still open (uploads,
+   most likely) and exit anyway. Then `Moonlight stopped` at `info`.
+6. **Docs.** ARCHITECTURE.md (*Configuration and logging*: shutdown and the log flush),
+   README *Container image* (`podman stop` returns at once; a pod's grace period must stay above
+   25 s), SECURITY.md known limitation 4 if the wording about held connections changes, and item
+   81's note (the log loss is fixed). `moonlight-deploy`: a `preStop` sleep of a few seconds so
+   the router drops the endpoint before Moonlight stops accepting (Kubernetes removes the
+   endpoint and sends `SIGTERM` at the same time).
+
+**Tests** (`listen.rs`, with a `oneshot` as the shutdown future and a short deadline). Plain
+and TLS: a request whose handler sleeps 300 ms, started before the shutdown fires, still gets
+`200`; a connection opened afterwards is refused; `run` returns. Deadline: a handler that never
+finishes makes `run` return after the (shortened) timeout. Then the container: `podman stop`
+returns in about a second with `shutting down` and `Moonlight stopped` in `podman logs`, and a
+`[log] file` keeps its last line.
+
+**Open questions.** None. Decided with the user (2026-11-11): the 25 s deadline is a constant,
+not a setting; make it one (`[server] shutdown_timeout`) only if long uploads behind a longer
+grace period ever need it.
 
 ## Also pending (from the PoC)
 
