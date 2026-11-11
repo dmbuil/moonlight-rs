@@ -173,6 +173,7 @@ pub fn error_text(kind: ErrorKind) -> (K, K) {
         ErrorKind::OpenStack(_) => (K::ErrOpenStackTitle, K::ErrOpenStackText),
         ErrorKind::Invalid => (K::ErrInvalidTitle, K::ErrInvalidText),
         ErrorKind::TooManyAttempts => (K::ErrTooManyTitle, K::LoginThrottled),
+        ErrorKind::TooLarge => (K::ErrTooLargeTitle, K::ErrTooLargeText),
         ErrorKind::Internal => (K::ErrInternalTitle, K::ErrInternalText),
     }
 }

@@ -208,6 +208,10 @@ Visibility is transitive: hiding a field hides fields that depend on it.
   source under `~/.cargo/registry/src/*/openstack-sdk-<service>-<ver>/src/…`.
 - **Not every list is `Pageable`** (e.g. volume types, AZs): use `ep.query_async()` directly,
   not `paged(...)`.
+- **`Pagination::All` sends no `limit`**: the SDK's `page_limit()` is `usize::MAX` for both
+  variants, so each service used its own default page (Glance: 25) and a list took one GET per
+  page. Set it on the builder; `list_where!` does (`LIST_PAGE`, 1000). A list builder without
+  `.limit()` then fails to compile in the macro: call `ep.query_async()` for it instead.
 - **`response_key` varies**: `os-interface` returns the raw object (`interfaceAttachments`
   inside); keypairs come wrapped (`{"keypair": {...}}`) — use `mapping::unwrap`.
 - Builders use `strip_option` + `into`: `Option<Cow<str>>` setters take `&str`/`String`;

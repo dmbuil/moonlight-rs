@@ -135,6 +135,9 @@ background_batch_from = 10
 page_size = 100
 # Which lists are paged: "admin" (the Admin lists) or "all" (the Project panels too).
 paged_lists = "admin"
+# Most rows a full (unpaged) list may have: past it the page says the list is too large
+# instead of showing part of it. Full lists load 1000 rows per request. 0 = no cap.
+max_list_items = 10000
 
 [launch]
 # Launch Instance defaults. (LAUNCH_INSTANCE_DEFAULTS, OPENSTACK_HYPERVISOR_FEATURES)

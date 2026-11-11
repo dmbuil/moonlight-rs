@@ -58,6 +58,8 @@ pub struct Config {
     /// `[ui] show_requests`: keep the REST requests in action results, dry-run
     /// included (roadmap 78). Off: they never reach the browser.
     pub show_requests: bool,
+    /// `[ui] max_list_items`: a full list longer than this fails (roadmap 104); 0 = no cap.
+    pub max_list_items: u32,
     /// `[log] client_ip_header`.
     pub client_ip_header: Option<http::HeaderName>,
     /// `[log] trusted_proxies`: proxies that append to `client_ip_header`,

@@ -361,6 +361,8 @@ pub enum ErrorKind {
     /// Too many failed sign-ins: `login` refuses without asking Keystone
     /// for a while (`[login] max_failures`, roadmap 50).
     TooManyAttempts,
+    /// A full list has more items than `[ui] max_list_items` allows (roadmap 104).
+    TooLarge,
     Internal,
 }
 

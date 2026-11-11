@@ -116,7 +116,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 101 | ✅ Phone view: fold the header's bars and menus into one or two buttons | — | M | 39, 96 |
 | 102 | 🔒 WebSSO login CSRF: the start route becomes a same-origin POST; optional strict origin | P1 | S | 80 |
 | 103 | Tables keep filter, sort and drawers across refetches; keyed rows; debounced search | P2 | M | 46, 88 |
-| 104 | Full lists send a page size of 1000; lookup-cache misses coalesce | P2 | S | 66 |
+| 104 | ✅ Full lists send a page size of 1000; lookup-cache misses coalesce | — | S | 66 |
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
 | 106 | Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
 
@@ -141,7 +141,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 105**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6580,6 +6580,28 @@ Open: whether `paged_table` (item 88) needs the same hoisting. Its filter is alr
 query signal, so only the client-side sort and drawers apply there.
 
 ## 104. Full lists send a page size of 1000; lookup-cache misses coalesce
+
+> ✅ **Done.** 2026-11-11. `server/fetch.rs`: `list_all!` / `list_where!` now go through
+> `list_paged!`, which sets `builder.limit(LIST_PAGE.into())` (`LIST_PAGE: u16 = 1000`, so it
+> fits the `i32` and `u32` setters) before the caller's filters. Every builder the macros use has
+> `.limit()`, so the planned `list_unpaged!` was not needed; the two hand-written `paged` calls
+> (Keystone projects in `project_names`, Cinder messages in `volume_detail`) became `list_all!`.
+> **Total cap**: `[ui] max_list_items` (default 10 000, `0` = none; `Config::max_list_items`,
+> `settings::DEFAULT_MAX_LIST_ITEMS`) fetches with `Pagination::Limit(cap + 1)`, and `within_cap`
+> turns more than `cap` rows into the new `ErrorKind::TooLarge` (*List too large*, en/es,
+> `widgets::error_text`; not retryable). **Calls**: left as one call per paged list (the honest
+> option). **Coalescing**: `cached()` is moka `try_get_with`; an error reaches every waiter
+> (`Arc::try_unwrap` or clone) and is not stored. Tests: `concurrent_misses_on_one_key_share_one_fetch`
+> (two `tokio::join!` callers, one fetch, same `Arc`; errors shared, not kept),
+> `a_list_over_the_cap_fails_instead_of_being_cut`,
+> `max_list_items_defaults_to_ten_thousand_and_zero_turns_it_off`. Docs: CONFIGURATION.md and
+> `moonlight.conf.example` (`max_list_items`), ARCHITECTURE.md *Reads*, AGENTS.md gotcha
+> "`Pagination::All` sends no `limit`". Verified on the test cloud (dry-run) with a scratch
+> `LIST_PAGE = 2` and then 1000: Images 33 rows both times (2.13 s → 0.21 s), Networks 7 and
+> Security Groups 1, no console errors, so `next` links and the SDK's marker fallback are
+> followed with a `limit`. Cinder's `volumes_links` goes through the SDK's `<key>_links` branch;
+> the project had no volumes to page. The SDK still ends every list with one empty-page GET
+> (its `page_limit()` is `usize::MAX`, so a short page doesn't end it), as before.
 
 **Goal.** Also from the 2026-11-11 assessment. Two server-side fixes that touch almost every
 page:

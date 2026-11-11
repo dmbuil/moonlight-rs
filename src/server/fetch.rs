@@ -19,7 +19,13 @@ use crate::model::*;
 
 type R<T> = Result<T, AppError>;
 
-/// Runs a paginated list endpoint and returns every item.
+/// Page size asked of every full list (roadmap 104). `Pagination::All` sends no `limit`, so each
+/// service used its own default page and the SDK followed `next` one page at a time: Glance's
+/// is 25, so two thousand images took 80 GETs. Services clamp a larger `limit` to their cap
+/// (Glance `api_limit_max`, Nova and Cinder `osapi_max_limit`, all 1000 by default).
+const LIST_PAGE: u16 = 1000;
+
+/// Runs a paginated list endpoint and returns every item, asking for [`LIST_PAGE`] per page.
 macro_rules! list_all {
     ($os:expr, $module:path, $what:literal) => {
         list_where!($os, $module, $what, |_b| ())
@@ -28,6 +34,15 @@ macro_rules! list_all {
 
 /// Same as `list_all!`, letting the caller set query filters on the builder.
 macro_rules! list_where {
+    ($os:expr, $module:path, $what:literal, |$b:ident| $set:expr) => {
+        list_paged!($os, $module, $what, |$b| {
+            $b.limit(LIST_PAGE.into());
+            $set
+        })
+    };
+}
+
+macro_rules! list_paged {
     ($os:expr, $module:path, $what:literal, |$b:ident| $set:expr) => {{
         use $module as m;
         async {
@@ -35,12 +50,33 @@ macro_rules! list_where {
             let $b = &mut builder;
             $set;
             let ep = builder.build().map_err(sfe(concat!("build ", $what)))?;
-            let v: Vec<Value> = counted(paged(ep, Pagination::All).query_async($os))
-                .await
-                .map_err(sfe(concat!("GET ", $what)))?;
-            Ok::<_, AppError>(v)
+            let cap = list_cap();
+            let v: Vec<Value> =
+                counted(paged(ep, cap.map_or(Pagination::All, |c| Pagination::Limit(c + 1))).query_async($os))
+                    .await
+                    .map_err(sfe(concat!("GET ", $what)))?;
+            within_cap(v, cap, $what)
         }
     }};
+}
+
+/// `[ui] max_list_items` (roadmap 104); `None` = no cap. Before `config::init` (unit tests) the
+/// default.
+fn list_cap() -> Option<usize> {
+    let n = super::config::try_state().map_or(super::settings::DEFAULT_MAX_LIST_ITEMS, |st| st.config.max_list_items);
+    (n > 0).then_some(n as usize)
+}
+
+/// A list fetched with `Pagination::Limit(cap + 1)`: more than `cap` rows means the SDK stopped
+/// early, so the list would be silently cut. Fail instead and say why.
+fn within_cap(v: Vec<Value>, cap: Option<usize>, what: &str) -> R<Vec<Value>> {
+    match cap {
+        Some(cap) if v.len() > cap => Err(AppError::new(
+            ErrorKind::TooLarge,
+            format!("GET {what}: more than {cap} items ([ui] max_list_items)"),
+        )),
+        _ => Ok(v),
+    }
 }
 
 macro_rules! get_one {
@@ -203,18 +239,18 @@ async fn lookup(name: &'static str, fetch: impl Future<Output = R<Vec<Value>>>) 
     }
 }
 
-/// `fetch` through `cache` under `key`: a hit skips it; only successes are kept.
+/// `fetch` through `cache` under `key`: a hit skips it; only successes are kept. Concurrent
+/// misses on one key (a page load and a polling round, two tabs) share one fetch (roadmap 104):
+/// the others wait for it and get its result, error included.
 async fn cached(
     cache: &moka::future::Cache<String, Arc<Vec<Value>>>,
     key: String,
     fetch: impl Future<Output = R<Vec<Value>>>,
 ) -> R<Arc<Vec<Value>>> {
-    if let Some(v) = cache.get(&key).await {
-        return Ok(v);
-    }
-    let v = Arc::new(fetch.await?);
-    cache.insert(key, v.clone()).await;
-    Ok(v)
+    cache
+        .try_get_with(key, async { fetch.await.map(Arc::new) })
+        .await
+        .map_err(|e| Arc::try_unwrap(e).unwrap_or_else(|a| (*a).clone()))
 }
 
 /// Drops the cached lookups of one session scope (`os::scoped_key`): after a
@@ -465,16 +501,9 @@ pub async fn instance(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Time
 /// Project id → name. The user's own projects always resolve; Keystone's full
 /// project list only succeeds for admins/readers and is used when allowed.
 pub async fn project_names(os: &AsyncOpenStack, mine: &[ProjectRef]) -> std::collections::HashMap<String, String> {
-    use openstack_sdk::api::identity::v3::project::list as m;
     let mut names: std::collections::HashMap<String, String> =
         mine.iter().map(|p| (p.id.clone(), p.name.clone())).collect();
-    let all = async {
-        let ep = m::Request::builder().build().map_err(sfe("build projects"))?;
-        let v: Vec<Value> = counted(paged(ep, Pagination::All).query_async(os))
-            .await
-            .map_err(sfe("GET projects"))?;
-        Ok::<_, AppError>(v)
-    };
+    let all = list_all!(os, openstack_sdk::api::identity::v3::project::list, "projects");
     if let Ok(all) = all.await {
         for p in mapping::projects(&all) {
             names.entry(p.id).or_insert(p.name);
@@ -1938,14 +1967,7 @@ pub async fn volume_detail(os: &AsyncOpenStack, id: &str) -> R<Timed<VolumeDetai
         servers_brief(os),
         snapshots_raw(os),
         // Volume API >= 3.3 (the SDK negotiates it); older clouds just show none.
-        async {
-            use openstack_sdk::api::block_storage::v3::message::list_33 as m;
-            let ep = m::Request::builder().build().map_err(sfe("build messages"))?;
-            let v: Vec<Value> = counted(paged(ep, Pagination::All).query_async(os))
-                .await
-                .map_err(sfe("GET messages"))?;
-            Ok::<_, AppError>(v)
-        }
+        list_all!(os, openstack_sdk::api::block_storage::v3::message::list_33, "messages")
     );
     let mut d = mapping::volume_detail(&v?, &soft(sv), &soft(sn));
     // Optional data: a failure (e.g. volume API < 3.3) leaves the list empty, but is logged.
@@ -4648,6 +4670,65 @@ mod tests {
         assert_eq!(calls, 3, "failure, first fetch and the other scope; the hit is free");
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         assert!(cache.get("s/flavors").await.is_none(), "gone after its time to live");
+    }
+
+    /// Roadmap 104: two misses on one key at once fetch once and share the result.
+    #[tokio::test]
+    async fn concurrent_misses_on_one_key_share_one_fetch() {
+        let cache = moka::future::Cache::builder().build();
+        let fetches = std::sync::atomic::AtomicUsize::new(0);
+        let fetch = || async {
+            fetches.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Ok(vec![json!({"id": "f1"})])
+        };
+        let (a, b) = tokio::join!(
+            cached(&cache, "s/flavors".into(), fetch()),
+            cached(&cache, "s/flavors".into(), fetch())
+        );
+        assert_eq!(
+            fetches.load(Ordering::SeqCst),
+            1,
+            "the second caller waited for the first"
+        );
+        assert!(Arc::ptr_eq(&a.unwrap(), &b.unwrap()), "both got the same list");
+        // An error reaches every waiter with its kind, and is not kept.
+        let failing = || async {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Err::<Vec<Value>, _>(AppError::new(ErrorKind::Forbidden, "no"))
+        };
+        let (a, b) = tokio::join!(
+            cached(&cache, "s/images".into(), failing()),
+            cached(&cache, "s/images".into(), failing())
+        );
+        assert_eq!(
+            (a.unwrap_err().kind, b.unwrap_err().kind),
+            (ErrorKind::Forbidden, ErrorKind::Forbidden)
+        );
+        assert!(cache.get("s/images").await.is_none());
+    }
+
+    /// Roadmap 104: a list cut by the total cap fails rather than showing part of it.
+    #[test]
+    fn a_list_over_the_cap_fails_instead_of_being_cut() {
+        let rows = |n: usize| (0..n).map(|i| json!({"id": i})).collect::<Vec<_>>();
+        assert_eq!(
+            within_cap(rows(3), Some(3), "images").unwrap().len(),
+            3,
+            "exactly the cap is fine"
+        );
+        let e = within_cap(rows(4), Some(3), "images").unwrap_err();
+        assert_eq!(e.kind, ErrorKind::TooLarge);
+        assert!(
+            e.detail.contains("more than 3") && e.detail.contains("max_list_items"),
+            "{}",
+            e.detail
+        );
+        assert_eq!(within_cap(rows(50), None, "images").unwrap().len(), 50, "0 = no cap");
+        assert_eq!(
+            list_cap(),
+            Some(super::super::settings::DEFAULT_MAX_LIST_ITEMS as usize)
+        );
     }
 
     #[tokio::test]

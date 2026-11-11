@@ -236,6 +236,9 @@ pub struct Ui {
     pub page_size: u32,
     /// `admin` (default) or `all`: which lists are paged (roadmap 88).
     pub paged_lists: String,
+    /// Most rows a full list may have before the page fails instead of showing a cut list
+    /// (roadmap 104); `0` = no cap.
+    pub max_list_items: u32,
 }
 
 impl Default for Ui {
@@ -252,9 +255,13 @@ impl Default for Ui {
             background_batch_from: Prefs::default().background_batch_from,
             page_size: Prefs::default().page_size,
             paged_lists: "admin".into(),
+            max_list_items: DEFAULT_MAX_LIST_ITEMS,
         }
     }
 }
+
+/// `[ui] max_list_items` default (roadmap 104): ten pages of 1000.
+pub const DEFAULT_MAX_LIST_ITEMS: u32 = 10_000;
 
 /// Largest `[ui] page_size` (roadmap 88). A page asks for `page_size + 1` rows, the extra one
 /// only saying whether there is a *Next*; Nova (`max_limit`) and Glance (`api_limit_max`) cap
@@ -900,6 +907,7 @@ impl Settings {
             websso,
             show_error_details: self.ui.show_error_details,
             show_requests: self.ui.show_requests,
+            max_list_items: self.ui.max_list_items,
             writes: WriteMode::parse(mode)
                 .ok_or_else(|| format!("[writes] mode must be off, dry-run or on (got {mode:?})"))?,
             help_url: url_setting("[ui] help_url", self.ui.help_url.as_deref())?,
@@ -1398,6 +1406,12 @@ mod tests {
             parse("[cache]\nlookup_seconds = 0\n").unwrap().lookup_ttl.is_zero(),
             "0 turns the cache off"
         );
+    }
+
+    #[test]
+    fn max_list_items_defaults_to_ten_thousand_and_zero_turns_it_off() {
+        assert_eq!(parse("").unwrap().max_list_items, 10_000);
+        assert_eq!(parse("[ui]\nmax_list_items = 0\n").unwrap().max_list_items, 0);
     }
 
     #[test]

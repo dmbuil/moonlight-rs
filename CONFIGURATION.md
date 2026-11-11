@@ -124,6 +124,7 @@ cookie on `http://localhost` and `http://127.0.0.1`, so plain-HTTP development w
 | `[ui] background_batch_from` | `10` | A bulk action with this many items or more runs in the background: the dialog closes and a card at the bottom right counts the items done (sent 5 at a time), lists failures and ends with a summary. Closing the tab stops it; the items not yet sent are not sent. `0` = every batch in its dialog. | — (Moonlight's own) |
 | `[ui] page_size` | `100` | Rows per page of the paged lists (roadmap 88): the Admin lists load one page and filter and sort on the server, whatever the cloud's size. 1–999: a page asks for one row more than this, and the APIs cap a request at 1000. `0` = no paging, every row at once with a search box on the page. | `API_RESULT_PAGE_SIZE` (Horizon: 20) |
 | `[ui] paged_lists` | `admin` | Which lists `page_size` applies to: `admin` (the big Admin lists) or `all` (the Project panels too). | — (Moonlight's own) |
+| `[ui] max_list_items` | `10000` | Most rows a full (unpaged) list may have (roadmap 104). Full lists load 1000 rows per request; past this many the page shows *List too large* instead of a cut list. Use the paged lists (`page_size`, `paged_lists`) for bigger clouds. `0` = no cap. | — (Moonlight's own) |
 
 ### Launch Instance
 

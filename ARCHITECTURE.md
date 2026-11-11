@@ -360,11 +360,13 @@ All OpenStack access goes through gtema's `openstack_sdk` (`server/os.rs`):
 
 1. issues the independent list calls in parallel (`tokio::join!`, or `spawn_counted` into a
    `JoinSet` for fan-outs), through the `list_all!` / `list_where!` / `get_one!` macros that
-   count calls;
+   count calls; the list macros ask for 1000 rows a page (`LIST_PAGE`) and fail with
+   `ErrorKind::TooLarge` past `[ui] max_list_items` rather than show a cut list (roadmap 104);
 2. wraps lists that only supply names in `soft()`, so a failing lookup degrades to IDs instead
    of failing the page;
 3. reuses name-only lists (flavors, images, networks, volumes…) from the `lookups` cache for
-   `[cache] lookup_seconds`, keyed per token, project and region (roadmap 66);
+   `[cache] lookup_seconds`, keyed per token, project and region (roadmap 66); concurrent
+   misses on one key share one fetch (moka `try_get_with`);
 4. hands the raw JSON to `mapping.rs` and returns `Timed<T>` (data, call count, seconds).
 
 OpenStack quirks are handled once, here and in the mappers: admins see every project's Neutron

@@ -1356,6 +1356,8 @@ translations! {
     ErrInvalidText => "Moonlight rejected the request before sending it to OpenStack.", "Moonlight ha rechazado la petición antes de enviarla a OpenStack.";
     ErrInternalTitle => "Something went wrong", "Algo ha salido mal";
     ErrTooManyTitle => "Too many attempts", "Demasiados intentos";
+    ErrTooLargeTitle => "List too large", "Lista demasiado grande";
+    ErrTooLargeText => "This list has more items than this view loads at once. Use the paged lists under Admin, or ask the operator to raise [ui] max_list_items.", "Esta lista tiene más elementos de los que esta vista carga de una vez. Usa las listas paginadas de Administración o pide al operador que aumente [ui] max_list_items.";
     LoginThrottled => "Too many failed sign-ins. Wait a few minutes and try again.", "Demasiados inicios de sesión fallidos. Espera unos minutos y vuelve a intentarlo.";
     ErrInternalText => "An unexpected error occurred while loading this page.", "Se ha producido un error inesperado al cargar esta página.";
     RegionFallback => "The region you were using is not available any more. Moonlight switched to", "La región que usabas ya no está disponible. Moonlight ha cambiado a";
