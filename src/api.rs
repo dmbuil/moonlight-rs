@@ -88,13 +88,23 @@ pub async fn logout() -> Result<(), AppError> {
             let revoked = match os::scoped(&s).await {
                 Ok(c) => {
                     let mut x = crate::server::actions::Exec::new(config.writes, Some(&c));
-                    os::within(os::REQUEST_TIMEOUT, "token revocation", crate::server::actions::revoke_token(&mut x, &s.token)).await.and_then(|r| r)
+                    os::within(
+                        os::REQUEST_TIMEOUT,
+                        "token revocation",
+                        crate::server::actions::revoke_token(&mut x, &s.token),
+                    )
+                    .await
+                    .and_then(|r| r)
                 }
                 Err(e) => Err(e),
             };
             match revoked {
-                Ok(()) => tracing::info!(user = %s.user, mode = ?config.writes, client = %session::client_ip(), "logout"),
-                Err(e) => tracing::warn!(user = %s.user, client = %session::client_ip(), "logout: token not revoked: {e}"),
+                Ok(()) => {
+                    tracing::info!(user = %s.user, mode = ?config.writes, client = %session::client_ip(), "logout")
+                }
+                Err(e) => {
+                    tracing::warn!(user = %s.user, client = %session::client_ip(), "logout: token not revoked: {e}")
+                }
             }
         }
         os::forget(&s).await;
@@ -124,7 +134,10 @@ pub async fn get_session_info() -> Result<SessionInfo, AppError> {
     Ok(SessionInfo {
         user: s.user.clone(),
         domain: s.domain.clone(),
-        project: ProjectRef { id: s.project_id.clone(), name: s.project_name.clone() },
+        project: ProjectRef {
+            id: s.project_id.clone(),
+            name: s.project_name.clone(),
+        },
         projects: projects.unwrap_or_default(),
         region: s.region.clone().unwrap_or_default(),
         regions,
@@ -162,7 +175,10 @@ pub async fn switch_region(region: String) -> Result<(), AppError> {
     let mut s = session::require()?;
     let regions = os::regions(&os::scoped(&s).await?);
     if !regions.contains(&region) {
-        return Err(AppError::new(ErrorKind::RegionUnavailable, format!("unknown region {region}")));
+        return Err(AppError::new(
+            ErrorKind::RegionUnavailable,
+            format!("unknown region {region}"),
+        ));
     }
     s.region = Some(region);
     session::store(&s);
@@ -199,7 +215,10 @@ async fn ctx() -> Result<(session::Session, openstack_sdk::AsyncOpenStack), AppE
 /// body's GETs are counted for `Timed::calls` (`fetch::serving`, roadmap 65), and
 /// its name lookups cached per session scope (roadmap 66).
 #[cfg(feature = "ssr")]
-async fn scoped<T, F>(name: &str, body: impl FnOnce(session::Session, openstack_sdk::AsyncOpenStack) -> F) -> Result<T, AppError>
+async fn scoped<T, F>(
+    name: &str,
+    body: impl FnOnce(session::Session, openstack_sdk::AsyncOpenStack) -> F,
+) -> Result<T, AppError>
 where
     F: std::future::Future<Output = Result<T, AppError>>,
 {
@@ -221,7 +240,11 @@ where
 /// `scoped` for a resource named in the URL: checks `id` first, because it is
 /// pasted into the request path unencoded (roadmap 48), then hands it to `body`.
 #[cfg(feature = "ssr")]
-async fn scoped_id<T, F>(name: &str, id: String, body: impl FnOnce(session::Session, openstack_sdk::AsyncOpenStack, String) -> F) -> Result<T, AppError>
+async fn scoped_id<T, F>(
+    name: &str,
+    id: String,
+    body: impl FnOnce(session::Session, openstack_sdk::AsyncOpenStack, String) -> F,
+) -> Result<T, AppError>
 where
     F: std::future::Future<Output = Result<T, AppError>>,
 {
@@ -238,9 +261,10 @@ fn cfg() -> &'static crate::server::config::Config {
 /// Overview *Limit Summary*: compute, volume and network quotas with usage.
 #[server(input = GetUrl)]
 pub async fn overview() -> Result<Timed<Vec<QuotaSection>>, AppError> {
-    scoped("overview", |s, c| async move {
-        fetch::overview(&c, &s.project_id).await
-    })
+    scoped(
+        "overview",
+        |s, c| async move { fetch::overview(&c, &s.project_id).await },
+    )
     .await
 }
 
@@ -251,7 +275,14 @@ pub async fn list_quotas() -> Result<Timed<Vec<QuotaCard>>, AppError> {
         // `os::capabilities` has no plugins (configuration, added by `get_session_info`).
         let caps = os::capabilities(&s, &c).await;
         let on = |p: Plugin, service| cfg().plugins.contains(&p) && Requires::Service(service).met(&caps);
-        fetch::quotas(&c, &s.project_id, &s.project_id, on(Plugin::LoadBalancer, "load-balancer"), on(Plugin::KeyManager, "key-manager")).await
+        fetch::quotas(
+            &c,
+            &s.project_id,
+            &s.project_id,
+            on(Plugin::LoadBalancer, "load-balancer"),
+            on(Plugin::KeyManager, "key-manager"),
+        )
+        .await
     })
     .await
 }
@@ -267,10 +298,24 @@ pub async fn list_project_quotas(id: String) -> Result<Timed<ProjectQuotas>, App
         let on = |p: Plugin, service| cfg().plugins.contains(&p) && Requires::Service(service).met(&caps);
         let (name, t) = tokio::join!(
             fetch::project_name(&c, &id),
-            fetch::quotas(&c, &id, &s.project_id, on(Plugin::LoadBalancer, "load-balancer"), on(Plugin::KeyManager, "key-manager"))
+            fetch::quotas(
+                &c,
+                &id,
+                &s.project_id,
+                on(Plugin::LoadBalancer, "load-balancer"),
+                on(Plugin::KeyManager, "key-manager")
+            )
         );
         let t = t?;
-        Ok(Timed { data: ProjectQuotas { project_id: id.clone(), project_name: name.unwrap_or(id), cards: t.data }, millis: t.millis, calls: t.calls })
+        Ok(Timed {
+            data: ProjectQuotas {
+                project_id: id.clone(),
+                project_name: name.unwrap_or(id),
+                cards: t.data,
+            },
+            millis: t.millis,
+            calls: t.calls,
+        })
     })
     .await
 }
@@ -281,9 +326,19 @@ pub async fn get_usage(start: String, end: String) -> Result<Timed<UsageSummary>
     scoped("get_usage", |s, c| async move {
         let (from, to) = usage_range(&start, &end, chrono::Utc::now().date_naive()).map_err(AppError::invalid)?;
         let stop = to.succ_opt().unwrap_or(to);
-        let t = fetch::usage(&c, &s.project_id, &format!("{from}T00:00:00"), &format!("{stop}T00:00:00")).await?;
+        let t = fetch::usage(
+            &c,
+            &s.project_id,
+            &format!("{from}T00:00:00"),
+            &format!("{stop}T00:00:00"),
+        )
+        .await?;
         Ok(Timed {
-            data: UsageSummary { start: from.to_string(), end: to.to_string(), servers: t.data },
+            data: UsageSummary {
+                start: from.to_string(),
+                end: to.to_string(),
+                servers: t.data,
+            },
             millis: t.millis,
             calls: t.calls,
         })
@@ -330,18 +385,16 @@ pub async fn list_images(q: ListQuery) -> Result<Timed<Page<Image>>, AppError> {
 /// Project › Compute › Key Pairs.
 #[server(input = GetUrl)]
 pub async fn list_keypairs() -> Result<Timed<Vec<KeyPair>>, AppError> {
-    scoped("list_keypairs", |_, c| async move {
-        fetch::keypairs(&c).await
-    })
-    .await
+    scoped("list_keypairs", |_, c| async move { fetch::keypairs(&c).await }).await
 }
 
 /// Project › Compute › Server Groups.
 #[server(input = GetUrl)]
 pub async fn list_server_groups() -> Result<Timed<Vec<ServerGroup>>, AppError> {
-    scoped("list_server_groups", |_, c| async move {
-        fetch::server_groups(&c).await
-    })
+    scoped(
+        "list_server_groups",
+        |_, c| async move { fetch::server_groups(&c).await },
+    )
     .await
 }
 
@@ -442,7 +495,11 @@ pub async fn get_credentials() -> Result<Credentials, AppError> {
 #[cfg(feature = "ssr")]
 fn session_credentials(s: &session::Session) -> Credentials {
     let url = &cfg().keystone_url;
-    let auth_url = if url.ends_with("/v3") { url.clone() } else { format!("{url}/v3") };
+    let auth_url = if url.ends_with("/v3") {
+        url.clone()
+    } else {
+        format!("{url}/v3")
+    };
     Credentials {
         user_name: s.user.clone(),
         user_id: s.user_id.clone(),
@@ -479,7 +536,7 @@ pub async fn api_access() -> Result<Vec<ApiEndpoint>, AppError> {
 /// server then cannot deserialise the action.
 #[server(input = Json)]
 pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
-    use crate::server::actions::{apply, Exec};
+    use crate::server::actions::{Exec, apply};
     let mode = cfg().writes;
     let s = session::require()?;
     // IDs end up in request paths, unencoded (roadmap 48).
@@ -494,7 +551,9 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
         action.set_domain(&domain);
     }
     // Horizon's identity safety rules (roadmap 57), whatever the dialogs allowed.
-    action.identity_safety(&s.user_id, &s.project_id).map_err(AppError::invalid)?;
+    action
+        .identity_safety(&s.user_id, &s.project_id)
+        .map_err(AppError::invalid)?;
     action.plugins().into_iter().try_for_each(plugin_enabled)?;
     // Admin-dashboard writes (roadmap 85) and another project's quotas (roadmap
     // 82): the token's role, not only the menu or the services' policy. A
@@ -504,26 +563,42 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
     }
     // Glance's own properties and `[images] reserved_properties`, whatever the dialog allowed.
     let reserved = &cfg().prefs.images.reserved_properties;
-    if let Some(k) = action.image_property_keys().into_iter().find(|k| is_reserved_image_key(k, reserved)) {
+    if let Some(k) = action
+        .image_property_keys()
+        .into_iter()
+        .find(|k| is_reserved_image_key(k, reserved))
+    {
         return Err(AppError::invalid(format!("{k} is a reserved image property")));
     }
     let net = &cfg().prefs.network;
     for cidr in action.new_subnet_cidrs() {
-        net.check_subnet(cidr).map_err(|e| AppError::invalid(format!("subnet {cidr}: {e}")))?;
+        net.check_subnet(cidr)
+            .map_err(|e| AppError::invalid(format!("subnet {cidr}: {e}")))?;
     }
-    let c = if mode == WriteMode::On { Some(os::scoped(&s).await?) } else { None };
+    let c = if mode == WriteMode::On {
+        Some(os::scoped(&s).await?)
+    } else {
+        None
+    };
     let mut x = Exec::new(mode, c.as_ref());
     match apply(&mut x, &action).await {
         Ok(()) => {
             // Names may have changed (a renamed network, a new volume): the next
             // page loads fetch the lookups again (roadmap 66). Dry-run changes nothing.
             if mode == WriteMode::On {
-                crate::server::fetch::forget_lookups(&os::scoped_key(&s.token, &s.project_id, s.region.as_deref())).await;
+                crate::server::fetch::forget_lookups(&os::scoped_key(&s.token, &s.project_id, s.region.as_deref()))
+                    .await;
             }
             let mut out = x.outcome();
             // A new application credential: Horizon's openrc and clouds.yaml, with the secret.
             if let Some(sec) = out.secret.as_mut().filter(|s| s.kind == SecretKind::AppCredential) {
-                let get = |k: &str| sec.fields.iter().find(|(f, _)| f == k).map(|(_, v)| v.clone()).unwrap_or_default();
+                let get = |k: &str| {
+                    sec.fields
+                        .iter()
+                        .find(|(f, _)| f == k)
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default()
+                };
                 let (id, name, secret) = (get("id"), get("name"), get("secret"));
                 sec.extra = crate::server::downloads::app_credential(&session_credentials(&s), &id, &name, &secret);
             }
@@ -543,7 +618,8 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
 #[server]
 pub async fn get_image_upload_ticket(id: String, bytes: u64) -> Result<UploadTicket, AppError> {
     check_id(&id)?;
-    let parts = leptos::prelude::use_context::<http::request::Parts>().ok_or_else(|| AppError::internal("no request"))?;
+    let parts =
+        leptos::prelude::use_context::<http::request::Parts>().ok_or_else(|| AppError::internal("no request"))?;
     crate::server::upload::ticket(&parts.headers, &id, bytes).await
 }
 
@@ -659,9 +735,10 @@ pub async fn get_port(id: String) -> Result<Timed<PortRow>, AppError> {
 #[server(input = GetUrl)]
 pub async fn list_trunks() -> Result<Timed<Vec<TrunkRow>>, AppError> {
     plugin_enabled(Plugin::Trunk)?;
-    scoped("list_trunks", |s, c| async move {
-        fetch::trunks(&c, &s.project_id).await
-    })
+    scoped(
+        "list_trunks",
+        |s, c| async move { fetch::trunks(&c, &s.project_id).await },
+    )
     .await
 }
 
@@ -759,10 +836,7 @@ pub async fn get_qos_policy(id: String) -> Result<Timed<QosPolicyRow>, AppError>
 #[server(input = GetUrl)]
 pub async fn list_secrets() -> Result<Timed<Vec<SecretRow>>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
-    scoped("list_secrets", |_, c| async move {
-        fetch::secrets(&c).await
-    })
-    .await
+    scoped("list_secrets", |_, c| async move { fetch::secrets(&c).await }).await
 }
 
 /// Secret detail page (`key-manager` plugin): metadata, ACL, consumers.
@@ -771,7 +845,10 @@ pub async fn get_secret(id: String) -> Result<Timed<SecretDetail>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
     let allowed = cfg().key_manager_payload;
     scoped_id("get_secret", id, |s, c, id| async move {
-        let lb = cfg().plugins.contains(&Plugin::LoadBalancer).then_some(s.project_id.as_str());
+        let lb = cfg()
+            .plugins
+            .contains(&Plugin::LoadBalancer)
+            .then_some(s.project_id.as_str());
         let mut d = fetch::secret(&c, &id, allowed, lb).await?;
         let roles = os::capabilities(&s, &c).await.roles;
         d.data.acl.can_edit = can_edit_secret_acl(d.data.secret.creator_id.as_deref(), &s.user_id, &roles);
@@ -786,7 +863,9 @@ pub async fn get_secret(id: String) -> Result<Timed<SecretDetail>, AppError> {
 pub async fn get_secret_payload(id: String) -> Result<SecretPayload, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
     if !cfg().key_manager_payload {
-        return Err(AppError::invalid("showing secret payloads is disabled ([key_manager] allow_payload)"));
+        return Err(AppError::invalid(
+            "showing secret payloads is disabled ([key_manager] allow_payload)",
+        ));
     }
     if let Some(r) = use_context::<leptos_axum::ResponseOptions>() {
         r.insert_header(http::header::CACHE_CONTROL, http::HeaderValue::from_static("no-store"));
@@ -803,10 +882,7 @@ pub async fn get_secret_payload(id: String) -> Result<SecretPayload, AppError> {
 #[server(input = GetUrl)]
 pub async fn list_containers() -> Result<Timed<Vec<ContainerRow>>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
-    scoped("list_containers", |_, c| async move {
-        fetch::containers(&c).await
-    })
-    .await
+    scoped("list_containers", |_, c| async move { fetch::containers(&c).await }).await
 }
 
 /// Container detail page (`key-manager` plugin): the container and its `read`
@@ -815,7 +891,10 @@ pub async fn list_containers() -> Result<Timed<Vec<ContainerRow>>, AppError> {
 pub async fn get_container(id: String) -> Result<Timed<ContainerDetail>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
     scoped_id("get_container", id, |s, c, id| async move {
-        let lb = cfg().plugins.contains(&Plugin::LoadBalancer).then_some(s.project_id.as_str());
+        let lb = cfg()
+            .plugins
+            .contains(&Plugin::LoadBalancer)
+            .then_some(s.project_id.as_str());
         let mut d = fetch::container(&c, &id, lb).await?;
         let roles = os::capabilities(&s, &c).await.roles;
         d.data.acl.can_edit = can_edit_secret_acl(d.data.container.creator_id.as_deref(), &s.user_id, &roles);
@@ -828,29 +907,24 @@ pub async fn get_container(id: String) -> Result<Timed<ContainerDetail>, AppErro
 #[server(input = GetUrl)]
 pub async fn list_stacks() -> Result<Timed<Vec<StackRow>>, AppError> {
     plugin_enabled(Plugin::Orchestration)?;
-    scoped("list_stacks", |_, c| async move {
-        fetch::stacks(&c).await
-    })
-    .await
+    scoped("list_stacks", |_, c| async move { fetch::stacks(&c).await }).await
 }
 
 /// Stack detail page (`orchestration` plugin): overview, resources, events, template.
 #[server(input = GetUrl)]
 pub async fn get_stack(id: String) -> Result<Timed<StackDetail>, AppError> {
     plugin_enabled(Plugin::Orchestration)?;
-    scoped_id("get_stack", id, |_, c, id| async move {
-        fetch::stack(&c, &id).await
-    })
-    .await
+    scoped_id("get_stack", id, |_, c, id| async move { fetch::stack(&c, &id).await }).await
 }
 
 /// Orchestration › Resource Types (`orchestration` plugin).
 #[server(input = GetUrl)]
 pub async fn list_resource_types() -> Result<Timed<Vec<ResourceTypeRow>>, AppError> {
     plugin_enabled(Plugin::Orchestration)?;
-    scoped("list_resource_types", |_, c| async move {
-        fetch::resource_types(&c).await
-    })
+    scoped(
+        "list_resource_types",
+        |_, c| async move { fetch::resource_types(&c).await },
+    )
     .await
 }
 
@@ -888,9 +962,10 @@ pub async fn get_template_functions(id: String) -> Result<Timed<Vec<TemplateFunc
 #[server(input = GetUrl)]
 pub async fn list_alarms() -> Result<Timed<Vec<AlarmRow>>, AppError> {
     plugin_enabled(Plugin::Alarming)?;
-    scoped("list_alarms", |s, c| async move {
-        fetch::alarms(&c, &s.project_id).await
-    })
+    scoped(
+        "list_alarms",
+        |s, c| async move { fetch::alarms(&c, &s.project_id).await },
+    )
     .await
 }
 
@@ -898,10 +973,7 @@ pub async fn list_alarms() -> Result<Timed<Vec<AlarmRow>>, AppError> {
 #[server(input = GetUrl)]
 pub async fn get_alarm(id: String) -> Result<Timed<AlarmDetail>, AppError> {
     plugin_enabled(Plugin::Alarming)?;
-    scoped_id("get_alarm", id, |_, c, id| async move {
-        fetch::alarm(&c, &id).await
-    })
-    .await
+    scoped_id("get_alarm", id, |_, c, id| async move { fetch::alarm(&c, &id).await }).await
 }
 
 /// Plugin panels are opt-in (`[plugins] enabled`): refuse their calls otherwise,
@@ -911,7 +983,13 @@ fn plugin_enabled(p: Plugin) -> Result<(), AppError> {
     if cfg().plugins.contains(&p) {
         Ok(())
     } else {
-        Err(AppError::new(ErrorKind::ServiceUnavailable, format!("the {} plugin is not enabled ([plugins] enabled in moonlight.conf)", p.name())))
+        Err(AppError::new(
+            ErrorKind::ServiceUnavailable,
+            format!(
+                "the {} plugin is not enabled ([plugins] enabled in moonlight.conf)",
+                p.name()
+            ),
+        ))
     }
 }
 
@@ -985,28 +1063,23 @@ pub async fn get_snapshot(id: String) -> Result<Timed<Snapshot>, AppError> {
 #[server(input = GetUrl)]
 pub async fn list_backups() -> Result<Timed<Vec<BackupRow>>, AppError> {
     plugin_enabled(Plugin::Backup)?;
-    scoped("list_backups", |_, c| async move {
-        fetch::backups(&c).await
-    })
-    .await
+    scoped("list_backups", |_, c| async move { fetch::backups(&c).await }).await
 }
 
 /// Backup detail page.
 #[server(input = GetUrl)]
 pub async fn get_backup(id: String) -> Result<Timed<BackupRow>, AppError> {
     plugin_enabled(Plugin::Backup)?;
-    scoped_id("get_backup", id, |_, c, id| async move {
-        fetch::backup(&c, &id).await
-    })
-    .await
+    scoped_id("get_backup", id, |_, c, id| async move { fetch::backup(&c, &id).await }).await
 }
 
 /// Project › Volumes › Groups (generic volume groups, roadmap 5).
 #[server(input = GetUrl)]
 pub async fn list_volume_groups() -> Result<Timed<Vec<VolumeGroupRow>>, AppError> {
-    scoped("list_volume_groups", |_, c| async move {
-        fetch::volume_groups(&c).await
-    })
+    scoped(
+        "list_volume_groups",
+        |_, c| async move { fetch::volume_groups(&c).await },
+    )
     .await
 }
 
@@ -1062,7 +1135,10 @@ fn require_admin(c: &openstack_sdk::AsyncOpenStack) -> Result<(), AppError> {
     if os::token_is_admin(c) {
         Ok(())
     } else {
-        Err(AppError::new(ErrorKind::Forbidden, "the Admin dashboard needs the admin role"))
+        Err(AppError::new(
+            ErrorKind::Forbidden,
+            "the Admin dashboard needs the admin role",
+        ))
     }
 }
 
@@ -1087,7 +1163,15 @@ pub async fn get_admin_usage(start: String, end: String) -> Result<Timed<GlobalU
         let (from, to) = usage_range(&start, &end, chrono::Utc::now().date_naive()).map_err(AppError::invalid)?;
         let stop = to.succ_opt().unwrap_or(to);
         let t = fetch::admin_usage(&c, &format!("{from}T00:00:00"), &format!("{stop}T00:00:00")).await?;
-        Ok(Timed { data: GlobalUsage { start: from.to_string(), end: to.to_string(), projects: t.data }, millis: t.millis, calls: t.calls })
+        Ok(Timed {
+            data: GlobalUsage {
+                start: from.to_string(),
+                end: to.to_string(),
+                projects: t.data,
+            },
+            millis: t.millis,
+            calls: t.calls,
+        })
     })
     .await
 }
@@ -1178,7 +1262,18 @@ pub async fn get_admin_aggregates() -> Result<Timed<Aggregates>, AppError> {
 /// then shows its client-side table and search box, as before roadmap 88.
 #[cfg(feature = "ssr")]
 fn whole<T>(all: Timed<Vec<T>>) -> Timed<Page<T>> {
-    Timed { millis: all.millis, calls: all.calls, data: Page { rows: all.data, next: None, count: None, paged: false, page_size: 0, needs_filter: false } }
+    Timed {
+        millis: all.millis,
+        calls: all.calls,
+        data: Page {
+            rows: all.data,
+            next: None,
+            count: None,
+            paged: false,
+            page_size: 0,
+            needs_filter: false,
+        },
+    }
 }
 
 /// `[admin] filter_first` (Horizon's `FILTER_DATA_FIRST`, roadmap 89): `list`
@@ -1191,7 +1286,18 @@ fn waits_for_filter(list: PagedList, q: &ListQuery) -> bool {
 /// The empty first page shown until a filter is given; nothing is asked of OpenStack.
 #[cfg(feature = "ssr")]
 fn filter_first_page<T>(page_size: u32) -> Timed<Page<T>> {
-    Timed { millis: 0, calls: 0, data: Page { rows: vec![], next: None, count: None, paged: true, page_size, needs_filter: true } }
+    Timed {
+        millis: 0,
+        calls: 0,
+        data: Page {
+            rows: vec![],
+            next: None,
+            count: None,
+            paged: true,
+            page_size,
+            needs_filter: true,
+        },
+    }
 }
 
 /// Admin › Compute › Instances: every project's servers, one page of
@@ -1227,7 +1333,11 @@ pub async fn count_rows(list: PagedList, scope: ListScope, q: ListQuery) -> Resu
             require_admin(&c)?;
         }
         let project = (scope == ListScope::Project).then_some(s.project_id.as_str());
-        let mv = if list.is_cinder() { os::capabilities(&s, &c).await.volume_mv } else { None };
+        let mv = if list.is_cinder() {
+            os::capabilities(&s, &c).await.volume_mv
+        } else {
+            None
+        };
         fetch::count_rows(&c, list, project, &q, mv).await
     })
     .await
@@ -1558,9 +1668,10 @@ pub async fn list_identity_groups() -> Result<Timed<Vec<IdentityGroup>>, AppErro
 /// Identity › Roles (admins).
 #[server(input = GetUrl)]
 pub async fn list_identity_roles() -> Result<Timed<Vec<IdentityRole>>, AppError> {
-    scoped("list_identity_roles", |_, c| async move {
-        fetch::identity_roles(&c).await
-    })
+    scoped(
+        "list_identity_roles",
+        |_, c| async move { fetch::identity_roles(&c).await },
+    )
     .await
 }
 
@@ -1601,9 +1712,19 @@ mod tests {
         let free = LoginPrefs::default();
         assert_eq!(login_domain(&free, " Corp ").unwrap(), "Corp");
         assert_eq!(login_domain(&free, "").unwrap(), "Default", "empty: the default domain");
-        let hidden = LoginPrefs { domain_hidden: true, ..Default::default() };
-        assert_eq!(login_domain(&hidden, "Other").unwrap(), "Default", "hidden: always the default");
-        let choices = LoginPrefs { domain_choices: vec!["Default".into(), "Corp".into()], ..Default::default() };
+        let hidden = LoginPrefs {
+            domain_hidden: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            login_domain(&hidden, "Other").unwrap(),
+            "Default",
+            "hidden: always the default"
+        );
+        let choices = LoginPrefs {
+            domain_choices: vec!["Default".into(), "Corp".into()],
+            ..Default::default()
+        };
         assert_eq!(login_domain(&choices, "Corp").unwrap(), "Corp");
         assert!(login_domain(&choices, "Evil").is_err(), "only the offered domains");
     }

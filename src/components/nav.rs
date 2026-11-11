@@ -19,7 +19,11 @@ pub struct Group {
 }
 
 const fn p(label: K, href: &'static str) -> Panel {
-    Panel { label, href, requires: Requires::Always }
+    Panel {
+        label,
+        href,
+        requires: Requires::Always,
+    }
 }
 
 const fn needs(label: K, href: &'static str, requires: Requires) -> Panel {
@@ -51,11 +55,23 @@ pub fn unavailable(path: &str, c: &Capabilities) -> Option<ErrorKind> {
         return None;
     }
     let lacks_role = active(path).is_some_and(|(g, p)| g.requires.lacks_role(c) || p.requires.lacks_role(c));
-    Some(if lacks_role { ErrorKind::Forbidden } else { ErrorKind::ServiceUnavailable })
+    Some(if lacks_role {
+        ErrorKind::Forbidden
+    } else {
+        ErrorKind::ServiceUnavailable
+    })
 }
 
 pub const PROJECT_NAV: &[Group] = &[
-    Group { label: K::Project, panels: &[p(K::Overview, "/project"), p(K::Quotas, "/project/quotas"), p(K::ApiAccess, "/project/api_access")], requires: Requires::Always },
+    Group {
+        label: K::Project,
+        panels: &[
+            p(K::Overview, "/project"),
+            p(K::Quotas, "/project/quotas"),
+            p(K::ApiAccess, "/project/api_access"),
+        ],
+        requires: Requires::Always,
+    },
     Group {
         label: K::Compute,
         panels: &[
@@ -74,7 +90,11 @@ pub const PROJECT_NAV: &[Group] = &[
             p(K::Snapshots, "/project/snapshots"),
             needs(K::Backups, "/project/backups", crate::model::needs::BACKUP),
             needs(K::Groups, "/project/volume_groups", crate::model::needs::VOLUME_GROUPS),
-            needs(K::GroupSnapshots, "/project/vg_snapshots", crate::model::needs::VOLUME_GROUPS),
+            needs(
+                K::GroupSnapshots,
+                "/project/vg_snapshots",
+                crate::model::needs::VOLUME_GROUPS,
+            ),
         ],
         requires: Requires::Service("block-storage"),
     },
@@ -84,26 +104,53 @@ pub const PROJECT_NAV: &[Group] = &[
             p(K::NetworkTopology, "/project/network_topology"),
             p(K::Networks, "/project/networks"),
             needs(K::Routers, "/project/routers", Requires::NetExt("router")),
-            needs(K::SecurityGroups, "/project/security_groups", Requires::NetExt("security-group")),
+            needs(
+                K::SecurityGroups,
+                "/project/security_groups",
+                Requires::NetExt("security-group"),
+            ),
             needs(K::FloatingIps, "/project/floating_ips", Requires::NetExt("router")),
             needs(K::Trunks, "/project/trunks", crate::model::needs::TRUNK),
             needs(K::Firewall, "/project/firewall", crate::model::needs::FIREWALL),
             needs(K::NetworkQos, "/project/qos", crate::model::needs::QOS),
-            needs(K::LoadBalancers, "/project/load_balancers", Requires::All(&[Requires::Plugin(Plugin::LoadBalancer), Requires::Service("load-balancer")])),
+            needs(
+                K::LoadBalancers,
+                "/project/load_balancers",
+                Requires::All(&[
+                    Requires::Plugin(Plugin::LoadBalancer),
+                    Requires::Service("load-balancer"),
+                ]),
+            ),
         ],
         requires: Requires::Service("network"),
     },
     // Barbican (roadmap 55); barbican-ui's own panel group, Horizon's name for the service.
     Group {
         label: K::KeyManager,
-        panels: &[p(K::Secrets, "/project/key_manager/secrets"), p(K::Containers, "/project/key_manager/containers")],
+        panels: &[
+            p(K::Secrets, "/project/key_manager/secrets"),
+            p(K::Containers, "/project/key_manager/containers"),
+        ],
         requires: crate::model::needs::KEY_MANAGER,
     },
     // Heat (roadmap 62). Resource Types and Template Versions come next.
-    Group { label: K::Orchestration, panels: &[p(K::Stacks, "/project/stacks"), p(K::ResourceTypes, "/project/resource_types"), p(K::TemplateVersions, "/project/template_versions"), p(K::TemplateGenerator, "/project/template_generator")], requires: crate::model::needs::ORCHESTRATION },
+    Group {
+        label: K::Orchestration,
+        panels: &[
+            p(K::Stacks, "/project/stacks"),
+            p(K::ResourceTypes, "/project/resource_types"),
+            p(K::TemplateVersions, "/project/template_versions"),
+            p(K::TemplateGenerator, "/project/template_generator"),
+        ],
+        requires: crate::model::needs::ORCHESTRATION,
+    },
     // Aodh (roadmap 79). Horizon has no maintained Alarming panel; the group
     // leaves room for other telemetry panels.
-    Group { label: K::Monitoring, panels: &[p(K::Alarms, "/project/alarms")], requires: crate::model::needs::ALARMING },
+    Group {
+        label: K::Monitoring,
+        panels: &[p(K::Alarms, "/project/alarms")],
+        requires: crate::model::needs::ALARMING,
+    },
 ];
 
 /// Horizon's Identity dashboard (roadmap 57), in its panel order. Like Horizon's
@@ -128,7 +175,11 @@ pub const IDENTITY_NAV: &[Group] = &[Group {
 /// order and URLs.
 pub const ADMIN_NAV: &[Group] = &[
     // Overview is Nova's usage of every project.
-    Group { label: K::Admin, panels: &[p(K::Overview, "/admin")], requires: Requires::All(&[crate::model::needs::ADMIN, Requires::Service("compute")]) },
+    Group {
+        label: K::Admin,
+        panels: &[p(K::Overview, "/admin")],
+        requires: Requires::All(&[crate::model::needs::ADMIN, Requires::Service("compute")]),
+    },
     Group {
         label: K::Compute,
         panels: &[
@@ -147,7 +198,11 @@ pub const ADMIN_NAV: &[Group] = &[
             p(K::Snapshots, "/admin/snapshots"),
             p(K::VolumeTypes, "/admin/volume_types"),
             needs(K::Groups, "/admin/volume_groups", crate::model::needs::VOLUME_GROUPS),
-            needs(K::GroupSnapshots, "/admin/vg_snapshots", crate::model::needs::VOLUME_GROUPS),
+            needs(
+                K::GroupSnapshots,
+                "/admin/vg_snapshots",
+                crate::model::needs::VOLUME_GROUPS,
+            ),
             needs(K::GroupTypes, "/admin/group_types", crate::model::needs::VOLUME_GROUPS),
         ],
         requires: Requires::All(&[crate::model::needs::ADMIN, Requires::Service("block-storage")]),
@@ -159,7 +214,11 @@ pub const ADMIN_NAV: &[Group] = &[
             needs(K::Routers, "/admin/routers", Requires::NetExt("router")),
             needs(K::FloatingIps, "/admin/floating_ips", Requires::NetExt("router")),
             needs(K::Trunks, "/admin/trunks", crate::model::needs::TRUNK),
-            needs(K::RbacPolicies, "/admin/rbac_policies", Requires::NetExt("rbac-policies")),
+            needs(
+                K::RbacPolicies,
+                "/admin/rbac_policies",
+                Requires::NetExt("rbac-policies"),
+            ),
         ],
         requires: Requires::All(&[crate::model::needs::ADMIN, Requires::Service("network")]),
     },
@@ -168,7 +227,11 @@ pub const ADMIN_NAV: &[Group] = &[
         // Horizon's order.
         panels: &[
             p(K::QuotaDefaults, "/admin/defaults"),
-            needs(K::MetadataDefinitions, "/admin/metadata_defs", Requires::Service("image")),
+            needs(
+                K::MetadataDefinitions,
+                "/admin/metadata_defs",
+                Requires::Service("image"),
+            ),
             p(K::SystemInformation, "/admin/info"),
         ],
         requires: crate::model::needs::ADMIN,
@@ -212,7 +275,13 @@ mod tests {
 
     #[test]
     fn hrefs_are_unique() {
-        let mut all: Vec<_> = PROJECT_NAV.iter().chain(IDENTITY_NAV).chain(ADMIN_NAV).flat_map(|g| g.panels).map(|p| p.href).collect();
+        let mut all: Vec<_> = PROJECT_NAV
+            .iter()
+            .chain(IDENTITY_NAV)
+            .chain(ADMIN_NAV)
+            .flat_map(|g| g.panels)
+            .map(|p| p.href)
+            .collect();
         let n = all.len();
         all.sort();
         all.dedup();
@@ -230,11 +299,32 @@ mod tests {
 
     #[test]
     fn identity_admin_panels_need_the_admin_role() {
-        let with = |roles: &[&str]| Capabilities { known: true, roles: roles.iter().map(|r| r.to_string()).collect(), ..Default::default() };
-        let labels = |c: &Capabilities| IDENTITY_NAV[0].visible(c).unwrap().iter().map(|p| p.label).collect::<Vec<_>>();
-        assert_eq!(labels(&with(&["admin", "member"])), [K::Projects, K::Users, K::Groups, K::Roles, K::ApplicationCredentials]);
-        assert_eq!(labels(&with(&["member", "power_user"])), [K::Projects, K::Users, K::ApplicationCredentials], "like Horizon in a project without admin");
-        assert!(!available("/identity/groups", &with(&["member"])), "the page itself is gated too");
+        let with = |roles: &[&str]| Capabilities {
+            known: true,
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            ..Default::default()
+        };
+        let labels = |c: &Capabilities| {
+            IDENTITY_NAV[0]
+                .visible(c)
+                .unwrap()
+                .iter()
+                .map(|p| p.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(&with(&["admin", "member"])),
+            [K::Projects, K::Users, K::Groups, K::Roles, K::ApplicationCredentials]
+        );
+        assert_eq!(
+            labels(&with(&["member", "power_user"])),
+            [K::Projects, K::Users, K::ApplicationCredentials],
+            "like Horizon in a project without admin"
+        );
+        assert!(
+            !available("/identity/groups", &with(&["member"])),
+            "the page itself is gated too"
+        );
         assert_eq!(active("/identity/users").map(|(_, p)| p.label), Some(K::Users));
         assert_eq!(dashboard("/identity/roles").0, K::Identity);
         assert_eq!(dashboard("/project/instances").0, K::Project);
@@ -242,20 +332,53 @@ mod tests {
 
     #[test]
     fn panels_follow_services_and_extensions() {
-        let shown = |c: &Capabilities| -> Vec<K> { PROJECT_NAV.iter().filter_map(|g| g.visible(c).map(|_| g.label)).collect() };
-        let full = caps(&["compute", "image", "volumev3", "network", "orchestration"], &["router", "security-group"]);
+        let shown = |c: &Capabilities| -> Vec<K> {
+            PROJECT_NAV
+                .iter()
+                .filter_map(|g| g.visible(c).map(|_| g.label))
+                .collect()
+        };
+        let full = caps(
+            &["compute", "image", "volumev3", "network", "orchestration"],
+            &["router", "security-group"],
+        );
         assert_eq!(shown(&full).len(), 4, "Heat in the catalog, plugin not enabled");
-        assert_eq!(shown(&Capabilities { plugins: vec![Plugin::Orchestration], ..full }).len(), 5);
+        assert_eq!(
+            shown(&Capabilities {
+                plugins: vec![Plugin::Orchestration],
+                ..full
+            })
+            .len(),
+            5
+        );
         let no_heat_no_cinder = caps(&["compute", "image", "network"], &["security-group"]);
         assert_eq!(shown(&no_heat_no_cinder), [K::Project, K::Compute, K::NetworkGroup]);
-        let net = PROJECT_NAV.iter().find(|g| g.label == K::NetworkGroup).unwrap().visible(&no_heat_no_cinder).unwrap();
-        assert!(!net.iter().any(|p| p.label == K::Routers || p.label == K::FloatingIps), "no router extension");
+        let net = PROJECT_NAV
+            .iter()
+            .find(|g| g.label == K::NetworkGroup)
+            .unwrap()
+            .visible(&no_heat_no_cinder)
+            .unwrap();
+        assert!(
+            !net.iter().any(|p| p.label == K::Routers || p.label == K::FloatingIps),
+            "no router extension"
+        );
         assert!(!available("/project/routers/r1", &no_heat_no_cinder));
         assert!(!available("/project/volumes", &no_heat_no_cinder));
         assert!(available("/project/instances", &no_heat_no_cinder));
-        assert!(available("/project/volumes", &Capabilities::default()), "unknown: show everything");
-        let heat_on = |c: Capabilities| Capabilities { plugins: vec![Plugin::Orchestration], ..c };
-        assert_eq!(shown(&Capabilities::default()).len(), 4, "except plugins, which are opt-in");
+        assert!(
+            available("/project/volumes", &Capabilities::default()),
+            "unknown: show everything"
+        );
+        let heat_on = |c: Capabilities| Capabilities {
+            plugins: vec![Plugin::Orchestration],
+            ..c
+        };
+        assert_eq!(
+            shown(&Capabilities::default()).len(),
+            4,
+            "except plugins, which are opt-in"
+        );
         assert_eq!(shown(&heat_on(Capabilities::default())).len(), 5);
     }
 
@@ -264,14 +387,35 @@ mod tests {
         let lb = |c: &Capabilities| available("/project/load_balancers/lb1", c);
         let with_octavia = caps(&["network", "load-balancer"], &[]);
         assert!(!lb(&with_octavia), "in the catalog but not enabled");
-        assert!(lb(&Capabilities { plugins: vec![Plugin::LoadBalancer], ..with_octavia }));
-        assert!(!lb(&Capabilities { plugins: vec![Plugin::LoadBalancer], ..caps(&["network"], &[]) }), "enabled, no Octavia");
+        assert!(lb(&Capabilities {
+            plugins: vec![Plugin::LoadBalancer],
+            ..with_octavia
+        }));
+        assert!(
+            !lb(&Capabilities {
+                plugins: vec![Plugin::LoadBalancer],
+                ..caps(&["network"], &[])
+            }),
+            "enabled, no Octavia"
+        );
         // Aodh (roadmap 79): its own Monitoring group, opt-in like the others.
         let alarms = |c: &Capabilities| available("/project/alarms/a1", c);
         assert!(!alarms(&caps(&["alarming"], &[])), "in the catalog but not enabled");
-        assert!(alarms(&Capabilities { plugins: vec![Plugin::Alarming], ..caps(&["alarming"], &[]) }));
-        assert!(!alarms(&Capabilities { plugins: vec![Plugin::Alarming], ..caps(&["compute"], &[]) }), "enabled, no Aodh");
-        assert_eq!(active("/project/alarms/a1").map(|(g, p)| (g.label, p.label)), Some((K::Monitoring, K::Alarms)));
+        assert!(alarms(&Capabilities {
+            plugins: vec![Plugin::Alarming],
+            ..caps(&["alarming"], &[])
+        }));
+        assert!(
+            !alarms(&Capabilities {
+                plugins: vec![Plugin::Alarming],
+                ..caps(&["compute"], &[])
+            }),
+            "enabled, no Aodh"
+        );
+        assert_eq!(
+            active("/project/alarms/a1").map(|(g, p)| (g.label, p.label)),
+            Some((K::Monitoring, K::Alarms))
+        );
     }
 
     #[test]
@@ -279,9 +423,21 @@ mod tests {
         let backups = |c: &Capabilities| available("/project/backups/b1", c);
         let cinder = caps(&["block-storage"], &[]);
         assert!(!backups(&cinder), "Cinder is there but the plugin is off (the default)");
-        assert!(backups(&Capabilities { plugins: vec![Plugin::Backup], ..cinder }));
-        assert!(!backups(&Capabilities { plugins: vec![Plugin::Backup], ..caps(&["compute"], &[]) }), "enabled, no Cinder");
-        assert!(!backups(&Capabilities::default()), "unknown capabilities still hide plugins");
+        assert!(backups(&Capabilities {
+            plugins: vec![Plugin::Backup],
+            ..cinder
+        }));
+        assert!(
+            !backups(&Capabilities {
+                plugins: vec![Plugin::Backup],
+                ..caps(&["compute"], &[])
+            }),
+            "enabled, no Cinder"
+        );
+        assert!(
+            !backups(&Capabilities::default()),
+            "unknown capabilities still hide plugins"
+        );
     }
 
     #[test]
@@ -297,7 +453,11 @@ mod tests {
         let (g, p) = active("/project/stacks/s1").unwrap();
         assert_eq!((g.label, p.label), (K::Orchestration, K::Stacks));
         let (g, p) = active("/project/template_generator").unwrap();
-        assert_eq!((g.label, p.label), (K::Orchestration, K::TemplateGenerator), "roadmap 92");
+        assert_eq!(
+            (g.label, p.label),
+            (K::Orchestration, K::TemplateGenerator),
+            "roadmap 92"
+        );
         let (_, p) = active("/project/network_topology").unwrap();
         assert_eq!(p.label, K::NetworkTopology, "not taken by the Networks panel");
         // prefix must stop at a path boundary
@@ -307,35 +467,116 @@ mod tests {
 
     #[test]
     fn the_admin_dashboard_needs_the_admin_role() {
-        let with = |roles: &[&str]| Capabilities { known: true, roles: roles.iter().map(|r| r.to_string()).collect(), ..Default::default() };
+        let with = |roles: &[&str]| Capabilities {
+            known: true,
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            ..Default::default()
+        };
         assert_eq!(dashboard("/admin/info").0, K::Admin);
-        assert_eq!(active("/admin/info").map(|(g, p)| (g.label, p.label)), Some((K::System, K::SystemInformation)));
-        let admin = Capabilities { services: vec!["compute".into(), "image".into()], ..with(&["admin"]) };
+        assert_eq!(
+            active("/admin/info").map(|(g, p)| (g.label, p.label)),
+            Some((K::System, K::SystemInformation))
+        );
+        let admin = Capabilities {
+            services: vec!["compute".into(), "image".into()],
+            ..with(&["admin"])
+        };
         let system = ADMIN_NAV.iter().find(|g| g.label == K::System).unwrap();
-        assert_eq!(system.visible(&admin).unwrap().iter().map(|p| p.label).collect::<Vec<_>>(), [K::QuotaDefaults, K::MetadataDefinitions, K::SystemInformation], "Horizon's System group");
-        let no_glance = Capabilities { services: vec!["compute".into()], ..admin };
-        assert!(!available("/admin/metadata_defs", &no_glance), "Glance holds the namespaces");
-        assert_eq!(active("/admin/metadata_defs/OS::Compute::Watchdog").map(|(g, p)| (g.label, p.label)), Some((K::System, K::MetadataDefinitions)), "the detail (roadmap 89)");
-        assert!(!available("/admin/metadata_defs/OS::Compute::Watchdog", &no_glance), "the detail too");
-        let groups = |c: &Capabilities| ADMIN_NAV.iter().filter_map(|g| g.visible(c).map(|_| g.label)).collect::<Vec<_>>();
-        assert_eq!(groups(&Capabilities { roles: vec!["admin".into()], ..Capabilities::default() }), [K::Admin, K::Compute, K::VolumeAdminGroup, K::NetworkGroup, K::System], "Horizon's groups");
-        assert_eq!(active("/admin").map(|(g, p)| (g.label, p.label)), Some((K::Admin, K::Overview)), "/admin is Admin › Overview");
-        assert_eq!(active("/admin/flavors").map(|(_, p)| p.label), Some(K::Flavors), "the Overview doesn't own the dashboard's pages");
-        assert_eq!(groups(&no_glance), [K::Admin, K::Compute, K::System], "no Cinder, no Neutron");
-        let no_nova = Capabilities { services: vec!["image".into()], ..with(&["admin"]) };
+        assert_eq!(
+            system
+                .visible(&admin)
+                .unwrap()
+                .iter()
+                .map(|p| p.label)
+                .collect::<Vec<_>>(),
+            [K::QuotaDefaults, K::MetadataDefinitions, K::SystemInformation],
+            "Horizon's System group"
+        );
+        let no_glance = Capabilities {
+            services: vec!["compute".into()],
+            ..admin
+        };
+        assert!(
+            !available("/admin/metadata_defs", &no_glance),
+            "Glance holds the namespaces"
+        );
+        assert_eq!(
+            active("/admin/metadata_defs/OS::Compute::Watchdog").map(|(g, p)| (g.label, p.label)),
+            Some((K::System, K::MetadataDefinitions)),
+            "the detail (roadmap 89)"
+        );
+        assert!(
+            !available("/admin/metadata_defs/OS::Compute::Watchdog", &no_glance),
+            "the detail too"
+        );
+        let groups = |c: &Capabilities| {
+            ADMIN_NAV
+                .iter()
+                .filter_map(|g| g.visible(c).map(|_| g.label))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            groups(&Capabilities {
+                roles: vec!["admin".into()],
+                ..Capabilities::default()
+            }),
+            [K::Admin, K::Compute, K::VolumeAdminGroup, K::NetworkGroup, K::System],
+            "Horizon's groups"
+        );
+        assert_eq!(
+            active("/admin").map(|(g, p)| (g.label, p.label)),
+            Some((K::Admin, K::Overview)),
+            "/admin is Admin › Overview"
+        );
+        assert_eq!(
+            active("/admin/flavors").map(|(_, p)| p.label),
+            Some(K::Flavors),
+            "the Overview doesn't own the dashboard's pages"
+        );
+        assert_eq!(
+            groups(&no_glance),
+            [K::Admin, K::Compute, K::System],
+            "no Cinder, no Neutron"
+        );
+        let no_nova = Capabilities {
+            services: vec!["image".into()],
+            ..with(&["admin"])
+        };
         assert!(!groups(&no_nova).contains(&K::Admin), "Overview is Nova's usage");
         assert!(groups(&with(&["member"])).is_empty());
-        assert_eq!(active("/admin/instances/i1").map(|(g, p)| (g.label, p.label)), Some((K::Compute, K::Instances)));
-        assert_eq!(active("/admin/vg_snapshots").map(|(g, p)| (g.label, p.label)), Some((K::VolumeAdminGroup, K::GroupSnapshots)));
+        assert_eq!(
+            active("/admin/instances/i1").map(|(g, p)| (g.label, p.label)),
+            Some((K::Compute, K::Instances))
+        );
+        assert_eq!(
+            active("/admin/vg_snapshots").map(|(g, p)| (g.label, p.label)),
+            Some((K::VolumeAdminGroup, K::GroupSnapshots))
+        );
         assert!(available("/admin/info", &with(&["admin", "member"])));
-        assert!(!available("/admin/info", &with(&["member", "power_user"])), "the page is gated, not only the menu");
+        assert!(
+            !available("/admin/info", &with(&["member", "power_user"])),
+            "the page is gated, not only the menu"
+        );
         assert!(ADMIN_NAV[3].visible(&with(&["reader"])).is_none());
         // A missing role is a refusal, not a missing service (the page said
         // "Service not available in this region" before).
-        assert_eq!(unavailable("/admin/info", &with(&["member"])), Some(ErrorKind::Forbidden));
-        assert_eq!(unavailable("/identity/groups", &with(&["member"])), Some(ErrorKind::Forbidden));
+        assert_eq!(
+            unavailable("/admin/info", &with(&["member"])),
+            Some(ErrorKind::Forbidden)
+        );
+        assert_eq!(
+            unavailable("/identity/groups", &with(&["member"])),
+            Some(ErrorKind::Forbidden)
+        );
         assert_eq!(unavailable("/admin/info", &with(&["admin"])), None);
-        let no_cinder = Capabilities { known: true, services: vec!["compute".into()], ..Default::default() };
-        assert_eq!(unavailable("/project/volumes", &no_cinder), Some(ErrorKind::ServiceUnavailable));
+        let no_cinder = Capabilities {
+            known: true,
+            services: vec!["compute".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            unavailable("/project/volumes", &no_cinder),
+            Some(ErrorKind::ServiceUnavailable)
+        );
     }
 }

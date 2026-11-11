@@ -11,10 +11,13 @@ use leptos::task::spawn_local;
 use crate::api::{get_choices, get_image_upload_ticket, list_metadata_options, run_action};
 use crate::components::pick::PickTable;
 use crate::components::select::Combo;
-use crate::components::widgets::{data_url, Copyable, InfoTip};
 use crate::components::upload::{self, Picked, Upload};
-use crate::i18n::{bytes, t, use_i18n, with_count, Lang, K};
-use crate::model::{ActionOutcome, AssignmentRow, Capabilities, Choice, ChoiceSet, ErrorKind, LbMember, MemberRow, MetadataKind, OsAction, SecretKind, WriteMode};
+use crate::components::widgets::{Copyable, InfoTip, data_url};
+use crate::i18n::{K, Lang, bytes, t, use_i18n, with_count};
+use crate::model::{
+    ActionOutcome, AssignmentRow, Capabilities, Choice, ChoiceSet, ErrorKind, LbMember, MemberRow, MetadataKind,
+    OsAction, SecretKind, WriteMode,
+};
 
 // ---------------------------------------------------------------------------
 // Form model
@@ -59,7 +62,9 @@ pub enum Kind {
     /// Masked text (an admin password); never prefilled.
     Password,
     TextArea,
-    Number { min: i64 },
+    Number {
+        min: i64,
+    },
     Check,
     /// Yes / No buttons (Horizon's toggles); the value is `true`/`false`.
     YesNo,
@@ -68,17 +73,25 @@ pub enum Kind {
     Multi(Source),
     /// Horizon's *Allocated / Available* tables; the value is a
     /// comma-separated list, in allocation order.
-    Pick { src: Source, multi: bool },
+    Pick {
+        src: Source,
+        multi: bool,
+    },
     /// Key/value rows (metadata); the value is a JSON list of `[key, value]`.
     KeyValue,
     /// Load balancer members, one row each (roadmap 54); the value is a JSON
     /// list of `model::MemberRow`. New rows take their port from the field
     /// `port_from` when set; `existing` are the pool's members when editing
     /// them, to show which ones the save deletes.
-    MemberRows { port_from: Option<&'static str>, existing: Vec<LbMember> },
+    MemberRows {
+        port_from: Option<&'static str>,
+        existing: Vec<LbMember>,
+    },
     /// `YYYY-MM-DD` with a calendar (`datetime::DatePicker`); past days
     /// disabled when `future_only`.
-    Date { future_only: bool },
+    Date {
+        future_only: bool,
+    },
     /// `HH:MM` with hour/minute columns (`datetime::TimePicker`).
     Time,
     /// A local file to upload (roadmap 45). The value is a [`Picked`] (name and size); the
@@ -90,7 +103,9 @@ pub enum Kind {
     /// Users or groups (`actors`) with their roles on a project
     /// (`assignment_rows::AssignmentRows`); the value is a JSON list of
     /// `model::AssignmentRow`.
-    Assignments { actors: ChoiceSet },
+    Assignments {
+        actors: ChoiceSet,
+    },
 }
 
 /// Current form values, and the loaded choice lists.
@@ -149,7 +164,28 @@ pub struct Field {
 
 impl Field {
     fn new(name: &'static str, label: impl Into<String>, kind: Kind) -> Self {
-        Field { name, label: label.into(), kind, required: false, default: String::new(), help: None, when: None, show_if: None, empty_label: None, from_file: None, help_code: None, tip: None, danger: false, short: false, half: false, new_line: false, rows: None, hide_empty: false, catalog: None, catalog_skip: &[] }
+        Field {
+            name,
+            label: label.into(),
+            kind,
+            required: false,
+            default: String::new(),
+            help: None,
+            when: None,
+            show_if: None,
+            empty_label: None,
+            from_file: None,
+            help_code: None,
+            tip: None,
+            danger: false,
+            short: false,
+            half: false,
+            new_line: false,
+            rows: None,
+            hide_empty: false,
+            catalog: None,
+            catalog_skip: &[],
+        }
     }
     /// One-line text.
     pub fn text(name: &'static str, label: impl Into<String>) -> Self {
@@ -217,7 +253,12 @@ impl Field {
         Self::new(name, label, Kind::Info(src))
     }
     /// The role assignments editor, starting with `rows`.
-    pub fn assignments(name: &'static str, label: impl Into<String>, rows: &[AssignmentRow], actors: ChoiceSet) -> Self {
+    pub fn assignments(
+        name: &'static str,
+        label: impl Into<String>,
+        rows: &[AssignmentRow],
+        actors: ChoiceSet,
+    ) -> Self {
         Self::new(name, label, Kind::Assignments { actors }).value(serde_json::to_string(rows).unwrap_or_default())
     }
     /// An (i) beside the label that shows `text` on hover or focus.
@@ -231,8 +272,15 @@ impl Field {
         self
     }
     /// The members editor (`member_rows::MemberRows`), starting with `rows`.
-    pub fn member_rows(name: &'static str, label: impl Into<String>, rows: &[MemberRow], port_from: Option<&'static str>, existing: Vec<LbMember>) -> Self {
-        Self::new(name, label, Kind::MemberRows { port_from, existing }).value(serde_json::to_string(rows).unwrap_or_default())
+    pub fn member_rows(
+        name: &'static str,
+        label: impl Into<String>,
+        rows: &[MemberRow],
+        port_from: Option<&'static str>,
+        existing: Vec<LbMember>,
+    ) -> Self {
+        Self::new(name, label, Kind::MemberRows { port_from, existing })
+            .value(serde_json::to_string(rows).unwrap_or_default())
     }
     /// Shows the field only when `f` holds over the current values (for "a or b"
     /// rules that `when` can't say).
@@ -313,7 +361,12 @@ impl Field {
 
 /// Fixed options with translated labels: `(value, label key)`.
 pub fn options(items: &[(&str, K)], lang: Lang) -> Source {
-    Source::Static(items.iter().map(|(v, k)| (v.to_string(), t(lang, *k).to_string())).collect())
+    Source::Static(
+        items
+            .iter()
+            .map(|(v, k)| (v.to_string(), t(lang, *k).to_string()))
+            .collect(),
+    )
 }
 
 /// Fixed options whose label is the value itself (API enums like `ROUND_ROBIN`).
@@ -356,11 +409,19 @@ impl Values {
     }
     /// The rows of a [`Field::key_values`], untrimmed (validation trims).
     pub fn pairs(&self, k: &str) -> Vec<(String, String)> {
-        self.0.get(k).and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default()
+        self.0
+            .get(k)
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
     }
     /// Non-empty trimmed lines of a text area.
     pub fn lines(&self, k: &str) -> Vec<String> {
-        self.get(k).lines().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+        self.get(k)
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
     }
 }
 
@@ -389,7 +450,13 @@ pub struct Step {
 impl Step {
     /// A step titled `title` showing these fields, in order.
     pub fn new(title: impl Into<String>, fields: &[&'static str]) -> Self {
-        Step { title: title.into(), help: None, fields: fields.to_vec(), required: false, enabled: None }
+        Step {
+            title: title.into(),
+            help: None,
+            fields: fields.to_vec(),
+            required: false,
+            enabled: None,
+        }
     }
     /// Help text shown at the top of the step.
     pub fn help(mut self, h: impl Into<String>) -> Self {
@@ -465,7 +532,12 @@ pub struct Dialog {
 
 impl Dialog {
     /// A plain form: `build` turns the submitted values into the action.
-    pub fn form(title: impl Into<String>, submit: impl Into<String>, fields: Vec<Field>, build: impl Fn(&Values) -> Result<OsAction, String> + Send + Sync + 'static) -> Self {
+    pub fn form(
+        title: impl Into<String>,
+        submit: impl Into<String>,
+        fields: Vec<Field>,
+        build: impl Fn(&Values) -> Result<OsAction, String> + Send + Sync + 'static,
+    ) -> Self {
         Dialog {
             title: title.into(),
             intro: vec![],
@@ -488,7 +560,17 @@ impl Dialog {
     /// The width that fits the content: wizards are large, confirmations and
     /// forms of up to three one-line fields are small, the rest medium.
     pub fn size(&self) -> DialogSize {
-        let tall = |f: &Field| matches!(f.kind, Kind::TextArea | Kind::Multi(_) | Kind::Pick { .. } | Kind::KeyValue | Kind::MemberRows { .. } | Kind::Assignments { .. });
+        let tall = |f: &Field| {
+            matches!(
+                f.kind,
+                Kind::TextArea
+                    | Kind::Multi(_)
+                    | Kind::Pick { .. }
+                    | Kind::KeyValue
+                    | Kind::MemberRows { .. }
+                    | Kind::Assignments { .. }
+            )
+        };
         self.fixed_size.unwrap_or(if !self.steps.is_empty() {
             DialogSize::Large
         } else if self.fields.len() <= 3 && !self.fields.iter().any(tall) {
@@ -612,7 +694,9 @@ pub fn caps() -> Capabilities {
 
 /// The deployment's preferences; defaults until the session info loads.
 pub fn prefs() -> crate::prefs::Prefs {
-    use_context::<Dialogs>().map(|d| d.prefs.get_untracked()).unwrap_or_default()
+    use_context::<Dialogs>()
+        .map(|d| d.prefs.get_untracked())
+        .unwrap_or_default()
 }
 
 /// [`prefs`], tracked: for what a page builds before the session info loads
@@ -653,7 +737,10 @@ fn visible(f: &Field, values: &HashMap<String, String>, all: &[Field]) -> bool {
     match f.when {
         Some((other, want)) => {
             values.get(other).map(String::as_str).unwrap_or("") == want
-                && all.iter().find(|p| p.name == other).is_none_or(|p| visible(p, values, all))
+                && all
+                    .iter()
+                    .find(|p| p.name == other)
+                    .is_none_or(|p| visible(p, values, all))
         }
         None => true,
     }
@@ -698,7 +785,10 @@ fn all_sets(fields: &[Field]) -> Vec<ChoiceSet> {
 /// The wizard's steps, or one implicit step with every field.
 fn steps_of(d: &Dialog) -> Vec<Step> {
     if d.steps.is_empty() {
-        vec![Step::new(d.title.clone(), &d.fields.iter().map(|f| f.name).collect::<Vec<_>>())]
+        vec![Step::new(
+            d.title.clone(),
+            &d.fields.iter().map(|f| f.name).collect::<Vec<_>>(),
+        )]
     } else {
         d.steps.clone()
     }
@@ -706,7 +796,11 @@ fn steps_of(d: &Dialog) -> Vec<Step> {
 
 /// Submitted fields: visible, and in a step that is switched on.
 fn active(f: &Field, d: &Dialog, steps: &[Step], v: &Vals) -> bool {
-    visible(f, v, &d.fields) && steps.iter().find(|s| s.fields.contains(&f.name)).is_none_or(|s| s.is_enabled(v))
+    visible(f, v, &d.fields)
+        && steps
+            .iter()
+            .find(|s| s.fields.contains(&f.name))
+            .is_none_or(|s| s.is_enabled(v))
 }
 
 /// Problems per field: `(message, shown only after Next/submit)`. Problems
@@ -742,7 +836,11 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
     let i18n = use_i18n();
     let dialogs = use_dialogs();
     let jobs = use_context::<crate::components::jobs::Jobs>();
-    let initial: Vals = dialog.fields.iter().map(|f| (f.name.to_string(), f.default.clone())).collect();
+    let initial: Vals = dialog
+        .fields
+        .iter()
+        .map(|f| (f.name.to_string(), f.default.clone()))
+        .collect();
     let values = RwSignal::new(initial);
     let phase = RwSignal::new(Phase::Editing);
     let choices: RwSignal<Sets> = RwSignal::new(HashMap::new());
@@ -750,7 +848,11 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
     let wizard = !dialog.steps.is_empty();
     let steps = StoredValue::new(steps_of(&dialog));
     let n_steps = steps.with_value(Vec::len);
-    let step = RwSignal::new(if dialog.first_step < n_steps { dialog.first_step } else { 0 });
+    let step = RwSignal::new(if dialog.first_step < n_steps {
+        dialog.first_step
+    } else {
+        0
+    });
     // Steps the user tried to leave or submit: their missing fields show.
     let attempted: RwSignal<HashSet<usize>> = RwSignal::new(HashSet::new());
 
@@ -773,10 +875,14 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
             // if the user had picked it, so dependent fields follow.
             // The dialog may have closed while the list loaded: its signals are gone
             // (`update` is then a no-op, but a read panics and kills the app).
-            let Some(sets) = choices.try_get_untracked() else { return };
+            let Some(sets) = choices.try_get_untracked() else {
+                return;
+            };
             values.update(|vals| {
                 for f in &fields {
-                    let (Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. }) = &f.kind else { continue };
+                    let (Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. }) = &f.kind else {
+                        continue;
+                    };
                     if choice_set_for(src, vals) != Some(set) {
                         continue;
                     }
@@ -821,7 +927,11 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
     let neighbour = move |from: usize, forward: bool| -> Option<usize> {
         let mut i = from;
         loop {
-            i = if forward { i.checked_add(1).filter(|&n| n < n_steps)? } else { i.checked_sub(1)? };
+            i = if forward {
+                i.checked_add(1).filter(|&n| n < n_steps)?
+            } else {
+                i.checked_sub(1)?
+            };
             if enabled(i) {
                 return Some(i);
             }
@@ -856,14 +966,19 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
         attempted.set((0..n_steps).collect());
         let iss = issues.get_untracked();
         if !iss.is_empty() {
-            if let Some(first) = steps.with_value(|st| st.iter().position(|s| s.fields.iter().any(|f| iss.contains_key(f)))) {
+            if let Some(first) =
+                steps.with_value(|st| st.iter().position(|s| s.fields.iter().any(|f| iss.contains_key(f))))
+            {
                 step.set(first);
             }
             return;
         }
         let vals = values.get_untracked();
         let shown: HashMap<String, String> = steps.with_value(|st| {
-            vals.iter().filter(|(k, _)| d.fields.iter().any(|f| f.name == *k && active(f, &d, st, &vals))).map(|(k, v)| (k.clone(), v.clone())).collect()
+            vals.iter()
+                .filter(|(k, _)| d.fields.iter().any(|f| f.name == *k && active(f, &d, st, &vals)))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
         });
         match (d.build)(&Values(shown)) {
             Err(e) => errors.set(Some(e)),
@@ -871,7 +986,10 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
                 errors.set(None);
                 // Long batches run in the background with a progress card (roadmap 87).
                 let from = dialogs.prefs.get_untracked().background_batch_from;
-                let action = match (jobs.filter(|_| crate::components::jobs::in_background(&action, from)), action) {
+                let action = match (
+                    jobs.filter(|_| crate::components::jobs::in_background(&action, from)),
+                    action,
+                ) {
                     (Some(jobs), OsAction::Batch(items)) => {
                         close();
                         jobs.start(d.title.clone(), items, dialogs.version);
@@ -897,13 +1015,25 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
                             // creates nothing, so it only shows the preview).
                             match (out.mode, out.created.clone(), file_bytes) {
                                 (WriteMode::On, Some(id), Some(size)) => {
-                                    upload_image(id, size, upload_mode, out, phase, progress, uploading, dialogs.version).await;
+                                    upload_image(
+                                        id,
+                                        size,
+                                        upload_mode,
+                                        out,
+                                        phase,
+                                        progress,
+                                        uploading,
+                                        dialogs.version,
+                                    )
+                                    .await;
                                 }
                                 _ => phase.set(Phase::Done(out)),
                             }
                         }
                         Err(e) if e.kind == ErrorKind::Unauthenticated => phase.set(Phase::Expired),
-                        Err(e) if e.kind == ErrorKind::Forbidden && forbidden.is_some() => phase.set(Phase::Failed(forbidden.unwrap_or_default())),
+                        Err(e) if e.kind == ErrorKind::Forbidden && forbidden.is_some() => {
+                            phase.set(Phase::Failed(forbidden.unwrap_or_default()))
+                        }
                         Err(e) => phase.set(Phase::Failed(e.to_string())),
                     }
                 });
@@ -1091,19 +1221,21 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
 /// (roadmap 78); nothing when the server left them out (`[ui] show_requests`).
 #[component]
 pub fn RequestList(requests: Vec<crate::model::RequestPreview>) -> impl IntoView {
-    (!requests.is_empty()).then(|| view! {
-        <ul class="requests">
-            {requests.into_iter().map(|r| view! {
-                <li>
-                    <div class="req-line">
-                        <span class=format!("method m-{}", r.method.to_lowercase())>{r.method.clone()}</span>
-                        <span class="mono">{r.path.clone()}</span>
-                        <span class="muted">{r.service.clone()}</span>
-                    </div>
-                    {r.body.map(|b| view! { <pre class="req-body">{b}</pre> })}
-                </li>
-            }).collect_view()}
-        </ul>
+    (!requests.is_empty()).then(|| {
+        view! {
+            <ul class="requests">
+                {requests.into_iter().map(|r| view! {
+                    <li>
+                        <div class="req-line">
+                            <span class=format!("method m-{}", r.method.to_lowercase())>{r.method.clone()}</span>
+                            <span class="mono">{r.path.clone()}</span>
+                            <span class="muted">{r.service.clone()}</span>
+                        </div>
+                        {r.body.map(|b| view! { <pre class="req-body">{b}</pre> })}
+                    </li>
+                }).collect_view()}
+            </ul>
+        }
     })
 }
 
@@ -1112,7 +1244,11 @@ fn Outcome(out: ActionOutcome) -> impl IntoView {
     let i18n = use_i18n();
     let dialogs = use_dialogs();
     let dry = out.mode == WriteMode::DryRun;
-    let failed: Vec<_> = out.results.iter().filter_map(|r| r.error.clone().map(|e| (r.label.clone(), e))).collect();
+    let failed: Vec<_> = out
+        .results
+        .iter()
+        .filter_map(|r| r.error.clone().map(|e| (r.label.clone(), e)))
+        .collect();
     let all_failed = !failed.is_empty() && failed.len() == out.results.len();
     let failures = (!failed.is_empty()).then(|| view! {
         <div class="alert alert-error batch-failures">
@@ -1197,7 +1333,8 @@ fn FieldView(
     let shown = move || {
         in_step.get()
             && values.with(|v| visible(&f, v, &all))
-            && !(f.hide_empty && matches!(&f.kind, Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. } if resolve(src, values, choices).is_some_and(|l| l.is_empty())))
+            && !(f.hide_empty
+                && matches!(&f.kind, Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. } if resolve(src, values, choices).is_some_and(|l| l.is_empty())))
     };
     let label = field.label.clone();
     let req = field.required;
@@ -1210,9 +1347,22 @@ fn FieldView(
     let invalid = move || error.get().is_some().then_some("true");
     let err_id2 = err_id.clone();
     let described = move || error.get().is_some().then(|| err_id2.clone());
-    let error_view = move || error.get().map(|e| view! { <small class="field-error" id=err_id.clone() role="alert">{e}</small> });
+    let error_view = move || {
+        error
+            .get()
+            .map(|e| view! { <small class="field-error" id=err_id.clone() role="alert">{e}</small> })
+    };
     // Groups (yes/no, tables, checkbox lists) are labelled, not `<label for>`.
-    let grouped = matches!(field.kind, Kind::YesNo | Kind::Pick { .. } | Kind::Multi(_) | Kind::KeyValue | Kind::MemberRows { .. } | Kind::Assignments { .. } | Kind::Info(_));
+    let grouped = matches!(
+        field.kind,
+        Kind::YesNo
+            | Kind::Pick { .. }
+            | Kind::Multi(_)
+            | Kind::KeyValue
+            | Kind::MemberRows { .. }
+            | Kind::Assignments { .. }
+            | Kind::Info(_)
+    );
 
     let control = match field.kind.clone() {
         Kind::Text => view! {
@@ -1448,12 +1598,20 @@ fn with_unknown(mut list: Vec<Choice>, selected: &str) -> Vec<Choice> {
 /// (an ID pasted from elsewhere finds its project); every word must match.
 fn filter_matches(query: &str, label: &str, value: &str) -> bool {
     let (label, value) = (label.to_lowercase(), value.to_lowercase());
-    query.to_lowercase().split_whitespace().all(|w| label.contains(w) || value.contains(w))
+    query
+        .to_lowercase()
+        .split_whitespace()
+        .all(|w| label.contains(w) || value.contains(w))
 }
 
 /// `Script size: 120 bytes of 16.00 KB`, like Horizon; `what` names the size.
 pub fn script_size(lang: Lang, what: K, bytes: usize, limit: usize) -> String {
-    format!("{}: {bytes} {} {:.2} KB", t(lang, what), t(lang, K::BytesOf), limit as f64 / 1024.0)
+    format!(
+        "{}: {bytes} {} {:.2} KB",
+        t(lang, what),
+        t(lang, K::BytesOf),
+        limit as f64 / 1024.0
+    )
 }
 
 /// Why a picked file can't fill the field, if it can't: too big (checked
@@ -1462,7 +1620,8 @@ pub fn file_problem(lang: Lang, size: f64, text: Option<&str>, limit: usize) -> 
     if size > limit as f64 {
         return Some(format!("{} ({:.2} KB)", t(lang, K::FileTooBig), limit as f64 / 1024.0));
     }
-    text.filter(|s| s.contains('\u{FFFD}') || s.contains('\0')).map(|_| t(lang, K::FileNotText).to_string())
+    text.filter(|s| s.contains('\u{FFFD}') || s.contains('\0'))
+        .map(|_| t(lang, K::FileNotText).to_string())
 }
 
 /// *Load from a file*: reads the picked file in the browser and hands its text
@@ -1475,8 +1634,12 @@ pub fn FileLoad(limit: usize, on_text: Callback<String>) -> impl IntoView {
         #[cfg(feature = "hydrate")]
         {
             use wasm_bindgen::JsCast;
-            let Some(input) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) else { return };
-            let Some(file) = input.files().and_then(|l| l.get(0)) else { return };
+            let Some(input) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) else {
+                return;
+            };
+            let Some(file) = input.files().and_then(|l| l.get(0)) else {
+                return;
+            };
             // Picking the same file again must fire `change` again.
             input.set_value("");
             let lang = i18n.lang();
@@ -1485,7 +1648,10 @@ pub fn FileLoad(limit: usize, on_text: Callback<String>) -> impl IntoView {
                 return;
             }
             spawn_local(async move {
-                let text = wasm_bindgen_futures::JsFuture::from(file.text()).await.ok().and_then(|v| v.as_string());
+                let text = wasm_bindgen_futures::JsFuture::from(file.text())
+                    .await
+                    .ok()
+                    .and_then(|v| v.as_string());
                 match text {
                     Some(s) if file_problem(lang, 0.0, Some(&s), limit).is_none() => {
                         problem.set(None);
@@ -1511,7 +1677,11 @@ pub fn FileLoad(limit: usize, on_text: Callback<String>) -> impl IntoView {
 
 /// `sent` of `total` as 0–100.
 fn percent((sent, total): (f64, f64)) -> f64 {
-    if total > 0.0 { (sent / total * 100.0).clamp(0.0, 100.0) } else { 0.0 }
+    if total > 0.0 {
+        (sent / total * 100.0).clamp(0.0, 100.0)
+    } else {
+        0.0
+    }
 }
 
 /// Sends the file picked for *Create Image* to the image `id` that now exists (roadmap 45),
@@ -1547,7 +1717,12 @@ async fn upload_image(
         }
         Err(e) => phase.set(Phase::UploadFailed(failed_id.clone(), e)),
     });
-    transfer.set_value(upload::start(&url, token.as_deref(), Callback::new(move |p| progress.set(p)), done));
+    transfer.set_value(upload::start(
+        &url,
+        token.as_deref(),
+        Callback::new(move |p| progress.set(p)),
+        done,
+    ));
 }
 
 fn get_untracked_value(values: RwSignal<Vals>, name: &str) -> String {
@@ -1557,15 +1732,30 @@ fn get_untracked_value(values: RwSignal<Vals>, name: &str) -> String {
 /// The rows live in their own signals so typing doesn't rebuild them (and
 /// lose focus); every change is written back to the form as JSON.
 #[component]
-fn KeyValueRows(id: String, labelled_by: String, initial: String, catalog: Option<&'static str>, skip: &'static [&'static str], on_change: Callback<String>) -> impl IntoView {
+fn KeyValueRows(
+    id: String,
+    labelled_by: String,
+    initial: String,
+    catalog: Option<&'static str>,
+    skip: &'static [&'static str],
+    on_change: Callback<String>,
+) -> impl IntoView {
     let i18n = use_i18n();
     let start: Vec<(String, String)> = serde_json::from_str(&initial).unwrap_or_default();
     let next = StoredValue::new(start.len());
     let rows = RwSignal::new(
-        start.into_iter().enumerate().map(|(i, (k, v))| (i, RwSignal::new(k), RwSignal::new(v))).collect::<Vec<_>>(),
+        start
+            .into_iter()
+            .enumerate()
+            .map(|(i, (k, v))| (i, RwSignal::new(k), RwSignal::new(v)))
+            .collect::<Vec<_>>(),
     );
     let sync = move || {
-        let pairs: Vec<(String, String)> = rows.with_untracked(|r| r.iter().map(|(_, k, v)| (k.get_untracked(), v.get_untracked())).collect());
+        let pairs: Vec<(String, String)> = rows.with_untracked(|r| {
+            r.iter()
+                .map(|(_, k, v)| (k.get_untracked(), v.get_untracked()))
+                .collect()
+        });
         on_change.run(serde_json::to_string(&pairs).unwrap_or_default());
     };
     // Rows are added from the catalog combo's handler, whose owner is disposed when it closes:
@@ -1588,7 +1778,10 @@ fn KeyValueRows(id: String, labelled_by: String, initial: String, catalog: Optio
     // editor stays plain, so a cloud without Glance's metadefs loses nothing.
     let options = LocalResource::new(move || async move {
         match catalog {
-            Some(rt) => list_metadata_options(rt.to_string()).await.map(|t| t.data).unwrap_or_default(),
+            Some(rt) => list_metadata_options(rt.to_string())
+                .await
+                .map(|t| t.data)
+                .unwrap_or_default(),
             None => Vec::new(),
         }
     });
@@ -1596,7 +1789,12 @@ fn KeyValueRows(id: String, labelled_by: String, initial: String, catalog: Optio
     // Properties not yet in the rows, grouped by namespace in the picker.
     let available = move || {
         let used: HashSet<String> = rows.with(|r| r.iter().map(|(_, k, _)| k.get().trim().to_string()).collect());
-        all.with(|o| o.iter().filter(|p| !used.contains(&p.key) && !skip.contains(&p.key.as_str())).cloned().collect::<Vec<_>>())
+        all.with(|o| {
+            o.iter()
+                .filter(|p| !used.contains(&p.key) && !skip.contains(&p.key.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+        })
     };
     view! {
         <div class="kv-rows" id=id role="group" aria-labelledby=labelled_by>
@@ -1676,10 +1874,17 @@ fn KeyValueRows(id: String, labelled_by: String, initial: String, catalog: Optio
     }
 }
 
-fn resolve(src: &Source, values: RwSignal<HashMap<String, String>>, choices: RwSignal<HashMap<ChoiceSet, Vec<Choice>>>) -> Option<Vec<Choice>> {
+fn resolve(
+    src: &Source,
+    values: RwSignal<HashMap<String, String>>,
+    choices: RwSignal<HashMap<ChoiceSet, Vec<Choice>>>,
+) -> Option<Vec<Choice>> {
     match src {
         Source::Static(list) => Some(list.iter().map(|(v, l)| Choice::new(v.clone(), l.clone())).collect()),
-        Source::Of(set, _) | Source::Except(set, _) | Source::Without(set, _) => choices.with(|m| m.get(set).map(|l| l.iter().filter(|c| src.admits(c)).cloned().collect())),
+        Source::Of(set, _) | Source::Except(set, _) | Source::Without(set, _) => choices.with(|m| {
+            m.get(set)
+                .map(|l| l.iter().filter(|c| src.admits(c)).cloned().collect())
+        }),
         other => {
             let set = values.with(|v| choice_set_for(other, v))?;
             choices.with(|m| m.get(&set).cloned())
@@ -1712,19 +1917,35 @@ pub enum ItemKind {
 impl MenuItem {
     /// An entry that opens the dialog `f` builds when clicked.
     pub fn dialog(label: impl Into<String>, f: impl Fn() -> Dialog + Send + Sync + 'static) -> Self {
-        MenuItem { label: label.into(), danger: false, kind: ItemKind::Dialog(Arc::new(f)) }
+        MenuItem {
+            label: label.into(),
+            danger: false,
+            kind: ItemKind::Dialog(Arc::new(f)),
+        }
     }
     /// A destructive entry (shown in red, placed last), opening `f`'s dialog.
     pub fn danger(label: impl Into<String>, f: impl Fn() -> Dialog + Send + Sync + 'static) -> Self {
-        MenuItem { label: label.into(), danger: true, kind: ItemKind::Dialog(Arc::new(f)) }
+        MenuItem {
+            label: label.into(),
+            danger: true,
+            kind: ItemKind::Dialog(Arc::new(f)),
+        }
     }
     /// An entry that navigates to `href`.
     pub fn link(label: impl Into<String>, href: impl Into<String>) -> Self {
-        MenuItem { label: label.into(), danger: false, kind: ItemKind::Link(href.into()) }
+        MenuItem {
+            label: label.into(),
+            danger: false,
+            kind: ItemKind::Link(href.into()),
+        }
     }
     /// An entry that runs `f` at once (no dialog, no OpenStack write).
     pub fn action(label: impl Into<String>, f: impl Fn() + Send + Sync + 'static) -> Self {
-        MenuItem { label: label.into(), danger: false, kind: ItemKind::Run(Arc::new(f)) }
+        MenuItem {
+            label: label.into(),
+            danger: false,
+            kind: ItemKind::Run(Arc::new(f)),
+        }
     }
 }
 
@@ -1745,7 +1966,9 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
     let i18n = use_i18n();
     let dialogs = use_dialogs();
     let mut items = items.into_iter();
-    let Some(first) = items.next() else { return ().into_any() };
+    let Some(first) = items.next() else {
+        return ().into_any();
+    };
     let rest: Vec<MenuItem> = items.collect();
     let run = move |it: &MenuItem| match &it.kind {
         ItemKind::Dialog(f) => dialogs.open(f()),
@@ -1756,7 +1979,8 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
         ItemKind::Link(href) => view! { <a class="btn btn-sm" href=href>{first.label.clone()}</a> }.into_any(),
         ItemKind::Run(_) => {
             let it = first.clone();
-            view! { <button type="button" class="btn btn-sm" on:click=move |_| run(&it)>{first.label.clone()}</button> }.into_any()
+            view! { <button type="button" class="btn btn-sm" on:click=move |_| run(&it)>{first.label.clone()}</button> }
+                .into_any()
         }
         ItemKind::Dialog(_) => {
             let it = first.clone();
@@ -1767,7 +1991,8 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
                     on:click=move |_| run(&it)>
                     {first.label.clone()}
                 </button>
-            }.into_any()
+            }
+            .into_any()
         }
     };
     let menu = (!rest.is_empty()).then(|| {
@@ -1856,7 +2081,10 @@ fn place_menu(details: NodeRef<leptos::html::Details>) {
         }
         let (Some(summary), Some(menu)) = (
             d.query_selector("summary").ok().flatten(),
-            d.query_selector(".menu-list").ok().flatten().and_then(|m| m.dyn_into::<web_sys::HtmlElement>().ok()),
+            d.query_selector(".menu-list")
+                .ok()
+                .flatten()
+                .and_then(|m| m.dyn_into::<web_sys::HtmlElement>().ok()),
         ) else {
             return;
         };
@@ -1864,7 +2092,10 @@ fn place_menu(details: NodeRef<leptos::html::Details>) {
         // The natural height (`scroll_height`): `offset_height` is already capped by the CSS max-height.
         let (mw, mh) = (menu.offset_width() as f64, menu.scroll_height() as f64);
         let size = |v: Result<wasm_bindgen::JsValue, _>, d| v.ok().and_then(|v| v.as_f64()).unwrap_or(d);
-        let viewport = (size(window().inner_width(), 1200.0), size(window().inner_height(), 800.0));
+        let viewport = (
+            size(window().inner_width(), 1200.0),
+            size(window().inner_height(), 800.0),
+        );
         let (left, top, max_h) = menu_box((r.top(), r.bottom(), r.right()), (mw, mh), viewport);
         let _ = menu.set_attribute("style", &format!("left:{left}px;top:{top}px;max-height:{max_h}px"));
     }
@@ -1877,7 +2108,12 @@ pub(crate) fn focus_summary(_d: &web_sys::HtmlDetailsElement) {
     #[cfg(feature = "hydrate")]
     {
         use wasm_bindgen::JsCast;
-        if let Some(s) = _d.query_selector("summary").ok().flatten().and_then(|s| s.dyn_into::<web_sys::HtmlElement>().ok()) {
+        if let Some(s) = _d
+            .query_selector("summary")
+            .ok()
+            .flatten()
+            .and_then(|s| s.dyn_into::<web_sys::HtmlElement>().ok())
+        {
             let _ = s.focus();
         }
     }
@@ -1896,9 +2132,13 @@ pub fn install_menu_dismissal() {
         }
         fn close_matching(selector: &str, except: Option<&web_sys::Node>) {
             let Some(doc) = window().document() else { return };
-            let Ok(list) = doc.query_selector_all(selector) else { return };
+            let Ok(list) = doc.query_selector_all(selector) else {
+                return;
+            };
             for i in 0..list.length() {
-                if let Some(d) = list.item(i).and_then(|n| n.dyn_into::<web_sys::HtmlDetailsElement>().ok())
+                if let Some(d) = list
+                    .item(i)
+                    .and_then(|n| n.dyn_into::<web_sys::HtmlDetailsElement>().ok())
                     && except.is_none_or(|t| !d.contains(Some(t)))
                 {
                     d.set_open(false);
@@ -1929,7 +2169,11 @@ pub fn install_menu_dismissal() {
 
 /// Page-level button that opens a dialog ("+ Create Network").
 #[component]
-pub fn CreateButton(#[prop(into)] label: Signal<String>, open: Arc<dyn Fn() -> Dialog + Send + Sync>, #[prop(optional)] danger: bool) -> impl IntoView {
+pub fn CreateButton(
+    #[prop(into)] label: Signal<String>,
+    open: Arc<dyn Fn() -> Dialog + Send + Sync>,
+    #[prop(optional)] danger: bool,
+) -> impl IntoView {
     let i18n = use_i18n();
     let dialogs = use_dialogs();
     view! {
@@ -1949,11 +2193,7 @@ pub type BulkOpen = Arc<dyn Fn(Lang, Vec<(String, String)>) -> Dialog + Send + S
 /// Page-level bulk button ("Delete Volumes (3)"), enabled once rows are
 /// selected in the table; `open` gets the selection as `(id, name)` pairs.
 #[component]
-pub fn BulkButton(
-    label: K,
-    picked: RwSignal<Vec<(String, String)>>,
-    open: BulkOpen,
-) -> impl IntoView {
+pub fn BulkButton(label: K, picked: RwSignal<Vec<(String, String)>>, open: BulkOpen) -> impl IntoView {
     let i18n = use_i18n();
     let dialogs = use_dialogs();
     view! {
@@ -1975,7 +2215,10 @@ mod tests {
         assert!(filter_matches("POKE", "pokemon (ttcp-spain)", "p1"), "case-insensitive");
         assert!(filter_matches("ab12", "pokemon", "AB12cd"), "an ID finds its project");
         assert!(filter_matches("poke spain", "pokemon (ttcp-spain)", "p1"));
-        assert!(!filter_matches("poke admin", "pokemon (ttcp-spain)", "p1"), "every word must match");
+        assert!(
+            !filter_matches("poke admin", "pokemon (ttcp-spain)", "p1"),
+            "every word must match"
+        );
     }
 
     use super::*;
@@ -1985,38 +2228,83 @@ mod tests {
         let known = vec![Choice::new("p1", "pokemon"), Choice::new("p2", "admin2")];
         let got = with_unknown(known.clone(), "p2,gone,,gone");
         let values: Vec<_> = got.iter().map(|c| (c.value.as_str(), c.label.as_str())).collect();
-        assert_eq!(values, [("p1", "pokemon"), ("p2", "admin2"), ("gone", "gone")], "a deleted project shows as its ID, once");
+        assert_eq!(
+            values,
+            [("p1", "pokemon"), ("p2", "admin2"), ("gone", "gone")],
+            "a deleted project shows as its ID, once"
+        );
         assert_eq!(with_unknown(known.clone(), ""), known, "nothing selected adds nothing");
     }
 
     #[test]
     fn admin_project_pickers_make_the_user_choose() {
         let set = || Source::Set(ChoiceSet::AllProjects);
-        assert!(preselects(&Field::select("p", "P", set()).required()), "a required select takes its first choice");
-        assert!(!preselects(&Field::select("p", "P", set())), "an optional one stays on *None*");
-        assert!(!preselects(&Field::select("p", "P", set()).required().empty_label("Select a project")), "a placeholder means: choose");
+        assert!(
+            preselects(&Field::select("p", "P", set()).required()),
+            "a required select takes its first choice"
+        );
+        assert!(
+            !preselects(&Field::select("p", "P", set())),
+            "an optional one stays on *None*"
+        );
+        assert!(
+            !preselects(
+                &Field::select("p", "P", set())
+                    .required()
+                    .empty_label("Select a project")
+            ),
+            "a placeholder means: choose"
+        );
         use crate::{components::ops, i18n::Lang};
-        for d in [ops::admin_create_network_dialog(Lang::EnUs), ops::admin_create_router_dialog(Lang::EnUs), ops::admin_allocate_ip_dialog(Lang::EnUs)] {
-            let project = d.fields.iter().find(|f| f.name == "project_id").expect("a project field");
-            assert!(project.required && !preselects(project), "{}: the owner project must be picked, not the first one", d.title);
+        for d in [
+            ops::admin_create_network_dialog(Lang::EnUs),
+            ops::admin_create_router_dialog(Lang::EnUs),
+            ops::admin_allocate_ip_dialog(Lang::EnUs),
+        ] {
+            let project = d
+                .fields
+                .iter()
+                .find(|f| f.name == "project_id")
+                .expect("a project field");
+            assert!(
+                project.required && !preselects(project),
+                "{}: the owner project must be picked, not the first one",
+                d.title
+            );
         }
-        for d in [ops::admin_create_network_dialog(Lang::EnUs), ops::admin_create_router_dialog(Lang::EnUs)] {
+        for d in [
+            ops::admin_create_network_dialog(Lang::EnUs),
+            ops::admin_create_router_dialog(Lang::EnUs),
+        ] {
             let hints = d.fields.iter().find(|f| f.name == "az_hints").expect("zone hints");
-            assert!(hints.hide_empty, "{}: no zones of that kind, no picker (as Horizon)", d.title);
+            assert!(
+                hints.hide_empty,
+                "{}: no zones of that kind, no picker (as Horizon)",
+                d.title
+            );
         }
         // `*` first would share with every project by default.
         let rbac = ops::create_rbac_policy_dialog(Lang::EnUs);
         for name in ["target_project", "network_id", "qos_policy_id"] {
             let f = rbac.fields.iter().find(|f| f.name == name).expect("an RBAC field");
-            assert!(f.required && !preselects(f), "Create RBAC Policy: {name} must be picked");
+            assert!(
+                f.required && !preselects(f),
+                "Create RBAC Policy: {name} must be picked"
+            );
         }
     }
 
     #[test]
     fn except_drops_one_value_and_of_keeps_one_owner() {
-        let c = |v: &str, owner: &str| Choice { cells: vec![owner.to_string()], ..Choice::new(v, v) };
+        let c = |v: &str, owner: &str| Choice {
+            cells: vec![owner.to_string()],
+            ..Choice::new(v, v)
+        };
         let except = Source::Except(ChoiceSet::ComputeHosts, "c1".into());
-        assert!(!except.admits(&c("c1", "")) && except.admits(&c("c2", "")), "the current host is left out");
+        assert!(
+            !except.admits(&c("c1", "")) && except.admits(&c("c2", "")),
+            "the current host is left out"
+        );
         let of = Source::Of(ChoiceSet::InstancePorts, "s1".into());
         assert!(of.admits(&c("p1", "s1")) && !of.admits(&c("p2", "s2")));
         assert!(Source::Set(ChoiceSet::ComputeHosts).admits(&c("c1", "")));
@@ -2029,9 +2317,16 @@ mod tests {
         let (_, top, max_h) = menu_box((100.0, 130.0, 900.0), (220.0, 300.0), vp);
         assert_eq!((top, max_h), (134.0, 558.0), "fits below: opens below");
         let (_, top, _) = menu_box((600.0, 630.0, 900.0), (220.0, 300.0), vp);
-        assert_eq!(top, 296.0, "only fits above: opens above, its bottom 4 px over the button");
+        assert_eq!(
+            top, 296.0,
+            "only fits above: opens above, its bottom 4 px over the button"
+        );
         let (_, top, max_h) = menu_box((400.0, 430.0, 900.0), (220.0, 600.0), vp);
-        assert_eq!((top, max_h), (8.0, 388.0), "fits neither way: the bigger side (above), capped and scrolling");
+        assert_eq!(
+            (top, max_h),
+            (8.0, 388.0),
+            "fits neither way: the bigger side (above), capped and scrolling"
+        );
         let (_, top, max_h) = menu_box((200.0, 230.0, 900.0), (220.0, 600.0), vp);
         assert_eq!((top, max_h), (234.0, 458.0), "fits neither way: below has more room");
         let (left, ..) = menu_box((100.0, 130.0, 150.0), (220.0, 300.0), vp);
@@ -2043,12 +2338,27 @@ mod tests {
     #[test]
     fn script_files_are_checked_before_filling_the_field() {
         let l = Lang::EnUs;
-        assert_eq!(script_size(l, K::ScriptSize, 120, 16 * 1024), "Script size: 120 bytes of 16.00 KB");
-        assert!(file_problem(l, 20_000.0, None, 16 * 1024).unwrap().contains("too large"));
+        assert_eq!(
+            script_size(l, K::ScriptSize, 120, 16 * 1024),
+            "Script size: 120 bytes of 16.00 KB"
+        );
+        assert!(
+            file_problem(l, 20_000.0, None, 16 * 1024)
+                .unwrap()
+                .contains("too large")
+        );
         assert_eq!(file_problem(l, 100.0, None, 16 * 1024), None);
         assert_eq!(file_problem(l, 0.0, Some("#!/bin/sh\necho hi\n"), 16 * 1024), None);
-        assert!(file_problem(l, 0.0, Some("PK\u{FFFD}\u{FFFD}"), 16 * 1024).is_some(), "binary file");
-        assert!(Field::area("user_data", "Script").from_file(16 * 1024).from_file.is_some());
+        assert!(
+            file_problem(l, 0.0, Some("PK\u{FFFD}\u{FFFD}"), 16 * 1024).is_some(),
+            "binary file"
+        );
+        assert!(
+            Field::area("user_data", "Script")
+                .from_file(16 * 1024)
+                .from_file
+                .is_some()
+        );
     }
 
     fn vals(pairs: &[(&str, &str)]) -> Values {
@@ -2060,10 +2370,24 @@ mod tests {
         let form = |fields: Vec<Field>| Dialog::form("t", "ok", fields, |_| Err("unused".into()));
         let text = |n| Field::text(n, n);
         let action = OsAction::FloatingIpRelease { id: "f1".into() };
-        assert_eq!(Dialog::confirm(Lang::EnUs, "Delete", "x", action).size(), DialogSize::Small);
-        assert_eq!(form(vec![text("a"), text("b")]).size(), DialogSize::Small, "e.g. Allocate IP");
-        assert_eq!(form(vec![text("a"), text("b"), text("c"), text("d")]).size(), DialogSize::Medium);
-        assert_eq!(form(vec![Field::area("a", "a")]).size(), DialogSize::Medium, "tall fields need room");
+        assert_eq!(
+            Dialog::confirm(Lang::EnUs, "Delete", "x", action).size(),
+            DialogSize::Small
+        );
+        assert_eq!(
+            form(vec![text("a"), text("b")]).size(),
+            DialogSize::Small,
+            "e.g. Allocate IP"
+        );
+        assert_eq!(
+            form(vec![text("a"), text("b"), text("c"), text("d")]).size(),
+            DialogSize::Medium
+        );
+        assert_eq!(
+            form(vec![Field::area("a", "a")]).size(),
+            DialogSize::Medium,
+            "tall fields need room"
+        );
         let mut wizard = form(vec![text("a")]);
         wizard.steps = vec![Step::new("s", &["a"])];
         assert_eq!(wizard.size(), DialogSize::Large);
@@ -2072,7 +2396,13 @@ mod tests {
 
     #[test]
     fn values_accessors() {
-        let v = vals(&[("a", "  x "), ("n", "12"), ("bad", "1x"), ("f", "true"), ("l", "a, b,,c\nd")]);
+        let v = vals(&[
+            ("a", "  x "),
+            ("n", "12"),
+            ("bad", "1x"),
+            ("f", "true"),
+            ("l", "a, b,,c\nd"),
+        ]);
         assert_eq!(v.get("a"), "x");
         assert_eq!(v.opt("missing"), None);
         assert_eq!(v.num("n"), Ok(Some(12)));
@@ -2098,7 +2428,10 @@ mod tests {
         m.insert("source".to_string(), "volume".to_string());
         assert!(!visible(f, &m, &all));
 
-        let src = Source::Switch("kind", vec![("image", ChoiceSet::Images), ("volume", ChoiceSet::AvailableVolumes)]);
+        let src = Source::Switch(
+            "kind",
+            vec![("image", ChoiceSet::Images), ("volume", ChoiceSet::AvailableVolumes)],
+        );
         m.insert("kind".into(), "volume".into());
         assert_eq!(choice_set_for(&src, &m), Some(ChoiceSet::AvailableVolumes));
         m.insert("kind".into(), "other".into());
@@ -2110,7 +2443,11 @@ mod tests {
         let fields = vec![
             Field::select("a", "A", Source::Set(ChoiceSet::Flavors)),
             Field::multi("b", "B", Source::Set(ChoiceSet::Flavors)),
-            Field::select("c", "C", Source::Switch("x", vec![("1", ChoiceSet::Images), ("2", ChoiceSet::Flavors)])),
+            Field::select(
+                "c",
+                "C",
+                Source::Switch("x", vec![("1", ChoiceSet::Images), ("2", ChoiceSet::Flavors)]),
+            ),
         ];
         assert_eq!(all_sets(&fields).len(), 2);
     }
@@ -2128,41 +2465,81 @@ mod tests {
         ];
         let sub_on: fn(&Vals) -> bool = |v| v.get("sub").map(String::as_str) == Some("true");
         let d = Dialog::form("t", "s", fields, |_| Err("unused".into()))
-            .wizard(vec![Step::new("A", &["name", "sub"]), Step::new("B", &["cidr"]).enabled_if(sub_on)])
-            .check(|v, _| if v.get("name").is_some_and(|n| n == "bad") { vec![("name", "no".into())] } else { vec![] });
+            .wizard(vec![
+                Step::new("A", &["name", "sub"]),
+                Step::new("B", &["cidr"]).enabled_if(sub_on),
+            ])
+            .check(|v, _| {
+                if v.get("name").is_some_and(|n| n == "bad") {
+                    vec![("name", "no".into())]
+                } else {
+                    vec![]
+                }
+            });
         let st = steps_of(&d);
         let mut v = vals_of(&[("name", ""), ("sub", "false"), ("cidr", "")]);
         let p = problems(&d, &st, &v, &Sets::new(), Lang::EnUs);
-        assert_eq!(p.get("name").map(|x| x.1), Some(true), "missing values wait for an attempt");
+        assert_eq!(
+            p.get("name").map(|x| x.1),
+            Some(true),
+            "missing values wait for an attempt"
+        );
         assert!(!p.contains_key("cidr"), "the subnet step is off");
         v.insert("sub".into(), "true".into());
         v.insert("name".into(), "bad".into());
         let p = problems(&d, &st, &v, &Sets::new(), Lang::EnUs);
         assert!(p.contains_key("cidr"));
-        assert_eq!(p.get("name"), Some(&("no".to_string(), false)), "a wrong value shows at once");
+        assert_eq!(
+            p.get("name"),
+            Some(&("no".to_string(), false)),
+            "a wrong value shows at once"
+        );
     }
 
     #[test]
     fn rule_errors_on_empty_fields_wait_for_an_attempt() {
-        let d = Dialog::form("t", "s", vec![Field::text("nets", "Networks")], |_| Err("unused".into()))
-            .check(|_, _| vec![("nets", "pick one".into())]);
+        let d = Dialog::form(
+            "t",
+            "s",
+            vec![Field::text("nets", "Networks")],
+            |_| Err("unused".into()),
+        )
+        .check(|_, _| vec![("nets", "pick one".into())]);
         let p = problems(&d, &steps_of(&d), &vals_of(&[("nets", "")]), &Sets::new(), Lang::EnUs);
         assert_eq!(p.get("nets"), Some(&("pick one".to_string(), true)));
     }
 
     #[test]
     fn destructive_confirms_list_the_selection_and_simple_ones_are_not_red() {
-        let d = Dialog::confirm(Lang::EnUs, "Delete Volume", "data", OsAction::VolumeDelete { id: "v".into() });
+        let d = Dialog::confirm(
+            Lang::EnUs,
+            "Delete Volume",
+            "data",
+            OsAction::VolumeDelete { id: "v".into() },
+        );
         assert!(d.danger, "red dialogs ask for the 'I understand' box");
-        assert_eq!((d.intro[0].as_str(), d.selection.as_slice()), ("You have selected:", &["data".to_string()][..]));
-        let s = Dialog::simple(Lang::EnUs, "Pause Instance", "web", OsAction::ServerPause { id: "s".into() });
+        assert_eq!(
+            (d.intro[0].as_str(), d.selection.as_slice()),
+            ("You have selected:", &["data".to_string()][..])
+        );
+        let s = Dialog::simple(
+            Lang::EnUs,
+            "Pause Instance",
+            "web",
+            OsAction::ServerPause { id: "s".into() },
+        );
         assert!(!s.danger);
         assert_eq!(s.intro.len(), 1, "no 'cannot be undone' line");
     }
 
     #[test]
     fn single_page_dialogs_are_one_implicit_step() {
-        let d = Dialog::form("Edit", "Save", vec![Field::text("a", "A"), Field::text("b", "B")], |_| Err("unused".into()));
+        let d = Dialog::form(
+            "Edit",
+            "Save",
+            vec![Field::text("a", "A"), Field::text("b", "B")],
+            |_| Err("unused".into()),
+        );
         let st = steps_of(&d);
         assert_eq!(st.len(), 1);
         assert_eq!(st[0].fields, vec!["a", "b"]);
@@ -2176,4 +2553,3 @@ mod tests {
         assert!(!visible(&all[1], &vals_of(&[("k", "y")]), &all));
     }
 }
-

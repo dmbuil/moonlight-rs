@@ -8,14 +8,14 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 
-use super::details::{lines, mono, param, yes_no, Card, DetailHeader, Kv, Tabs};
+use super::details::{Card, DetailHeader, Kv, Tabs, lines, mono, param, yes_no};
 use super::lists::link;
 use crate::api::*;
-use crate::components::dialog::{data_version, CreateButton, RowActions};
+use crate::components::dialog::{CreateButton, RowActions, data_version};
 use crate::components::ops;
-use crate::components::table::{col, Col, DataTable};
-use crate::components::widgets::{dash, render, short_time, Copyable, PageHeader, Pill, Skeleton, Tone};
-use crate::i18n::{t, use_i18n, Lang, K};
+use crate::components::table::{Col, DataTable, col};
+use crate::components::widgets::{Copyable, PageHeader, Pill, Skeleton, Tone, dash, render, short_time};
+use crate::i18n::{K, Lang, t, use_i18n};
 use crate::model::*;
 
 /// Aodh's state as a pill: `alarm` red, `ok` green, `insufficient data` (and
@@ -55,14 +55,26 @@ fn change_label(kind: &str, l: Lang) -> String {
 
 fn alarm_columns() -> Vec<Col<AlarmRow>> {
     vec![
-        col(K::Name, |x: &AlarmRow, _| link(format!("/project/alarms/{}", x.id), x.name.clone())).sort_text(|x| x.name.to_lowercase()),
+        col(K::Name, |x: &AlarmRow, _| {
+            link(format!("/project/alarms/{}", x.id), x.name.clone())
+        })
+        .sort_text(|x| x.name.to_lowercase()),
         col(K::Type, |x: &AlarmRow, _| mono(x.alarm_type.clone())).sort_text(|x| x.alarm_type.clone()),
         col(K::AlarmState, |x: &AlarmRow, l| state_pill(&x.state, l)).sort_text(|x| x.state.clone()),
-        col(K::Severity, |x: &AlarmRow, l| severity_pill(x.severity.as_deref(), l)).sort_num(|x| severity_rank(x.severity.as_deref())),
+        col(K::Severity, |x: &AlarmRow, l| severity_pill(x.severity.as_deref(), l))
+            .sort_num(|x| severity_rank(x.severity.as_deref())),
         col(K::EnabledCol, |x: &AlarmRow, l| yes_no(l, x.enabled).into_any()).sort_num(|x| x.enabled as i64),
         col(K::Condition, |x: &AlarmRow, _| mono(x.condition.clone())).class("condition"),
-        col(K::StateSince, |x: &AlarmRow, _| dash(x.state_since.as_deref().map(short_time))).sort_text(|x| x.state_since.clone().unwrap_or_default()).class("nowrap"),
-        col(K::Actions, |x: &AlarmRow, l| view! { <RowActions items=ops::alarm_items(l, x)/> }).class("actions"),
+        col(K::StateSince, |x: &AlarmRow, _| {
+            dash(x.state_since.as_deref().map(short_time))
+        })
+        .sort_text(|x| x.state_since.clone().unwrap_or_default())
+        .class("nowrap"),
+        col(
+            K::Actions,
+            |x: &AlarmRow, l| view! { <RowActions items=ops::alarm_items(l, x)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -142,7 +154,18 @@ fn compared(comparison: &Option<String>, threshold: Option<f64>) -> String {
 /// The *Rule* card's rows for the alarm's type.
 fn rule_rows(rule: AlarmRule, l: Lang) -> AnyView {
     match rule {
-        AlarmRule::Threshold { metrics, resource_type, resource_id, resource_href, query, aggregation, comparison, threshold, granularity, evaluation_periods } => {
+        AlarmRule::Threshold {
+            metrics,
+            resource_type,
+            resource_id,
+            resource_href,
+            query,
+            aggregation,
+            comparison,
+            threshold,
+            granularity,
+            evaluation_periods,
+        } => {
             let resource = match (resource_id, resource_href) {
                 (Some(id), Some(href)) => link(href, id),
                 (Some(id), None) => mono(id),
@@ -160,7 +183,11 @@ fn rule_rows(rule: AlarmRule, l: Lang) -> AnyView {
             }
             .into_any()
         }
-        AlarmRule::Prometheus { query, comparison, threshold } => view! {
+        AlarmRule::Prometheus {
+            query,
+            comparison,
+            threshold,
+        } => view! {
             <Kv label=K::Query><pre class="console-log">{query}</pre></Kv>
             <Kv label=K::Threshold>{mono(compared(&comparison, threshold))}</Kv>
         }
@@ -179,7 +206,9 @@ fn constraint_columns() -> Vec<Col<AlarmTimeConstraint>> {
     vec![
         col(K::Name, |c: &AlarmTimeConstraint, _| c.name.clone().into_any()).sort_text(|c| c.name.clone()),
         col(K::CronStart, |c: &AlarmTimeConstraint, _| mono(c.start.clone())),
-        col(K::Duration, |c: &AlarmTimeConstraint, l| dash(c.duration.map(|d| format!("{d} {}", t(l, K::Seconds))))),
+        col(K::Duration, |c: &AlarmTimeConstraint, l| {
+            dash(c.duration.map(|d| format!("{d} {}", t(l, K::Seconds))))
+        }),
         col(K::Timezone, |c: &AlarmTimeConstraint, _| dash(c.timezone.clone())),
         col(K::Description, |c: &AlarmTimeConstraint, _| dash(c.description.clone())),
     ]
@@ -229,7 +258,9 @@ fn overview_tab(d: AlarmDetail) -> AnyView {
 
 fn history_columns() -> Vec<Col<AlarmChange>> {
     vec![
-        col(K::EventTime, |h: &AlarmChange, _| short_time(&h.time)).sort_text(|h| h.time.clone()).class("nowrap"),
+        col(K::EventTime, |h: &AlarmChange, _| short_time(&h.time))
+            .sort_text(|h| h.time.clone())
+            .class("nowrap"),
         col(K::Change, |h: &AlarmChange, l| change_label(&h.kind, l).into_any()).sort_text(|h| h.kind.clone()),
         col(K::AlarmState, |h: &AlarmChange, l| match h.state.as_deref() {
             Some(s) => state_pill(s, l),

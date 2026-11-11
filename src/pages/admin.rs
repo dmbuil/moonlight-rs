@@ -11,29 +11,34 @@
 
 use leptos::prelude::*;
 
-use super::details::{mono, param, Card, DetailHeader, Kv, Tabs};
+use super::details::{Card, DetailHeader, Kv, Tabs, mono, param};
 use crate::api::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, RowActions};
+use crate::components::dialog::{BulkButton, CreateButton, RowActions, caps, data_version};
 use crate::components::ops;
-use crate::components::pager::{late_host, late_label, late_text, load_late, paged_table, use_list_query, with_server_keys, LateNames, Pager, PagerState};
 use crate::components::ops::quota_label;
-use crate::components::table::{available, col, Col, DataTable, Select, TimingChip};
-use crate::components::widgets::{age_cell_since, dash, render, short_time, ErrorBox, PageHeader, Pill, Skeleton, Tone, AzPill, AzPills, LockIcon};
-use crate::i18n::{t, use_i18n, Lang, K};
-use crate::pages::details::yes_no;
-use crate::pages::instances::{late_image_cell, load_boot_images, task_cell, BootImages, IpList};
-use crate::pages::lists::{admin_state, late_attachments, link, status_pill};
+use crate::components::pager::{
+    LateNames, Pager, PagerState, late_host, late_label, late_text, load_late, paged_table, use_list_query,
+    with_server_keys,
+};
+use crate::components::table::{Col, DataTable, Select, TimingChip, available, col};
 use crate::components::widgets::FlavorPopover;
-use crate::i18n::{image_visibility, power_state, server_status};
-use leptos_router::components::A;
-use crate::pages::overview::{fmt_amount, period_form, Donut, UsageTotals};
+use crate::components::widgets::{
+    AzPill, AzPills, ErrorBox, LockIcon, PageHeader, Pill, Skeleton, Tone, age_cell_since, dash, render, short_time,
+};
 use crate::i18n::decimal;
-use leptos_router::hooks::use_query_map;
-use crate::model::*;
+use crate::i18n::{K, Lang, t, use_i18n};
+use crate::i18n::{image_visibility, power_state, server_status};
 use crate::model::needs;
+use crate::model::*;
+use crate::pages::details::yes_no;
+use crate::pages::instances::{BootImages, IpList, late_image_cell, load_boot_images, task_cell};
+use crate::pages::lists::{admin_state, late_attachments, link, status_pill};
+use crate::pages::overview::{Donut, UsageTotals, fmt_amount, period_form};
+use leptos_router::components::A;
+use leptos_router::hooks::use_query_map;
 
 /// *Enabled* / *Disabled*, Horizon's *Status* column.
 fn enabled(l: Lang, on: bool) -> &'static str {
@@ -71,7 +76,8 @@ fn host_service_columns(actions: bool) -> Vec<Col<HostService>> {
     let mut cols = vec![
         col(K::Name, |s: &HostService, _| s.binary.clone()).sort_text(|s| s.binary.clone()),
         col(K::Host, |s: &HostService, _| s.host.clone()).sort_text(|s| s.host.clone()),
-        col(K::Zone, |s: &HostService, _| view! { <AzPill name=s.zone.clone()/> }).sort_text(|s| s.zone.clone().unwrap_or_default()),
+        col(K::Zone, |s: &HostService, _| view! { <AzPill name=s.zone.clone()/> })
+            .sort_text(|s| s.zone.clone().unwrap_or_default()),
         col(K::Status, |s: &HostService, l| {
             // Why it was disabled, as Horizon's tooltip.
             let reason = s.disabled_reason.clone().unwrap_or_default();
@@ -81,7 +87,13 @@ fn host_service_columns(actions: bool) -> Vec<Col<HostService>> {
         col(K::LastUpdated, |s: &HostService, l| age_or_dash(l, &s.updated_at)),
     ];
     if actions {
-        cols.push(col(K::Actions, |s: &HostService, l| view! { <RowActions items=ops::compute_service_items(l, s)/> }).class("actions"));
+        cols.push(
+            col(
+                K::Actions,
+                |s: &HostService, l| view! { <RowActions items=ops::compute_service_items(l, s)/> },
+            )
+            .class("actions"),
+        );
     }
     cols
 }
@@ -91,7 +103,8 @@ fn agent_columns() -> Vec<Col<NetworkAgent>> {
         col(K::Type, |a: &NetworkAgent, _| a.agent_type.clone()).sort_text(|a| a.agent_type.clone()),
         col(K::Name, |a: &NetworkAgent, _| a.binary.clone()).sort_text(|a| a.binary.clone()),
         col(K::Host, |a: &NetworkAgent, _| a.host.clone()).sort_text(|a| a.host.clone()),
-        col(K::Zone, |a: &NetworkAgent, _| view! { <AzPill name=a.zone.clone()/> }).sort_text(|a| a.zone.clone().unwrap_or_default()),
+        col(K::Zone, |a: &NetworkAgent, _| view! { <AzPill name=a.zone.clone()/> })
+            .sort_text(|a| a.zone.clone().unwrap_or_default()),
         col(K::Status, |a: &NetworkAgent, l| enabled(l, a.admin_up)),
         col(K::ServiceState, |a: &NetworkAgent, l| up_pill(l, a.alive)),
         col(K::LastUpdated, |a: &NetworkAgent, l| age_or_dash(l, &a.heartbeat)),
@@ -99,7 +112,11 @@ fn agent_columns() -> Vec<Col<NetworkAgent>> {
 }
 
 /// One tab's table, with its error above when that list failed.
-fn fallible<T: Clone + Send + Sync + 'static>(f: Fallible<T>, columns: Vec<Col<T>>, search: fn(&T) -> String) -> AnyView {
+fn fallible<T: Clone + Send + Sync + 'static>(
+    f: Fallible<T>,
+    columns: Vec<Col<T>>,
+    search: fn(&T) -> String,
+) -> AnyView {
     view! {
         {f.error.map(|e| view! { <ErrorBox message=e/> })}
         <DataTable rows=f.rows columns=columns search=search/>
@@ -160,14 +177,32 @@ pub fn SystemInfoPage() -> impl IntoView {
 fn usage_columns() -> Vec<Col<ProjectUsage>> {
     vec![
         // Horizon's "(Deleted)" after a project Keystone no longer has (roadmap 89).
-        col(K::ProjectName, |p: &ProjectUsage, l| if p.deleted { format!("{} {}", p.project, t(l, K::DeletedSuffix)) } else { p.project.clone() })
-            .sort_text(|p| p.project.clone()),
-        col(K::Vcpus, |p: &ProjectUsage, _| p.vcpus().to_string()).sort_num(|p| p.vcpus()).class("num"),
-        col(K::Disk, |p: &ProjectUsage, _| fmt_amount(p.local_gb(), QuotaUnit::Gib)).sort_num(|p| p.local_gb()).class("num"),
-        col(K::Ram, |p: &ProjectUsage, _| fmt_amount(p.memory_mb(), QuotaUnit::Mib)).sort_num(|p| p.memory_mb()).class("num"),
-        col(K::VcpuHoursCol, |p: &ProjectUsage, l| decimal(l, p.vcpu_hours(), 2)).sort_num(|p| p.vcpu_hours().round() as i64).class("num"),
-        col(K::DiskGbHours, |p: &ProjectUsage, l| decimal(l, p.gb_hours(), 2)).sort_num(|p| p.gb_hours().round() as i64).class("num"),
-        col(K::MemoryMbHours, |p: &ProjectUsage, l| decimal(l, p.ram_mb_hours(), 2)).sort_num(|p| p.ram_mb_hours().round() as i64).class("num"),
+        col(K::ProjectName, |p: &ProjectUsage, l| {
+            if p.deleted {
+                format!("{} {}", p.project, t(l, K::DeletedSuffix))
+            } else {
+                p.project.clone()
+            }
+        })
+        .sort_text(|p| p.project.clone()),
+        col(K::Vcpus, |p: &ProjectUsage, _| p.vcpus().to_string())
+            .sort_num(|p| p.vcpus())
+            .class("num"),
+        col(K::Disk, |p: &ProjectUsage, _| fmt_amount(p.local_gb(), QuotaUnit::Gib))
+            .sort_num(|p| p.local_gb())
+            .class("num"),
+        col(K::Ram, |p: &ProjectUsage, _| fmt_amount(p.memory_mb(), QuotaUnit::Mib))
+            .sort_num(|p| p.memory_mb())
+            .class("num"),
+        col(K::VcpuHoursCol, |p: &ProjectUsage, l| decimal(l, p.vcpu_hours(), 2))
+            .sort_num(|p| p.vcpu_hours().round() as i64)
+            .class("num"),
+        col(K::DiskGbHours, |p: &ProjectUsage, l| decimal(l, p.gb_hours(), 2))
+            .sort_num(|p| p.gb_hours().round() as i64)
+            .class("num"),
+        col(K::MemoryMbHours, |p: &ProjectUsage, l| decimal(l, p.ram_mb_hours(), 2))
+            .sort_num(|p| p.ram_mb_hours().round() as i64)
+            .class("num"),
     ]
 }
 
@@ -177,7 +212,10 @@ fn usage_columns() -> Vec<Col<ProjectUsage>> {
 pub fn AdminOverviewPage() -> impl IntoView {
     let query = use_query_map();
     let period = move || query.with(|q| (q.get("start").unwrap_or_default(), q.get("end").unwrap_or_default()));
-    let data = Resource::new(move || (period(), data_version()), |((start, end), _)| get_admin_usage(start, end));
+    let data = Resource::new(
+        move || (period(), data_version()),
+        |((start, end), _)| get_admin_usage(start, end),
+    );
     let columns = StoredValue::new(usage_columns());
     view! {
         <PageHeader/>
@@ -204,7 +242,10 @@ fn lift<T: 'static>(c: Col<T>) -> Col<Owned<T>> {
     Col {
         header: c.header,
         cell: std::sync::Arc::new(move |o: &Owned<T>, l| cell(&o.row, l)),
-        sort: sort.map(|f| std::sync::Arc::new(move |o: &Owned<T>| f(&o.row)) as std::sync::Arc<dyn Fn(&Owned<T>) -> crate::components::table::SortKey + Send + Sync>),
+        sort: sort.map(|f| {
+            std::sync::Arc::new(move |o: &Owned<T>| f(&o.row))
+                as std::sync::Arc<dyn Fn(&Owned<T>) -> crate::components::table::SortKey + Send + Sync>
+        }),
         class: c.class,
         requires: c.requires,
         server: c.server,
@@ -269,7 +310,16 @@ fn admin_instance_columns(boot: BootImages) -> Vec<Col<Owned<Instance>>> {
 }
 
 fn admin_instance_search(o: &Owned<Instance>) -> String {
-    owned_search(o, format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.image_name.as_deref().unwrap_or("")))
+    owned_search(
+        o,
+        format!(
+            "{} {} {} {}",
+            o.row.name,
+            o.row.id,
+            o.row.status,
+            o.row.image_name.as_deref().unwrap_or("")
+        ),
+    )
 }
 
 /// Admin › Compute › Instances (roadmap 88): one page of `[ui] page_size` servers,
@@ -285,7 +335,14 @@ pub fn AdminInstancesPage() -> impl IntoView {
     let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
-        load_boot_images(t.data.rows.iter().map(|o| (o.row.id.clone(), o.row.boot_volume_ids.clone())).collect(), boot);
+        load_boot_images(
+            t.data
+                .rows
+                .iter()
+                .map(|o| (o.row.id.clone(), o.row.boot_volume_ids.clone()))
+                .collect(),
+            boot,
+        );
     });
     view! {
         <PageHeader/>
@@ -312,19 +369,48 @@ pub fn AdminInstancesPage() -> impl IntoView {
 fn image_columns() -> Vec<Col<Owned<Image>>> {
     vec![
         project_col(),
-        lift(col(K::Name, |i: &Image, _| link(format!("/project/images/{}", i.id), i.name.clone())).sort_text(|i| i.name.clone())),
-        lift(col(K::Type, |i: &Image, l| t(l, if i.is_snapshot { K::ImageTypeSnapshot } else { K::ImageTypeImage }))),
+        lift(
+            col(K::Name, |i: &Image, _| {
+                link(format!("/project/images/{}", i.id), i.name.clone())
+            })
+            .sort_text(|i| i.name.clone()),
+        ),
+        lift(col(K::Type, |i: &Image, l| {
+            t(
+                l,
+                if i.is_snapshot {
+                    K::ImageTypeSnapshot
+                } else {
+                    K::ImageTypeImage
+                },
+            )
+        })),
         lift(col(K::Status, |i: &Image, l| status_pill(&i.status, l)).sort_text(|i| i.status.clone())),
         lift(col(K::Visibility, |i: &Image, l| image_visibility(l, &i.visibility)).sort_text(|i| i.visibility.clone())),
         lift(col(K::Protected, |i: &Image, l| yes_no(l, i.protected))),
-        lift(col(K::DiskFormat, |i: &Image, _| dash(i.disk_format.clone()).to_uppercase())),
-        lift(col(K::Size, |i: &Image, _| i.size.map(crate::i18n::bytes).unwrap_or_else(|| "-".into())).sort_num(|i| i.size.unwrap_or(0) as i64).class("num")),
-        col(K::Actions, |o: &Owned<Image>, l| view! { <RowActions items=ops::admin_image_items(l, &o.row)/> }).class("actions"),
+        lift(col(K::DiskFormat, |i: &Image, _| {
+            dash(i.disk_format.clone()).to_uppercase()
+        })),
+        lift(
+            col(K::Size, |i: &Image, _| {
+                i.size.map(crate::i18n::bytes).unwrap_or_else(|| "-".into())
+            })
+            .sort_num(|i| i.size.unwrap_or(0) as i64)
+            .class("num"),
+        ),
+        col(
+            K::Actions,
+            |o: &Owned<Image>, l| view! { <RowActions items=ops::admin_image_items(l, &o.row)/> },
+        )
+        .class("actions"),
     ]
 }
 
 fn image_search(o: &Owned<Image>) -> String {
-    owned_search(o, format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.visibility))
+    owned_search(
+        o,
+        format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.visibility),
+    )
 }
 
 fn image_key(o: &Owned<Image>) -> Option<(String, String)> {
@@ -340,7 +426,10 @@ pub fn AdminImagesPage() -> impl IntoView {
     let query = use_list_query();
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_images(q));
     let columns = StoredValue::new(image_columns());
-    let select = Select { key: image_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: image_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let stack = PagerState::new();
     view! {
         <PageHeader>
@@ -360,19 +449,44 @@ fn volume_columns(late: LateNames) -> Vec<Col<Owned<Volume>>> {
     vec![
         project_col(),
         host_col(),
-        lift(col(K::Name, |v: &Volume, _| link(format!("/project/volumes/{}", v.id), v.name.clone())).sort_text(|v| v.name.clone())),
-        lift(col(K::Size, |v: &Volume, _| format!("{} GiB", v.size_gb)).sort_num(|v| v.size_gb).class("num")),
+        lift(
+            col(K::Name, |v: &Volume, _| {
+                link(format!("/project/volumes/{}", v.id), v.name.clone())
+            })
+            .sort_text(|v| v.name.clone()),
+        ),
+        lift(
+            col(K::Size, |v: &Volume, _| format!("{} GiB", v.size_gb))
+                .sort_num(|v| v.size_gb)
+                .class("num"),
+        ),
         lift(col(K::Status, |v: &Volume, l| status_pill(&v.status, l)).sort_text(|v| v.status.clone())),
-        lift(col(K::Type, |v: &Volume, _| dash(v.volume_type.clone())).sort_text(|v| v.volume_type.clone().unwrap_or_default())),
+        lift(
+            col(K::Type, |v: &Volume, _| dash(v.volume_type.clone()))
+                .sort_text(|v| v.volume_type.clone().unwrap_or_default()),
+        ),
         lift(col(K::AttachedTo, move |v: &Volume, _| late_attachments(v, late))),
         lift(col(K::Bootable, |v: &Volume, l| yes_no(l, v.bootable))),
         lift(col(K::Encrypted, |v: &Volume, l| yes_no(l, v.encrypted))),
-        col(K::Actions, |o: &Owned<Volume>, l| view! { <RowActions items=ops::admin_volume_items(l, &o.row, o.host.as_deref())/> }).class("actions"),
+        col(
+            K::Actions,
+            |o: &Owned<Volume>, l| view! { <RowActions items=ops::admin_volume_items(l, &o.row, o.host.as_deref())/> },
+        )
+        .class("actions"),
     ]
 }
 
 fn volume_search(o: &Owned<Volume>) -> String {
-    owned_search(o, format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.volume_type.as_deref().unwrap_or("")))
+    owned_search(
+        o,
+        format!(
+            "{} {} {} {}",
+            o.row.name,
+            o.row.id,
+            o.row.status,
+            o.row.volume_type.as_deref().unwrap_or("")
+        ),
+    )
 }
 
 /// Bulk selection key of an [`Owned`] row: its ID and name.
@@ -390,12 +504,26 @@ pub fn AdminVolumesPage() -> impl IntoView {
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_volumes(q));
     let late = LateNames::new();
     let columns = StoredValue::new(volume_columns(late));
-    let select = Select { key: volume_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: volume_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         late.active.set(t.data.paged);
-        let ids = t.data.rows.iter().flat_map(|o| o.row.attachments.iter().filter(|a| a.server_name.is_none()).map(|a| a.server_id.clone())).collect();
+        let ids = t
+            .data
+            .rows
+            .iter()
+            .flat_map(|o| {
+                o.row
+                    .attachments
+                    .iter()
+                    .filter(|a| a.server_name.is_none())
+                    .map(|a| a.server_id.clone())
+            })
+            .collect();
         if t.data.paged {
             load_late(NameKind::Servers, ids, late);
         }
@@ -421,10 +549,20 @@ fn snapshot_columns(late: LateNames) -> Vec<Col<Owned<Snapshot>>> {
         col(K::Host, move |o: &Owned<Snapshot>, _| match &o.host {
             Some(h) => h.clone().into_any(),
             None => late_text(late, o.row.volume_id.clone(), late_host, "-".into()),
-        }).sort_text(|o| o.host.clone().unwrap_or_default()),
-        lift(col(K::Name, |s: &Snapshot, _| link(format!("/project/snapshots/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone())),
+        })
+        .sort_text(|o| o.host.clone().unwrap_or_default()),
+        lift(
+            col(K::Name, |s: &Snapshot, _| {
+                link(format!("/project/snapshots/{}", s.id), s.name.clone())
+            })
+            .sort_text(|s| s.name.clone()),
+        ),
         lift(col(K::Description, |s: &Snapshot, _| dash(s.description.clone()))),
-        lift(col(K::Size, |s: &Snapshot, _| format!("{} GiB", s.size_gb)).sort_num(|s| s.size_gb).class("num")),
+        lift(
+            col(K::Size, |s: &Snapshot, _| format!("{} GiB", s.size_gb))
+                .sort_num(|s| s.size_gb)
+                .class("num"),
+        ),
         lift(col(K::Status, |s: &Snapshot, l| status_pill(&s.status, l)).sort_text(|s| s.status.clone())),
         lift(col(K::VolumeName, move |s: &Snapshot, _| match &s.volume_name {
             Some(n) => link(format!("/project/volumes/{}", s.volume_id), n.clone()),
@@ -433,12 +571,25 @@ fn snapshot_columns(late: LateNames) -> Vec<Col<Owned<Snapshot>>> {
                 view! { <A href=href>{late_text(late, id.clone(), late_label, id)}</A> }.into_any()
             }
         })),
-        col(K::Actions, |o: &Owned<Snapshot>, l| view! { <RowActions items=ops::admin_snapshot_items(l, &o.row)/> }).class("actions"),
+        col(
+            K::Actions,
+            |o: &Owned<Snapshot>, l| view! { <RowActions items=ops::admin_snapshot_items(l, &o.row)/> },
+        )
+        .class("actions"),
     ]
 }
 
 fn snapshot_search(o: &Owned<Snapshot>) -> String {
-    owned_search(o, format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.volume_name.as_deref().unwrap_or("")))
+    owned_search(
+        o,
+        format!(
+            "{} {} {} {}",
+            o.row.name,
+            o.row.id,
+            o.row.status,
+            o.row.volume_name.as_deref().unwrap_or("")
+        ),
+    )
 }
 
 fn snapshot_key(o: &Owned<Snapshot>) -> Option<(String, String)> {
@@ -454,13 +605,20 @@ pub fn AdminSnapshotsPage() -> impl IntoView {
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_snapshots(q));
     let late = LateNames::new();
     let columns = StoredValue::new(snapshot_columns(late));
-    let select = Select { key: snapshot_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: snapshot_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         late.active.set(t.data.paged);
         if t.data.paged {
-            load_late(NameKind::Volumes, t.data.rows.iter().map(|o| o.row.volume_id.clone()).collect(), late);
+            load_late(
+                NameKind::Volumes,
+                t.data.rows.iter().map(|o| o.row.volume_id.clone()).collect(),
+                late,
+            );
         }
     });
     view! {
@@ -481,11 +639,25 @@ admin_list!(
     Owned<VolumeGroupRow>,
     vec![
         project_col(),
-        lift(col(K::Name, |g: &VolumeGroupRow, _| link(format!("/project/volume_groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone())),
+        lift(
+            col(K::Name, |g: &VolumeGroupRow, _| link(
+                format!("/project/volume_groups/{}", g.id),
+                g.name.clone()
+            ))
+            .sort_text(|g| g.name.clone())
+        ),
         lift(col(K::Description, |g: &VolumeGroupRow, _| dash(g.description.clone()))),
         lift(col(K::Status, |g: &VolumeGroupRow, l| status_pill(&g.status, l)).sort_text(|g| g.status.clone())),
-        lift(col(K::AvailabilityZone, |g: &VolumeGroupRow, _| view! { <AzPill name=g.availability_zone.clone()/> })),
-        lift(col(K::VolumeTypes, |g: &VolumeGroupRow, _| g.volume_types.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", "))),
+        lift(col(
+            K::AvailabilityZone,
+            |g: &VolumeGroupRow, _| view! { <AzPill name=g.availability_zone.clone()/> }
+        )),
+        lift(col(K::VolumeTypes, |g: &VolumeGroupRow, _| g
+            .volume_types
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", "))),
         lift(col(K::HasSnapshots, |g: &VolumeGroupRow, l| yes_no(l, g.has_snapshots))),
     ],
     |o: &Owned<VolumeGroupRow>| owned_search(o, format!("{} {} {}", o.row.name, o.row.id, o.row.status))
@@ -498,12 +670,26 @@ admin_list!(
     Owned<GroupSnapshotRow>,
     vec![
         project_col(),
-        lift(col(K::Name, |s: &GroupSnapshotRow, _| link(format!("/project/vg_snapshots/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone())),
-        lift(col(K::Description, |s: &GroupSnapshotRow, _| dash(s.description.clone()))),
+        lift(
+            col(K::Name, |s: &GroupSnapshotRow, _| link(
+                format!("/project/vg_snapshots/{}", s.id),
+                s.name.clone()
+            ))
+            .sort_text(|s| s.name.clone())
+        ),
+        lift(col(K::Description, |s: &GroupSnapshotRow, _| dash(
+            s.description.clone()
+        ))),
         lift(col(K::Status, |s: &GroupSnapshotRow, l| status_pill(&s.status, l)).sort_text(|s| s.status.clone())),
-        lift(col(K::VolumeGroup, |s: &GroupSnapshotRow, _| link(format!("/project/volume_groups/{}", s.group.id), s.group.name.clone()))),
+        lift(col(K::VolumeGroup, |s: &GroupSnapshotRow, _| link(
+            format!("/project/volume_groups/{}", s.group.id),
+            s.group.name.clone()
+        ))),
     ],
-    |o: &Owned<GroupSnapshotRow>| owned_search(o, format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.group.name))
+    |o: &Owned<GroupSnapshotRow>| owned_search(
+        o,
+        format!("{} {} {} {}", o.row.name, o.row.id, o.row.status, o.row.group.name)
+    )
 );
 
 fn group_type_columns() -> Vec<Col<GroupTypeRow>> {
@@ -512,7 +698,11 @@ fn group_type_columns() -> Vec<Col<GroupTypeRow>> {
         col(K::Description, |g: &GroupTypeRow, _| dash(g.description.clone())),
         col(K::Public, |g: &GroupTypeRow, l| yes_no(l, g.public)),
         col(K::Specs, |g: &GroupTypeRow, l| specs_cell(l, &g.specs)),
-        col(K::Actions, |g: &GroupTypeRow, l| view! { <RowActions items=ops::group_type_items(l, g)/> }).class("actions"),
+        col(
+            K::Actions,
+            |g: &GroupTypeRow, l| view! { <RowActions items=ops::group_type_items(l, g)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -527,7 +717,10 @@ pub fn AdminGroupTypesPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_admin_group_types());
     let columns = StoredValue::new(group_type_columns());
-    let select = Select { key: group_type_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: group_type_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteGroupTypes picked=select.picked
@@ -567,13 +760,24 @@ fn flavor_columns() -> Vec<Col<FlavorRow>> {
         }).sort_num(|f| f.public as i64),
         col(K::Metadata, |f: &FlavorRow, l| specs_cell(l, &f.extra_specs)),
     ];
-    cols.push(col(K::Actions, |f: &FlavorRow, l| view! { <RowActions items=ops::admin_flavor_items(l, f)/> }).class("actions"));
+    cols.push(
+        col(
+            K::Actions,
+            |f: &FlavorRow, l| view! { <RowActions items=ops::admin_flavor_items(l, f)/> },
+        )
+        .class("actions"),
+    );
     cols
 }
 
 /// Search text: name, ID and the extra specs.
 fn flavor_search(f: &FlavorRow) -> String {
-    let specs = f.extra_specs.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(" ");
+    let specs = f
+        .extra_specs
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(" ");
     format!("{} {} {specs}", f.name, f.id)
 }
 
@@ -590,7 +794,10 @@ pub fn AdminFlavorsPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_admin_flavors());
     let columns = StoredValue::new(flavor_columns());
-    let select = Select { key: flavor_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: flavor_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteFlavors picked=select.picked
@@ -617,19 +824,42 @@ fn specs_cell(l: Lang, specs: &[(String, String)]) -> AnyView {
 }
 
 fn admin_network_columns() -> Vec<Col<Owned<NetworkRow>>> {
-    let mut cols =
-        vec![
-            project_col(),
-            lift(col(K::Name, |n: &NetworkRow, _| link(format!("/project/networks/{}", n.id), n.name.clone())).sort_text(|n| n.name.clone())),
-            lift(col(K::Subnets, |n: &NetworkRow, _| view! { <ul class="plain">{n.subnets.iter().map(|s| view! { <li class="mono">{s.clone()}</li> }).collect_view()}</ul> })),
-            lift(col(K::DhcpAgents, |n: &NetworkRow, _| n.dhcp_agents.map_or_else(|| "-".to_string(), |c| c.to_string())).sort_num(|n| n.dhcp_agents.unwrap_or(0) as i64).class("num").requires(needs::DHCP_AGENTS)),
-            lift(col(K::Shared, |n: &NetworkRow, l| yes_no(l, n.shared))),
-            lift(col(K::External, |n: &NetworkRow, l| yes_no(l, n.external)).sort_num(|n| n.external as i64)),
-            lift(col(K::Status, |n: &NetworkRow, l| status_pill(&n.status, l))),
-            lift(col(K::AdminState, |n: &NetworkRow, l| admin_state(l, n.admin_up))),
-            lift(col(K::AvailabilityZone, |n: &NetworkRow, _| view! { <AzPills names=n.availability_zones.clone()/> })),
-        ];
-    cols.push(col(K::Actions, |o: &Owned<NetworkRow>, l| view! { <RowActions items=ops::admin_network_items(l, &o.row)/> }).class("actions"));
+    let mut cols = vec![
+        project_col(),
+        lift(
+            col(K::Name, |n: &NetworkRow, _| {
+                link(format!("/project/networks/{}", n.id), n.name.clone())
+            })
+            .sort_text(|n| n.name.clone()),
+        ),
+        lift(col(
+            K::Subnets,
+            |n: &NetworkRow, _| view! { <ul class="plain">{n.subnets.iter().map(|s| view! { <li class="mono">{s.clone()}</li> }).collect_view()}</ul> },
+        )),
+        lift(
+            col(K::DhcpAgents, |n: &NetworkRow, _| {
+                n.dhcp_agents.map_or_else(|| "-".to_string(), |c| c.to_string())
+            })
+            .sort_num(|n| n.dhcp_agents.unwrap_or(0) as i64)
+            .class("num")
+            .requires(needs::DHCP_AGENTS),
+        ),
+        lift(col(K::Shared, |n: &NetworkRow, l| yes_no(l, n.shared))),
+        lift(col(K::External, |n: &NetworkRow, l| yes_no(l, n.external)).sort_num(|n| n.external as i64)),
+        lift(col(K::Status, |n: &NetworkRow, l| status_pill(&n.status, l))),
+        lift(col(K::AdminState, |n: &NetworkRow, l| admin_state(l, n.admin_up))),
+        lift(col(
+            K::AvailabilityZone,
+            |n: &NetworkRow, _| view! { <AzPills names=n.availability_zones.clone()/> },
+        )),
+    ];
+    cols.push(
+        col(
+            K::Actions,
+            |o: &Owned<NetworkRow>, l| view! { <RowActions items=ops::admin_network_items(l, &o.row)/> },
+        )
+        .class("actions"),
+    );
     cols
 }
 
@@ -662,7 +892,10 @@ pub fn AdminNetworksPage() -> impl IntoView {
     let query = use_list_query();
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_networks(q));
     let columns = StoredValue::new(admin_network_columns());
-    let select = Select { key: admin_network_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: admin_network_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let stack = PagerState::new();
     view! {
         <PageHeader>
@@ -683,19 +916,43 @@ pub fn AdminNetworksPage() -> impl IntoView {
 fn admin_router_columns() -> Vec<Col<Owned<RouterRow>>> {
     let mut cols = vec![
         project_col(),
-        lift(col(K::Name, |r: &RouterRow, _| link(format!("/project/routers/{}", r.id), r.name.clone())).sort_text(|r| r.name.clone())),
+        lift(
+            col(K::Name, |r: &RouterRow, _| {
+                link(format!("/project/routers/{}", r.id), r.name.clone())
+            })
+            .sort_text(|r| r.name.clone()),
+        ),
         lift(col(K::Status, |r: &RouterRow, l| status_pill(&r.status, l))),
-        lift(col(K::ExternalNetwork, |r: &RouterRow, _| dash(r.external_network.clone()))),
-        lift(col(K::AvailabilityZone, |r: &RouterRow, _| view! { <AzPills names=r.availability_zones.clone()/> })),
+        lift(col(K::ExternalNetwork, |r: &RouterRow, _| {
+            dash(r.external_network.clone())
+        })),
+        lift(col(
+            K::AvailabilityZone,
+            |r: &RouterRow, _| view! { <AzPills names=r.availability_zones.clone()/> },
+        )),
         lift(col(K::AdminState, |r: &RouterRow, l| admin_state(l, r.admin_up))),
     ];
-    cols.push(col(K::Actions, |o: &Owned<RouterRow>, l| view! { <RowActions items=ops::admin_router_items(l, &o.row)/> }).class("actions"));
+    cols.push(
+        col(
+            K::Actions,
+            |o: &Owned<RouterRow>, l| view! { <RowActions items=ops::admin_router_items(l, &o.row)/> },
+        )
+        .class("actions"),
+    );
     cols
 }
 
 /// Search text: project, host and the row's own fields.
 fn admin_router_search(o: &Owned<RouterRow>) -> String {
-    owned_search(o, format!("{} {} {}", o.row.name, o.row.id, o.row.external_network.as_deref().unwrap_or("")))
+    owned_search(
+        o,
+        format!(
+            "{} {} {}",
+            o.row.name,
+            o.row.id,
+            o.row.external_network.as_deref().unwrap_or("")
+        ),
+    )
 }
 
 /// Every router can be picked for the bulk delete (Admin: any project's).
@@ -712,7 +969,10 @@ pub fn AdminRoutersPage() -> impl IntoView {
     let query = use_list_query();
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_routers(q));
     let columns = StoredValue::new(admin_router_columns());
-    let select = Select { key: admin_router_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: admin_router_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let stack = PagerState::new();
     view! {
         <PageHeader>
@@ -728,41 +988,52 @@ pub fn AdminRoutersPage() -> impl IntoView {
 }
 
 fn admin_floating_ip_columns(late: LateNames) -> Vec<Col<Owned<FloatingIpRow>>> {
-    let mut cols =
-        vec![
-            project_col(),
-            lift(col(K::IpAddress, |f: &FloatingIpRow, _| {
+    let mut cols = vec![
+        project_col(),
+        lift(
+            col(K::IpAddress, |f: &FloatingIpRow, _| {
                 let (href, ip) = (format!("/project/floating_ips/{}", f.id), f.ip.clone());
                 view! { <A href=href attr:class="mono strong">{ip}</A> }
-            }).sort_text(|f| f.ip.clone())),
-            lift(col(K::Description, |f: &FloatingIpRow, _| dash(f.description.clone()))),
-            // A paged page names the instance later ([`LateNames`]).
-            lift(col(K::MappedFixedIp, move |f: &FloatingIpRow, _| {
-                let fixed = dash(f.fixed_ip.clone());
-                match (&f.instance_id, &f.instance_name) {
-                    (Some(id), name) => {
-                        let href = format!("/project/instances/{id}");
-                        let label = match name {
-                            Some(n) => n.clone().into_any(),
-                            None => late_text(late, id.clone(), late_label, id.clone()),
-                        };
-                        view! { <A href=href>{label}</A> " " <span class="mono muted">{fixed}</span> }.into_any()
-                    }
-                    _ => view! { <span class="mono">{fixed}</span> }.into_any(),
+            })
+            .sort_text(|f| f.ip.clone()),
+        ),
+        lift(col(K::Description, |f: &FloatingIpRow, _| dash(f.description.clone()))),
+        // A paged page names the instance later ([`LateNames`]).
+        lift(col(K::MappedFixedIp, move |f: &FloatingIpRow, _| {
+            let fixed = dash(f.fixed_ip.clone());
+            match (&f.instance_id, &f.instance_name) {
+                (Some(id), name) => {
+                    let href = format!("/project/instances/{id}");
+                    let label = match name {
+                        Some(n) => n.clone().into_any(),
+                        None => late_text(late, id.clone(), late_label, id.clone()),
+                    };
+                    view! { <A href=href>{label}</A> " " <span class="mono muted">{fixed}</span> }.into_any()
                 }
-            })),
-            lift(col(K::Pool, |f: &FloatingIpRow, _| f.pool.clone()).sort_text(|f| f.pool.clone())),
-            lift(col(K::Status, |f: &FloatingIpRow, l| status_pill(&f.status, l)).sort_text(|f| f.status.clone())),
-            lift(col(K::DnsName, |f: &FloatingIpRow, _| dash(f.dns_name.clone())).requires(needs::DNS)),
-            lift(col(K::DnsDomain, |f: &FloatingIpRow, _| dash(f.dns_domain.clone())).requires(needs::DNS)),
-        ];
+                _ => view! { <span class="mono">{fixed}</span> }.into_any(),
+            }
+        })),
+        lift(col(K::Pool, |f: &FloatingIpRow, _| f.pool.clone()).sort_text(|f| f.pool.clone())),
+        lift(col(K::Status, |f: &FloatingIpRow, l| status_pill(&f.status, l)).sort_text(|f| f.status.clone())),
+        lift(col(K::DnsName, |f: &FloatingIpRow, _| dash(f.dns_name.clone())).requires(needs::DNS)),
+        lift(col(K::DnsDomain, |f: &FloatingIpRow, _| dash(f.dns_domain.clone())).requires(needs::DNS)),
+    ];
     cols.push(col(K::Actions, |o: &Owned<FloatingIpRow>, l| view! { <RowActions items=ops::admin_floating_ip_items(l, &o.row, o.project_id.as_deref())/> }).class("actions"));
     cols
 }
 
 /// Search text: project, host and the row's own fields.
 fn admin_floating_ip_search(o: &Owned<FloatingIpRow>) -> String {
-    owned_search(o, format!("{} {} {} {}", o.row.ip, o.row.pool, o.row.fixed_ip.as_deref().unwrap_or(""), o.row.instance_name.as_deref().unwrap_or("")))
+    owned_search(
+        o,
+        format!(
+            "{} {} {} {}",
+            o.row.ip,
+            o.row.pool,
+            o.row.fixed_ip.as_deref().unwrap_or(""),
+            o.row.instance_name.as_deref().unwrap_or("")
+        ),
+    )
 }
 
 /// Every floating IP can be picked for the bulk release, named by its address.
@@ -778,16 +1049,28 @@ fn admin_floating_ip_key(o: &Owned<FloatingIpRow>) -> Option<(String, String)> {
 pub fn AdminFloatingIpsPage() -> impl IntoView {
     let i18n = use_i18n();
     let query = use_list_query();
-    let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_admin_floating_ips(q));
+    let data = Resource::new(
+        move || (query.get(), data_version()),
+        |(q, _)| list_admin_floating_ips(q),
+    );
     let late = LateNames::new();
     let columns = StoredValue::new(admin_floating_ip_columns(late));
-    let select = Select { key: admin_floating_ip_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: admin_floating_ip_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let stack = PagerState::new();
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         late.active.set(t.data.paged);
         if t.data.paged {
-            let ids = t.data.rows.iter().filter(|o| o.row.instance_name.is_none()).filter_map(|o| o.row.instance_id.clone()).collect();
+            let ids = t
+                .data
+                .rows
+                .iter()
+                .filter(|o| o.row.instance_name.is_none())
+                .filter_map(|o| o.row.instance_id.clone())
+                .collect();
             load_late(NameKind::Servers, ids, late);
         }
     });
@@ -812,9 +1095,22 @@ admin_list!(
     Owned<TrunkRow>,
     vec![
         project_col(),
-        lift(col(K::Name, |t: &TrunkRow, _| link(format!("/project/trunks/{}", t.id), t.name.clone())).sort_text(|t| t.name.clone())),
-        lift(col(K::ParentPort, |t: &TrunkRow, _| link(format!("/project/networks/ports/{}", t.parent.id), t.parent.name.clone()))),
-        lift(col(K::Subports, |t: &TrunkRow, _| t.subports.len().to_string()).sort_num(|t| t.subports.len() as i64).class("num")),
+        lift(
+            col(K::Name, |t: &TrunkRow, _| link(
+                format!("/project/trunks/{}", t.id),
+                t.name.clone()
+            ))
+            .sort_text(|t| t.name.clone())
+        ),
+        lift(col(K::ParentPort, |t: &TrunkRow, _| link(
+            format!("/project/networks/ports/{}", t.parent.id),
+            t.parent.name.clone()
+        ))),
+        lift(
+            col(K::Subports, |t: &TrunkRow, _| t.subports.len().to_string())
+                .sort_num(|t| t.subports.len() as i64)
+                .class("num")
+        ),
         lift(col(K::Status, |t: &TrunkRow, l| status_pill(&t.status, l)).sort_text(|t| t.status.clone())),
         lift(col(K::AdminState, |t: &TrunkRow, l| admin_state(l, t.admin_up))),
     ],
@@ -822,34 +1118,55 @@ admin_list!(
 );
 
 fn rbac_columns() -> Vec<Col<RbacPolicyRow>> {
-    let mut cols =
-        vec![
-            col(K::Project, |r: &RbacPolicyRow, _| r.project.clone()).sort_text(|r| r.project.clone()),
-            col(K::Id, |r: &RbacPolicyRow, _| view! { <span class="mono small">{r.id.clone()}</span> }),
-            col(K::ObjectType, |r: &RbacPolicyRow, _| r.object_type.clone()).sort_text(|r| r.object_type.clone()),
-            col(K::RbacObject, |r: &RbacPolicyRow, _| {
-                // Types with a detail page link to it; the others show the name (or ID).
-                let page = match r.object_type.as_str() {
-                    "network" => Some("networks"),
-                    "qos_policy" => Some("qos"),
-                    "security_group" => Some("security_groups"),
-                    _ => None,
-                };
-                match page {
-                    Some(p) => link(format!("/project/{p}/{}", r.object.id), r.object.name.clone()),
-                    None => view! { <span class="mono small">{r.object.name.clone()}</span> }.into_any(),
-                }
-            }),
-            col(K::TargetProject, |r: &RbacPolicyRow, l| if r.target == "*" { t(l, K::AllProjects).to_string() } else { r.target.clone() }).sort_text(|r| r.target.clone()),
-            col(K::Action, |r: &RbacPolicyRow, _| view! { <span class="mono small">{r.action.clone()}</span> }),
-        ];
-    cols.push(col(K::Actions, |r: &RbacPolicyRow, l| view! { <RowActions items=ops::rbac_policy_items(l, r)/> }).class("actions"));
+    let mut cols = vec![
+        col(K::Project, |r: &RbacPolicyRow, _| r.project.clone()).sort_text(|r| r.project.clone()),
+        col(
+            K::Id,
+            |r: &RbacPolicyRow, _| view! { <span class="mono small">{r.id.clone()}</span> },
+        ),
+        col(K::ObjectType, |r: &RbacPolicyRow, _| r.object_type.clone()).sort_text(|r| r.object_type.clone()),
+        col(K::RbacObject, |r: &RbacPolicyRow, _| {
+            // Types with a detail page link to it; the others show the name (or ID).
+            let page = match r.object_type.as_str() {
+                "network" => Some("networks"),
+                "qos_policy" => Some("qos"),
+                "security_group" => Some("security_groups"),
+                _ => None,
+            };
+            match page {
+                Some(p) => link(format!("/project/{p}/{}", r.object.id), r.object.name.clone()),
+                None => view! { <span class="mono small">{r.object.name.clone()}</span> }.into_any(),
+            }
+        }),
+        col(K::TargetProject, |r: &RbacPolicyRow, l| {
+            if r.target == "*" {
+                t(l, K::AllProjects).to_string()
+            } else {
+                r.target.clone()
+            }
+        })
+        .sort_text(|r| r.target.clone()),
+        col(
+            K::Action,
+            |r: &RbacPolicyRow, _| view! { <span class="mono small">{r.action.clone()}</span> },
+        ),
+    ];
+    cols.push(
+        col(
+            K::Actions,
+            |r: &RbacPolicyRow, l| view! { <RowActions items=ops::rbac_policy_items(l, r)/> },
+        )
+        .class("actions"),
+    );
     cols
 }
 
 /// Every policy can be picked for the bulk delete; named `type object → target`.
 fn rbac_key(r: &RbacPolicyRow) -> Option<(String, String)> {
-    Some((r.id.clone(), format!("{} {} → {}", r.object_type, r.object.name, r.target)))
+    Some((
+        r.id.clone(),
+        format!("{} {} → {}", r.object_type, r.object.name, r.target),
+    ))
 }
 
 /// Admin › Network › RBAC Policies: Horizon's table with *Create RBAC Policy*,
@@ -859,7 +1176,10 @@ pub fn AdminRbacPoliciesPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_admin_rbac_policies());
     let columns = StoredValue::new(rbac_columns());
-    let select = Select { key: rbac_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: rbac_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteRbacPolicies picked=select.picked
@@ -884,13 +1204,27 @@ fn hypervisor_columns() -> Vec<Col<HypervisorRow>> {
     vec![
         col(K::Hostname, |h: &HypervisorRow, _| h.hostname.clone()).sort_text(|h| h.hostname.clone()),
         col(K::Type, |h: &HypervisorRow, _| h.kind.clone()),
-        col(K::VcpusUsed, |h: &HypervisorRow, _| h.vcpus_used.to_string()).sort_num(|h| h.vcpus_used).class("num"),
-        col(K::VcpusTotal, |h: &HypervisorRow, _| h.vcpus.to_string()).sort_num(|h| h.vcpus).class("num"),
-        col(K::RamUsed, move |h: &HypervisorRow, _| mib(h.ram_used_mb)).sort_num(|h| h.ram_used_mb).class("num"),
-        col(K::RamTotal, move |h: &HypervisorRow, _| mib(h.ram_mb)).sort_num(|h| h.ram_mb).class("num"),
-        col(K::DiskUsed, move |h: &HypervisorRow, _| gib(h.disk_used_gb)).sort_num(|h| h.disk_used_gb).class("num"),
-        col(K::DiskTotal, move |h: &HypervisorRow, _| gib(h.disk_gb)).sort_num(|h| h.disk_gb).class("num"),
-        col(K::Instances, |h: &HypervisorRow, _| h.instances.to_string()).sort_num(|h| h.instances).class("num"),
+        col(K::VcpusUsed, |h: &HypervisorRow, _| h.vcpus_used.to_string())
+            .sort_num(|h| h.vcpus_used)
+            .class("num"),
+        col(K::VcpusTotal, |h: &HypervisorRow, _| h.vcpus.to_string())
+            .sort_num(|h| h.vcpus)
+            .class("num"),
+        col(K::RamUsed, move |h: &HypervisorRow, _| mib(h.ram_used_mb))
+            .sort_num(|h| h.ram_used_mb)
+            .class("num"),
+        col(K::RamTotal, move |h: &HypervisorRow, _| mib(h.ram_mb))
+            .sort_num(|h| h.ram_mb)
+            .class("num"),
+        col(K::DiskUsed, move |h: &HypervisorRow, _| gib(h.disk_used_gb))
+            .sort_num(|h| h.disk_used_gb)
+            .class("num"),
+        col(K::DiskTotal, move |h: &HypervisorRow, _| gib(h.disk_gb))
+            .sort_num(|h| h.disk_gb)
+            .class("num"),
+        col(K::Instances, |h: &HypervisorRow, _| h.instances.to_string())
+            .sort_num(|h| h.instances)
+            .class("num"),
     ]
 }
 
@@ -901,7 +1235,12 @@ fn provider_cell(l: Lang, r: &Option<ProviderResource>, unit: QuotaUnit) -> AnyV
         None => view! { <span>"-"</span> }.into_any(),
         Some(r) => {
             let main = format!("{} / {}", fmt_amount(r.used, unit), fmt_amount(r.total, unit));
-            let sub = format!("{} {} · ×{}", t(l, K::ReservedRatio), fmt_amount(r.reserved, unit), decimal(l, r.allocation_ratio, 1));
+            let sub = format!(
+                "{} {} · ×{}",
+                t(l, K::ReservedRatio),
+                fmt_amount(r.reserved, unit),
+                decimal(l, r.allocation_ratio, 1)
+            );
             view! { <span>{main}</span><br/><span class="small muted">{sub}</span> }.into_any()
         }
     }
@@ -911,7 +1250,10 @@ fn provider_cell(l: Lang, r: &Option<ProviderResource>, unit: QuotaUnit) -> AnyV
 /// provider has them, vGPUs, their type (custom traits) and the other classes.
 /// The name is not sortable: the rows are a tree (hosts, their GPUs under them),
 /// and a host with devices has a toggle that shows or hides them (`expanded`).
-fn provider_columns(rows: &[ResourceProviderRow], expanded: RwSignal<std::collections::HashSet<String>>) -> Vec<Col<ResourceProviderRow>> {
+fn provider_columns(
+    rows: &[ResourceProviderRow],
+    expanded: RwSignal<std::collections::HashSet<String>>,
+) -> Vec<Col<ResourceProviderRow>> {
     let mut cols = vec![
         col(K::Name, move |p: &ResourceProviderRow, l| {
             // GPUs (and other nested providers) indented under their host.
@@ -944,12 +1286,26 @@ fn provider_columns(rows: &[ResourceProviderRow], expanded: RwSignal<std::collec
             }
             .into_any()
         }),
-        col(K::Vcpus, |p: &ResourceProviderRow, l| provider_cell(l, &p.vcpus, QuotaUnit::Count)).class("num"),
-        col(K::Ram, |p: &ResourceProviderRow, l| provider_cell(l, &p.memory_mb, QuotaUnit::Mib)).class("num"),
-        col(K::Disk, |p: &ResourceProviderRow, l| provider_cell(l, &p.disk_gb, QuotaUnit::Gib)).class("num"),
+        col(K::Vcpus, |p: &ResourceProviderRow, l| {
+            provider_cell(l, &p.vcpus, QuotaUnit::Count)
+        })
+        .class("num"),
+        col(K::Ram, |p: &ResourceProviderRow, l| {
+            provider_cell(l, &p.memory_mb, QuotaUnit::Mib)
+        })
+        .class("num"),
+        col(K::Disk, |p: &ResourceProviderRow, l| {
+            provider_cell(l, &p.disk_gb, QuotaUnit::Gib)
+        })
+        .class("num"),
     ];
     if rows.iter().any(|r| r.vgpus.is_some()) {
-        cols.push(col(K::Vgpus, |p: &ResourceProviderRow, l| provider_cell(l, &p.vgpus, QuotaUnit::Count)).class("num"));
+        cols.push(
+            col(K::Vgpus, |p: &ResourceProviderRow, l| {
+                provider_cell(l, &p.vgpus, QuotaUnit::Count)
+            })
+            .class("num"),
+        );
     }
     // Only when the cloud names vGPU types with custom traits (ttcp-dev doesn't).
     if rows.iter().any(|r| !r.custom_traits.is_empty()) {
@@ -1064,10 +1420,21 @@ pub fn HypervisorsPage() -> impl IntoView {
 fn aggregate_columns() -> Vec<Col<AggregateRow>> {
     vec![
         col(K::Name, |a: &AggregateRow, _| a.name.clone()).sort_text(|a| a.name.clone()),
-        col(K::AvailabilityZone, |a: &AggregateRow, _| view! { <AzPill name=a.zone.clone()/> }).sort_text(|a| a.zone.clone().unwrap_or_default()),
-        col(K::Hosts, |a: &AggregateRow, _| view! { <ul class="plain">{a.hosts.iter().map(|h| view! { <li>{h.clone()}</li> }).collect_view()}</ul> }),
+        col(
+            K::AvailabilityZone,
+            |a: &AggregateRow, _| view! { <AzPill name=a.zone.clone()/> },
+        )
+        .sort_text(|a| a.zone.clone().unwrap_or_default()),
+        col(
+            K::Hosts,
+            |a: &AggregateRow, _| view! { <ul class="plain">{a.hosts.iter().map(|h| view! { <li>{h.clone()}</li> }).collect_view()}</ul> },
+        ),
         col(K::Metadata, |a: &AggregateRow, l| specs_cell(l, &a.metadata)),
-        col(K::Actions, |a: &AggregateRow, l| view! { <RowActions items=ops::aggregate_items(l, a)/> }).class("actions"),
+        col(
+            K::Actions,
+            |a: &AggregateRow, l| view! { <RowActions items=ops::aggregate_items(l, a)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -1083,8 +1450,15 @@ fn aggregate_key(a: &AggregateRow) -> Option<(String, String)> {
 
 fn zone_columns() -> Vec<Col<ZoneRow>> {
     vec![
-        col(K::AvailabilityZoneName, |z: &ZoneRow, _| view! { <AzPill name=Some(z.name.clone())/> }).sort_text(|z| z.name.clone()),
-        col(K::Hosts, |z: &ZoneRow, _| view! { <ul class="plain">{z.hosts.iter().map(|h| view! { <li>{h.clone()}</li> }).collect_view()}</ul> }),
+        col(
+            K::AvailabilityZoneName,
+            |z: &ZoneRow, _| view! { <AzPill name=Some(z.name.clone())/> },
+        )
+        .sort_text(|z| z.name.clone()),
+        col(
+            K::Hosts,
+            |z: &ZoneRow, _| view! { <ul class="plain">{z.hosts.iter().map(|h| view! { <li>{h.clone()}</li> }).collect_view()}</ul> },
+        ),
         col(K::Available, |z: &ZoneRow, l| yes_no(l, z.available)),
     ]
 }
@@ -1097,7 +1471,10 @@ pub fn AggregatesPage() -> impl IntoView {
     let data = Resource::new(data_version, |_| get_admin_aggregates());
     let aggregates = StoredValue::new(aggregate_columns());
     let zones = StoredValue::new(zone_columns());
-    let select = Select { key: aggregate_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: aggregate_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteAggregates picked=select.picked
@@ -1119,11 +1496,17 @@ fn volume_type_columns() -> Vec<Col<VolumeTypeRow>> {
     vec![
         col(K::Name, |v: &VolumeTypeRow, _| v.name.clone()).sort_text(|v| v.name.clone()),
         col(K::Description, |v: &VolumeTypeRow, _| dash(v.description.clone())),
-        col(K::AssociatedQosSpec, |v: &VolumeTypeRow, _| dash(v.qos.as_ref().map(|q| q.name.clone()))),
+        col(K::AssociatedQosSpec, |v: &VolumeTypeRow, _| {
+            dash(v.qos.as_ref().map(|q| q.name.clone()))
+        }),
         col(K::Encryption, |v: &VolumeTypeRow, l| yes_no(l, v.encrypted)),
         col(K::Public, |v: &VolumeTypeRow, l| yes_no(l, v.public)),
         col(K::ExtraSpecs, |v: &VolumeTypeRow, l| specs_cell(l, &v.extra_specs)),
-        col(K::Actions, |v: &VolumeTypeRow, l| view! { <RowActions items=ops::volume_type_items(l, v)/> }).class("actions"),
+        col(
+            K::Actions,
+            |v: &VolumeTypeRow, l| view! { <RowActions items=ops::volume_type_items(l, v)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -1136,7 +1519,11 @@ fn qos_columns() -> Vec<Col<QosSpecRow>> {
         col(K::Name, |q: &QosSpecRow, _| q.name.clone()).sort_text(|q| q.name.clone()),
         col(K::Consumer, |q: &QosSpecRow, _| q.consumer.clone()),
         col(K::Specs, |q: &QosSpecRow, l| specs_cell(l, &q.specs)),
-        col(K::Actions, |q: &QosSpecRow, l| view! { <RowActions items=ops::qos_spec_items(l, q)/> }).class("actions"),
+        col(
+            K::Actions,
+            |q: &QosSpecRow, l| view! { <RowActions items=ops::qos_spec_items(l, q)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -1149,7 +1536,10 @@ pub fn VolumeTypesPage() -> impl IntoView {
     let data = Resource::new(data_version, |_| get_admin_volume_types());
     let types = StoredValue::new(volume_type_columns());
     let qos = StoredValue::new(qos_columns());
-    let select = Select { key: volume_type_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: volume_type_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteVolumeTypes picked=select.picked
@@ -1231,8 +1621,13 @@ fn defaults_tab(s: QuotaService) -> K {
 fn default_columns(service: QuotaService) -> Vec<Col<QuotaRow>> {
     vec![
         col(K::QuotaName, move |r: &QuotaRow, l| quota_label(l, service, &r.key)).sort_text(|r| r.key.clone()),
-        col(K::QuotaLimit, move |r: &QuotaRow, l| r.limit.map_or_else(|| t(l, K::Unlimited).to_string(), |n| fmt_amount(n, service.unit(&r.key))))
-            .sort_num(|r| r.limit.unwrap_or(i64::MAX)),
+        col(K::QuotaLimit, move |r: &QuotaRow, l| {
+            r.limit.map_or_else(
+                || t(l, K::Unlimited).to_string(),
+                |n| fmt_amount(n, service.unit(&r.key)),
+            )
+        })
+        .sort_num(|r| r.limit.unwrap_or(i64::MAX)),
     ]
 }
 
@@ -1245,7 +1640,10 @@ pub fn MetadefsPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_metadef_namespaces());
     let columns = StoredValue::new(metadef_columns());
-    let select = Select { key: metadef_key, picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: metadef_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteNamespaces picked=select.picked
@@ -1290,12 +1688,19 @@ pub fn MetadefDetailPage() -> impl IntoView {
 /// *Overview*: Horizon's fields, then the resource types with their prefix and target.
 fn metadef_overview(d: &MetadefNamespaceDetail, l: Lang) -> AnyView {
     let n = d.namespace.clone();
-    let (created, updated) = (d.created_at.as_deref().map(short_time), d.updated_at.as_deref().map(short_time));
+    let (created, updated) = (
+        d.created_at.as_deref().map(short_time),
+        d.updated_at.as_deref().map(short_time),
+    );
     let associations = d.associations.clone();
     let columns = vec![
         col(K::Name, |a: &MetadefAssociation, _| mono(a.name.clone())).sort_text(|a| a.name.clone()),
-        col(K::Prefix, |a: &MetadefAssociation, _| a.prefix.clone().map_or_else(|| dash(None::<String>).into_any(), mono)),
-        col(K::PropertiesTarget, |a: &MetadefAssociation, _| dash(a.properties_target.clone())),
+        col(K::Prefix, |a: &MetadefAssociation, _| {
+            a.prefix.clone().map_or_else(|| dash(None::<String>).into_any(), mono)
+        }),
+        col(K::PropertiesTarget, |a: &MetadefAssociation, _| {
+            dash(a.properties_target.clone())
+        }),
     ];
     view! {
         <div class="cards">
@@ -1320,16 +1725,21 @@ fn metadef_overview(d: &MetadefNamespaceDetail, l: Lang) -> AnyView {
 fn metadef_contents(d: &MetadefNamespaceDetail, l: Lang) -> AnyView {
     let props = vec![
         col(K::Name, |p: &MetadefProperty, _| mono(p.name.clone())).sort_text(|p| p.name.to_lowercase()),
-        col(K::Title, |p: &MetadefProperty, _| dash(p.title.clone())).sort_text(|p| p.title.clone().unwrap_or_default()),
+        col(K::Title, |p: &MetadefProperty, _| dash(p.title.clone()))
+            .sort_text(|p| p.title.clone().unwrap_or_default()),
         col(K::Type, |p: &MetadefProperty, _| mono(p.kind.clone())).sort_text(|p| p.kind.clone()),
         col(K::DefaultValue, |p: &MetadefProperty, _| dash(p.default.clone())),
-        col(K::AllowedValues, |p: &MetadefProperty, _| dash((!p.allowed.is_empty()).then(|| p.allowed.join(", ")))),
+        col(K::AllowedValues, |p: &MetadefProperty, _| {
+            dash((!p.allowed.is_empty()).then(|| p.allowed.join(", ")))
+        }),
         col(K::Description, |p: &MetadefProperty, _| dash(p.description.clone())),
     ];
     let objects = vec![
         col(K::Name, |o: &MetadefObject, _| o.name.clone()).sort_text(|o| o.name.to_lowercase()),
         col(K::Description, |o: &MetadefObject, _| dash(o.description.clone())),
-        col(K::Properties, |o: &MetadefObject, _| dash((!o.properties.is_empty()).then(|| o.properties.join(", ")))),
+        col(K::Properties, |o: &MetadefObject, _| {
+            dash((!o.properties.is_empty()).then(|| o.properties.join(", ")))
+        }),
     ];
     let (properties, objs, raw) = (d.properties.clone(), d.objects.clone(), d.raw.clone());
     view! {
@@ -1356,7 +1766,8 @@ fn metadef_columns() -> Vec<Col<MetadefNamespace>> {
     vec![
         col(K::Name, |n: &MetadefNamespace, _| {
             // The namespace is what the APIs and `Update Metadata` use.
-            let ns = (n.name != n.namespace).then(|| view! { <div class="muted mono small">{n.namespace.clone()}</div> });
+            let ns =
+                (n.name != n.namespace).then(|| view! { <div class="muted mono small">{n.namespace.clone()}</div> });
             view! { {link(format!("/admin/metadata_defs/{}", n.namespace), n.name.clone())} {ns} }
         })
         .sort_text(|n| n.name.to_lowercase()),
@@ -1367,16 +1778,36 @@ fn metadef_columns() -> Vec<Col<MetadefNamespace>> {
         }),
         col(K::Public, |n: &MetadefNamespace, l| yes_no(l, n.public)),
         col(K::Protected, |n: &MetadefNamespace, l| yes_no(l, n.protected)),
-        col(K::Actions, |n: &MetadefNamespace, l| view! { <RowActions items=ops::metadef_items(l, n)/> }).class("actions"),
+        col(
+            K::Actions,
+            |n: &MetadefNamespace, l| view! { <RowActions items=ops::metadef_items(l, n)/> },
+        )
+        .class("actions"),
     ]
 }
 
 fn metadef_search(n: &MetadefNamespace) -> String {
-    format!("{} {} {} {}", n.name, n.namespace, n.description.as_deref().unwrap_or(""), n.resource_types.join(" "))
+    format!(
+        "{} {} {} {}",
+        n.name,
+        n.namespace,
+        n.description.as_deref().unwrap_or(""),
+        n.resource_types.join(" ")
+    )
 }
 
 fn service_search(s: &CatalogService) -> String {
-    format!("{} {} {} {}", s.name, s.service_type, s.region, s.endpoints.iter().map(|(_, u)| u.as_str()).collect::<Vec<_>>().join(" "))
+    format!(
+        "{} {} {} {}",
+        s.name,
+        s.service_type,
+        s.region,
+        s.endpoints
+            .iter()
+            .map(|(_, u)| u.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
 }
 
 fn host_search(s: &HostService) -> String {
@@ -1384,7 +1815,13 @@ fn host_search(s: &HostService) -> String {
 }
 
 fn agent_search(a: &NetworkAgent) -> String {
-    format!("{} {} {} {}", a.agent_type, a.binary, a.host, a.zone.as_deref().unwrap_or(""))
+    format!(
+        "{} {} {} {}",
+        a.agent_type,
+        a.binary,
+        a.host,
+        a.zone.as_deref().unwrap_or("")
+    )
 }
 
 /// What Moonlight detected in this project and region, and which panels it
@@ -1427,21 +1864,39 @@ mod tests {
     use super::*;
 
     fn some<T>(on: bool) -> Option<Fallible<T>> {
-        on.then(|| Fallible { rows: vec![], error: None })
+        on.then(|| Fallible {
+            rows: vec![],
+            error: None,
+        })
     }
 
     fn info(compute: bool, volume: bool, agents: bool) -> SystemInfo {
-        SystemInfo { services: vec![], compute: some(compute), volume: some(volume), agents: some(agents) }
+        SystemInfo {
+            services: vec![],
+            compute: some(compute),
+            volume: some(volume),
+            agents: some(agents),
+        }
     }
 
     #[test]
     fn tabs_follow_what_the_cloud_has() {
         assert_eq!(
             tabs(&info(true, true, true)),
-            [K::CatalogServices, K::ComputeServices, K::BlockStorageServices, K::NetworkAgents, K::Modules],
+            [
+                K::CatalogServices,
+                K::ComputeServices,
+                K::BlockStorageServices,
+                K::NetworkAgents,
+                K::Modules
+            ],
             "Horizon's order, then the capabilities"
         );
-        assert_eq!(tabs(&info(true, false, false)), [K::CatalogServices, K::ComputeServices, K::Modules], "no Cinder, no agent extension");
+        assert_eq!(
+            tabs(&info(true, false, false)),
+            [K::CatalogServices, K::ComputeServices, K::Modules],
+            "no Cinder, no agent extension"
+        );
     }
 
     #[test]
@@ -1452,7 +1907,10 @@ mod tests {
 
     #[test]
     fn defaults_tabs_use_horizons_names() {
-        assert_eq!([QuotaService::Compute, QuotaService::Volume, QuotaService::Network].map(defaults_tab), [K::ComputeQuotas, K::VolumeQuotas, K::NetworkQuotas]);
+        assert_eq!(
+            [QuotaService::Compute, QuotaService::Volume, QuotaService::Network].map(defaults_tab),
+            [K::ComputeQuotas, K::VolumeQuotas, K::NetworkQuotas]
+        );
     }
 
     #[test]
@@ -1462,13 +1920,29 @@ mod tests {
             host: None,
             project_id: None,
             row: NetworkRow {
-                id: "n1".into(), name: "n".into(), subnets: vec![], shared: false, external: false, status: "ACTIVE".into(), admin_up: true,
-                availability_zones: vec![], owned: false, dhcp_agents: c, provider: None,
+                id: "n1".into(),
+                name: "n".into(),
+                subnets: vec![],
+                shared: false,
+                external: false,
+                status: "ACTIVE".into(),
+                admin_up: true,
+                availability_zones: vec![],
+                owned: false,
+                dhcp_agents: c,
+                provider: None,
             },
         };
-        let has = |rows: &[Owned<NetworkRow>]| drop_empty_dhcp_col(admin_network_columns(), rows).iter().any(|c| c.header == K::DhcpAgents);
+        let has = |rows: &[Owned<NetworkRow>]| {
+            drop_empty_dhcp_col(admin_network_columns(), rows)
+                .iter()
+                .any(|c| c.header == K::DhcpAgents)
+        };
         assert!(has(&[net(Some(0)), net(Some(2))]), "ML2/OVS: counted, zeros included");
-        assert!(!has(&[net(None), net(None)]), "OVN has no DHCP agent: no column of dashes");
+        assert!(
+            !has(&[net(None), net(None)]),
+            "OVN has no DHCP agent: no column of dashes"
+        );
         assert!(!has(&[]), "an empty page has nothing to count");
     }
 }

@@ -12,7 +12,7 @@ use leptos::task::spawn_local;
 
 use crate::api::run_action;
 use crate::components::dialog::RequestList;
-use crate::i18n::{job_count, job_expired, job_summary, use_i18n, K};
+use crate::i18n::{K, job_count, job_expired, job_summary, use_i18n};
 use crate::model::{ActionOutcome, AppError, ErrorKind, OsAction, RequestPreview, WriteMode};
 
 /// Items sent per `run_action` call: small enough for the counter to move
@@ -72,7 +72,16 @@ pub struct Job {
 
 impl Job {
     pub fn new(id: u64, title: String, total: usize) -> Self {
-        Job { id, title, total, done: 0, failed: vec![], dry_run: false, requests: vec![], state: JobState::Running }
+        Job {
+            id,
+            title,
+            total,
+            done: 0,
+            failed: vec![],
+            dry_run: false,
+            requests: vec![],
+            state: JobState::Running,
+        }
     }
 
     /// Records the answer to a chunk of `sent` items; `false` stops the job.
@@ -81,7 +90,8 @@ impl Job {
             Ok(out) => {
                 self.done += sent;
                 self.dry_run |= out.mode == WriteMode::DryRun;
-                self.failed.extend(out.results.into_iter().filter_map(|r| Some((r.label, r.error?))));
+                self.failed
+                    .extend(out.results.into_iter().filter_map(|r| Some((r.label, r.error?))));
                 self.requests.extend(out.requests);
                 if self.done >= self.total {
                     self.state = JobState::Finished;
@@ -119,7 +129,10 @@ pub struct Jobs {
 
 impl Jobs {
     pub fn provide() -> Self {
-        let j = Jobs { list: RwSignal::new(vec![]), next: StoredValue::new(0) };
+        let j = Jobs {
+            list: RwSignal::new(vec![]),
+            next: StoredValue::new(0),
+        };
         provide_context(j);
         j
     }
@@ -153,7 +166,10 @@ impl Jobs {
                     break;
                 }
             }
-            let fades = jobs.list.try_with_untracked(|l| l.iter().any(|j| j.id == id && j.fades())).unwrap_or(false);
+            let fades = jobs
+                .list
+                .try_with_untracked(|l| l.iter().any(|j| j.id == id && j.fades()))
+                .unwrap_or(false);
             if fades {
                 set_timeout(move || jobs.dismiss(id), FADE_AFTER);
             }
@@ -187,28 +203,38 @@ fn JobCard(job: Job, jobs: Jobs) -> impl IntoView {
             <small class="muted">{move || i18n.t(K::JobKeepTabOpen)}</small>
         }
         .into_any(),
-        JobState::Finished => view! { <span class="job-count">{move || job_summary(i18n.lang(), ok, n_failed)}</span> }.into_any(),
+        JobState::Finished => {
+            view! { <span class="job-count">{move || job_summary(i18n.lang(), ok, n_failed)}</span> }.into_any()
+        }
         JobState::Expired => view! {
             <span class="job-stop">{move || job_expired(i18n.lang(), done, total)}</span>
             <a class="btn" href="/login" rel="external">{move || i18n.t(K::SignIn)}</a>
         }
         .into_any(),
         JobState::Stopped(e) => {
-            let e = if e.contains("writes are disabled") { i18n.t(K::WritesOff).to_string() } else { e };
+            let e = if e.contains("writes are disabled") {
+                i18n.t(K::WritesOff).to_string()
+            } else {
+                e
+            };
             view! { <span class="job-stop">{e}</span><span class="job-count">{move || job_count(i18n.lang(), done, total)}</span> }.into_any()
         }
     };
-    let dry = job.dry_run.then(|| view! { <span class="job-dry">{move || i18n.t(K::DryRunTitle)}</span> });
+    let dry = job
+        .dry_run
+        .then(|| view! { <span class="job-dry">{move || i18n.t(K::DryRunTitle)}</span> });
     let failures = (!job.failed.is_empty()).then(|| view! {
         <ul class="job-failures">
             {job.failed.into_iter().map(|(label, e)| view! { <li><span class="strong">{label}</span>": "{e}</li> }).collect_view()}
         </ul>
     });
-    let requests = (!job.requests.is_empty()).then(|| view! {
-        <details class="job-requests">
-            <summary>{move || i18n.t(K::JobRequests)}</summary>
-            <RequestList requests=job.requests/>
-        </details>
+    let requests = (!job.requests.is_empty()).then(|| {
+        view! {
+            <details class="job-requests">
+                <summary>{move || i18n.t(K::JobRequests)}</summary>
+                <RequestList requests=job.requests/>
+            </details>
+        }
     });
     // The state is a dot before the title (blue running, green done, red failed).
     let class = if n_failed > 0 || matches!(job.state, JobState::Expired | JobState::Stopped(_)) {
@@ -245,8 +271,20 @@ mod tests {
     }
 
     fn outcome(mode: WriteMode, results: &[(&str, Option<&str>)]) -> ActionOutcome {
-        let results = results.iter().map(|(l, e)| ItemResult { label: l.to_string(), error: e.map(str::to_string) }).collect();
-        ActionOutcome { mode, requests: vec![], secret: None, results, created: None }
+        let results = results
+            .iter()
+            .map(|(l, e)| ItemResult {
+                label: l.to_string(),
+                error: e.map(str::to_string),
+            })
+            .collect();
+        ActionOutcome {
+            mode,
+            requests: vec![],
+            secret: None,
+            results,
+            created: None,
+        }
     }
 
     #[test]
@@ -256,7 +294,10 @@ mod tests {
         assert!(in_background(&batch(10), 10), "`from` includes the number itself");
         assert!(in_background(&batch(11), 10));
         assert!(!in_background(&batch(500), 0), "0 keeps every batch in the dialog");
-        assert!(!in_background(&OsAction::ServerStart { id: "x".into() }, 1), "not a batch");
+        assert!(
+            !in_background(&OsAction::ServerStart { id: "x".into() }, 1),
+            "not a batch"
+        );
     }
 
     #[test]
@@ -271,10 +312,25 @@ mod tests {
     #[test]
     fn a_job_counts_items_failures_and_finishes() {
         let mut j = Job::new(0, "Delete Instances".into(), 7);
-        assert!(j.record(5, Ok(outcome(WriteMode::On, &[("a", None), ("b", Some("in use")), ("c", None), ("d", None), ("e", None)]))));
+        assert!(j.record(
+            5,
+            Ok(outcome(
+                WriteMode::On,
+                &[
+                    ("a", None),
+                    ("b", Some("in use")),
+                    ("c", None),
+                    ("d", None),
+                    ("e", None)
+                ]
+            ))
+        ));
         assert_eq!((j.done, j.state.clone()), (5, JobState::Running));
         assert!(j.record(2, Ok(outcome(WriteMode::On, &[("f", None), ("g", None)]))));
-        assert_eq!((j.done, j.succeeded(), j.failed.clone(), j.state.clone()), (7, 6, vec![("b".into(), "in use".into())], JobState::Finished));
+        assert_eq!(
+            (j.done, j.succeeded(), j.failed.clone(), j.state.clone()),
+            (7, 6, vec![("b".into(), "in use".into())], JobState::Finished)
+        );
         assert!(!j.fades(), "a failure keeps the card until dismissed");
     }
 
@@ -293,7 +349,11 @@ mod tests {
         let mut j = Job::new(0, "t".into(), 12);
         j.record(5, Ok(outcome(WriteMode::On, &[("a", None); 5])));
         assert!(!j.record(5, Err(AppError::new(ErrorKind::Unauthenticated, "expired"))));
-        assert_eq!((j.done, j.state.clone()), (5, JobState::Expired), "the chunk that met the expired token is not counted");
+        assert_eq!(
+            (j.done, j.state.clone()),
+            (5, JobState::Expired),
+            "the chunk that met the expired token is not counted"
+        );
         let mut k = Job::new(1, "t".into(), 12);
         assert!(!k.record(5, Err(AppError::invalid("writes are disabled"))));
         assert_eq!(k.state, JobState::Stopped("writes are disabled".into()));

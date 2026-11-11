@@ -25,8 +25,8 @@ use crate::components::select::Combo;
 use crate::components::stack_graph;
 use crate::components::topo_canvas::{Canvas, KeptView};
 use crate::components::topo_layout as geo;
-use crate::components::widgets::{copy_to_clipboard, PageHeader};
-use crate::i18n::{t, use_i18n, K};
+use crate::components::widgets::{PageHeader, copy_to_clipboard};
+use crate::i18n::{K, t, use_i18n};
 use crate::model::*;
 
 /// `localStorage` key of the draft.
@@ -152,7 +152,10 @@ pub fn TemplateGeneratorPage() -> impl IntoView {
     });
 
     let available = Memo::new(move |_| {
-        types.get().and_then(|r| r.ok()).map(|td| td.data.into_iter().map(|t| t.name).collect::<HashSet<_>>())
+        types
+            .get()
+            .and_then(|r| r.ok())
+            .map(|td| td.data.into_iter().map(|t| t.name).collect::<HashSet<_>>())
     });
     let add = move |kind: String| {
         let mut name = String::new();
@@ -179,8 +182,17 @@ pub fn TemplateGeneratorPage() -> impl IntoView {
     };
     let other_types = Signal::derive(move || {
         types.get().map(|r| {
-            r.map(|td| td.data.into_iter().map(|t| Choice { value: t.name.clone(), label: t.name, ..Default::default() }).collect())
-                .unwrap_or_default()
+            r.map(|td| {
+                td.data
+                    .into_iter()
+                    .map(|t| Choice {
+                        value: t.name.clone(),
+                        label: t.name,
+                        ..Default::default()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
         })
     });
 
@@ -245,7 +257,11 @@ fn palette_view(avail: Option<HashSet<String>>, add: impl Fn(String) + Copy + Se
     hot::PALETTE
         .iter()
         .filter_map(|(service, kinds)| {
-            let shown: Vec<&str> = kinds.iter().copied().filter(|k| avail.as_ref().is_none_or(|a| a.contains(*k))).collect();
+            let shown: Vec<&str> = kinds
+                .iter()
+                .copied()
+                .filter(|k| avail.as_ref().is_none_or(|a| a.contains(*k)))
+                .collect();
             (!shown.is_empty()).then(|| {
                 view! {
                     <h3 class="tg-service">{*service}</h3>
@@ -286,7 +302,10 @@ fn camel_breaks(s: &str) -> String {
     let mut out = String::new();
     for (i, ch) in c.iter().enumerate() {
         let next_lower = c.get(i + 1).is_some_and(char::is_ascii_lowercase);
-        if i > 0 && ch.is_ascii_uppercase() && (c[i - 1].is_ascii_lowercase() || (next_lower && c[i - 1].is_ascii_uppercase())) {
+        if i > 0
+            && ch.is_ascii_uppercase()
+            && (c[i - 1].is_ascii_lowercase() || (next_lower && c[i - 1].is_ascii_uppercase()))
+        {
             out.push('\u{200B}');
         }
         out.push(*ch);
@@ -296,10 +315,17 @@ fn camel_breaks(s: &str) -> String {
 
 /// Version and description.
 #[component]
-fn TemplateCard(draft: RwSignal<Draft>, versions: LocalResource<Result<Timed<Vec<TemplateVersion>>, AppError>>) -> impl IntoView {
+fn TemplateCard(
+    draft: RwSignal<Draft>,
+    versions: LocalResource<Result<Timed<Vec<TemplateVersion>>, AppError>>,
+) -> impl IntoView {
     let i18n = use_i18n();
     let options = move || {
-        let list = versions.get().and_then(|r| r.ok()).map(|td| hot::hot_versions(&td.data)).unwrap_or_else(|| hot::hot_versions(&[]));
+        let list = versions
+            .get()
+            .and_then(|r| r.ok())
+            .map(|td| hot::hot_versions(&td.data))
+            .unwrap_or_else(|| hot::hot_versions(&[]));
         let current = draft.with(|d| d.version().to_string());
         let mut list = list;
         if !list.contains(&current) {
@@ -307,7 +333,9 @@ fn TemplateCard(draft: RwSignal<Draft>, versions: LocalResource<Result<Timed<Vec
         }
         // `selected` on the option, not `prop:value` on the select: the options
         // arrive after the value, and a select can't take a value it lacks yet.
-        list.into_iter().map(|v| view! { <option value=v.clone() selected=v == current>{v.clone()}</option> }).collect_view()
+        list.into_iter()
+            .map(|v| view! { <option value=v.clone() selected=v == current>{v.clone()}</option> })
+            .collect_view()
     };
     // A fresh draft takes the cloud's newest HOT version.
     Effect::new(move |_| {
@@ -349,7 +377,8 @@ fn ResourcesCard(
 ) -> impl IntoView {
     let i18n = use_i18n();
     let rows = move || {
-        let list: Vec<(String, String)> = draft.with(|d| d.resources.iter().map(|r| (r.name.clone(), r.kind.clone())).collect());
+        let list: Vec<(String, String)> =
+            draft.with(|d| d.resources.iter().map(|r| (r.name.clone(), r.kind.clone())).collect());
         if list.is_empty() {
             return view! { <p class="muted">{move || i18n.t(K::TgNoResourcesYet)}</p> }.into_any();
         }
@@ -398,7 +427,11 @@ const NODE_R: f64 = 28.0;
 #[derive(Clone)]
 enum Drag {
     /// Moving node `name`: where the pointer and the node were when it started.
-    Move { name: String, start: (f64, f64), orig: (f64, f64) },
+    Move {
+        name: String,
+        start: (f64, f64),
+        orig: (f64, f64),
+    },
     /// Drawing a link from `from`.
     Link { from: String },
 }
@@ -447,7 +480,8 @@ fn DraftCanvas(
         let (_, v) = keep.try_get_value()??;
         let (scale, off) = geo::fit(v, r.width(), r.height());
         // Never a NaN: it would end up in the saved draft as a node's place.
-        Some((v.0 + (cx - r.left() - off) / scale, v.1 + (cy - r.top()) / scale)).filter(|(x, y)| x.is_finite() && y.is_finite())
+        Some((v.0 + (cx - r.left() - off) / scale, v.1 + (cy - r.top()) / scale))
+            .filter(|(x, y)| x.is_finite() && y.is_finite())
     };
     let to_px = move |cx: f64, cy: f64| {
         wrap.get_untracked().map(|w| {
@@ -456,7 +490,14 @@ fn DraftCanvas(
         })
     };
     // Only what the drawing needs, so typing in the form doesn't redraw it.
-    let kinds = Memo::new(move |_| draft.with(|d| d.resources.iter().map(|r| (r.name.clone(), r.kind.clone())).collect::<Vec<_>>()));
+    let kinds = Memo::new(move |_| {
+        draft.with(|d| {
+            d.resources
+                .iter()
+                .map(|r| (r.name.clone(), r.kind.clone()))
+                .collect::<Vec<_>>()
+        })
+    });
     let positions = Memo::new(move |_| {
         let mut p = draft.with(Draft::positions);
         if let Some((n, at)) = dragged.get() {
@@ -478,9 +519,15 @@ fn DraftCanvas(
     // Grows in steps of four cells, so a moved node rarely changes it (a new
     // size makes the canvas fit the view again).
     let full = Memo::new(move |_| {
-        let (mx, my) = positions.with(|p| p.iter().fold((0.0_f64, 0.0_f64), |(a, b), (_, (x, y))| (a.max(*x), b.max(*y))));
+        let (mx, my) = positions.with(|p| {
+            p.iter()
+                .fold((0.0_f64, 0.0_f64), |(a, b), (_, (x, y))| (a.max(*x), b.max(*y)))
+        });
         let step = hot::GRID * 4.0;
-        (((mx + hot::GRID) / step).ceil().max(2.0) * step, ((my + hot::GRID) / step).ceil().max(1.0) * step)
+        (
+            ((mx + hot::GRID) / step).ceil().max(2.0) * step,
+            ((my + hot::GRID) / step).ceil().max(1.0) * step,
+        )
     });
 
     let apply = move |from: &str, to: &str, link: &Link| {
@@ -497,8 +544,12 @@ fn DraftCanvas(
         if !ev.is_primary() {
             return;
         }
-        let Some(d) = drag.try_get_value().flatten() else { return };
-        let Some(w) = to_world(ev.client_x() as f64, ev.client_y() as f64) else { return };
+        let Some(d) = drag.try_get_value().flatten() else {
+            return;
+        };
+        let Some(w) = to_world(ev.client_x() as f64, ev.client_y() as f64) else {
+            return;
+        };
         match d {
             Drag::Move { name, start, orig } => {
                 let (dx, dy) = (w.0 - start.0, w.1 - start.1);
@@ -508,7 +559,9 @@ fn DraftCanvas(
                 dragged.try_set(Some((name, ((orig.0 + dx).max(NODE_R), (orig.1 + dy).max(NODE_R)))));
             }
             Drag::Link { from } => {
-                let a = positions.try_with_untracked(|p| p.iter().find(|(n, _)| *n == from).map(|(_, xy)| *xy)).flatten();
+                let a = positions
+                    .try_with_untracked(|p| p.iter().find(|(n, _)| *n == from).map(|(_, xy)| *xy))
+                    .flatten();
                 if let Some(a) = a {
                     rubber.try_set(Some((a, w)));
                 }
@@ -516,7 +569,9 @@ fn DraftCanvas(
         }
     };
     let on_up = move |ev: leptos::ev::PointerEvent| {
-        let Some(d) = drag.try_get_value().flatten() else { return };
+        let Some(d) = drag.try_get_value().flatten() else {
+            return;
+        };
         match d {
             Drag::Move { .. } => {
                 if let Some((name, at)) = dragged.try_get_untracked().flatten() {
@@ -529,13 +584,17 @@ fn DraftCanvas(
             }
             Drag::Link { from } => {
                 let (cx, cy) = (ev.client_x() as f64, ev.client_y() as f64);
-                let to = to_world(cx, cy).and_then(|w| positions.try_with_untracked(|p| hot::node_at(p, w, NODE_R)).flatten());
+                let to = to_world(cx, cy)
+                    .and_then(|w| positions.try_with_untracked(|p| hot::node_at(p, w, NODE_R)).flatten());
                 if let Some(to) = to.filter(|t| *t != from) {
                     let choices = draft.with_untracked(|d| schemas.with_untracked(|s| d.link_choices(s, &from, &to)));
                     match choices.as_slice() {
                         [] => {}
                         [(f, t, l)] => apply(f, t, l),
-                        _ => pending.set(Some(Pending { choices, at: to_px(cx, cy).unwrap_or_default() })),
+                        _ => pending.set(Some(Pending {
+                            choices,
+                            at: to_px(cx, cy).unwrap_or_default(),
+                        })),
                     }
                 }
             }
@@ -544,7 +603,13 @@ fn DraftCanvas(
     };
     let on_drop = move |ev: leptos::ev::DragEvent| {
         ev.prevent_default();
-        let Some(kind) = ev.data_transfer().and_then(|dt| dt.get_data(DRAG_MIME).ok()).filter(|k| !k.is_empty()) else { return };
+        let Some(kind) = ev
+            .data_transfer()
+            .and_then(|dt| dt.get_data(DRAG_MIME).ok())
+            .filter(|k| !k.is_empty())
+        else {
+            return;
+        };
         let at = to_world(ev.client_x() as f64, ev.client_y() as f64);
         let mut name = String::new();
         draft.update(|d| {
@@ -718,7 +783,12 @@ fn DraftCanvas(
 /// type's schema. The layout depends only on the resource and the schema, not
 /// on the values, so typing never re-renders (and never loses focus).
 #[component]
-fn ResourceEditor(draft: RwSignal<Draft>, selected: RwSignal<Option<String>>, schemas: RwSignal<HashMap<String, ResourceTypeDetail>>, name: String) -> impl IntoView {
+fn ResourceEditor(
+    draft: RwSignal<Draft>,
+    selected: RwSignal<Option<String>>,
+    schemas: RwSignal<HashMap<String, ResourceTypeDetail>>,
+    name: String,
+) -> impl IntoView {
     let i18n = use_i18n();
     let Some(kind) = draft.with_untracked(|d| d.resource(&name).map(|r| r.kind.clone())) else {
         return view! { <p class="muted">{move || i18n.t(K::TgPickResource)}</p> }.into_any();
@@ -742,7 +812,13 @@ fn ResourceEditor(draft: RwSignal<Draft>, selected: RwSignal<Option<String>>, sc
     // Follows resources being added, removed or renamed, not their values.
     let others = Memo::new(move |_| {
         let me = rn.get_value();
-        draft.with(|d| d.resources.iter().filter(|r| r.name != me).map(|r| r.name.clone()).collect::<Vec<_>>())
+        draft.with(|d| {
+            d.resources
+                .iter()
+                .filter(|r| r.name != me)
+                .map(|r| r.name.clone())
+                .collect::<Vec<_>>()
+        })
     });
     let depends = move || {
         others
@@ -778,8 +854,16 @@ fn ResourceEditor(draft: RwSignal<Draft>, selected: RwSignal<Option<String>>, sc
         if schema.properties.is_empty() {
             return view! { <p class="muted">{move || i18n.t(K::TgNoProperties)}</p> }.into_any();
         }
-        let set: Vec<String> = draft.with_untracked(|d| d.resource(&rn.get_value()).map(|r| r.props.iter().map(|p| p.name.clone()).collect()).unwrap_or_default());
-        let mut list: Vec<TypeProperty> = schema.properties.into_iter().filter(|p| all || p.required || set.contains(&p.name)).collect();
+        let set: Vec<String> = draft.with_untracked(|d| {
+            d.resource(&rn.get_value())
+                .map(|r| r.props.iter().map(|p| p.name.clone()).collect())
+                .unwrap_or_default()
+        });
+        let mut list: Vec<TypeProperty> = schema
+            .properties
+            .into_iter()
+            .filter(|p| all || p.required || set.contains(&p.name))
+            .collect();
         list.sort_by(|a, b| b.required.cmp(&a.required).then_with(|| a.name.cmp(&b.name)));
         view! { <div class="tg-props">{list.into_iter().map(|p| view! { <PropField draft rn p/> }).collect_view()}</div> }.into_any()
     };
@@ -821,7 +905,12 @@ fn PropField(draft: RwSignal<Draft>, rn: StoredValue<String>, p: TypeProperty) -
     let i18n = use_i18n();
     let id = format!("tg-p-{}", p.name);
     let p = StoredValue::new(p);
-    let get = move || draft.with(|d| d.resource(&rn.get_value()).and_then(|r| r.prop(&p.with_value(|p| p.name.clone())).cloned()));
+    let get = move || {
+        draft.with(|d| {
+            d.resource(&rn.get_value())
+                .and_then(|r| r.prop(&p.with_value(|p| p.name.clone())).cloned())
+        })
+    };
     let put = move |v: Option<PropValue>| {
         let (name, kind) = p.with_value(|p| (p.name.clone(), p.kind.clone()));
         draft.update(|d| {
@@ -835,7 +924,15 @@ fn PropField(draft: RwSignal<Draft>, rn: StoredValue<String>, p: TypeProperty) -
         Some(PropValue::Resource(_)) => Source::Resource,
         _ => Source::Value,
     });
-    let params = Memo::new(move |_| draft.with(|d| d.parameters.iter().map(|x| x.name.clone()).filter(|n| !n.is_empty()).collect::<Vec<_>>()));
+    let params = Memo::new(move |_| {
+        draft.with(|d| {
+            d.parameters
+                .iter()
+                .map(|x| x.name.clone())
+                .filter(|n| !n.is_empty())
+                .collect::<Vec<_>>()
+        })
+    });
     let candidates = Memo::new(move |_| draft.with(|d| p.with_value(|p| hot::ref_candidates(d, &rn.get_value(), p))));
     let text = move || match get() {
         Some(PropValue::Text(t)) => t,
@@ -870,9 +967,14 @@ fn PropField(draft: RwSignal<Draft>, rn: StoredValue<String>, p: TypeProperty) -
                 .into_any()
             }
             Source::Value => {
-                let (kind, allowed, name, default) = p.with_value(|p| (p.kind.clone(), p.allowed.clone(), p.name.clone(), p.default.clone()));
+                let (kind, allowed, name, default) =
+                    p.with_value(|p| (p.kind.clone(), p.allowed.clone(), p.name.clone(), p.default.clone()));
                 let set = move |v: String| put(Some(PropValue::Text(v)));
-                let choices = if kind == "boolean" && allowed.is_empty() { vec!["true".to_string(), "false".to_string()] } else { allowed };
+                let choices = if kind == "boolean" && allowed.is_empty() {
+                    vec!["true".to_string(), "false".to_string()]
+                } else {
+                    allowed
+                };
                 let placeholder = default.unwrap_or_default();
                 if !choices.is_empty() {
                     view! {
@@ -890,7 +992,11 @@ fn PropField(draft: RwSignal<Draft>, rn: StoredValue<String>, p: TypeProperty) -
                     }
                     .into_any()
                 } else {
-                    let mode = if matches!(kind.as_str(), "integer" | "number") { "decimal" } else { "text" };
+                    let mode = if matches!(kind.as_str(), "integer" | "number") {
+                        "decimal"
+                    } else {
+                        "text"
+                    };
                     view! {
                         <input id=id type="text" inputmode=mode placeholder=placeholder prop:value=text
                             on:input=move |ev| set(event_target_value(&ev))/>
@@ -908,7 +1014,8 @@ fn PropField(draft: RwSignal<Draft>, rn: StoredValue<String>, p: TypeProperty) -
         };
         put(v);
     };
-    let (name, kind, required, description) = p.with_value(|p| (p.name.clone(), p.kind.clone(), p.required, p.description.clone()));
+    let (name, kind, required, description) =
+        p.with_value(|p| (p.name.clone(), p.kind.clone(), p.required, p.description.clone()));
     let json = kind == "list" || kind == "map";
     view! {
         <div class="field tg-prop">
@@ -940,7 +1047,8 @@ fn ParametersCard(draft: RwSignal<Draft>) -> impl IntoView {
     let i18n = use_i18n();
     let count = Memo::new(move |_| draft.with(|d| d.parameters.len()));
     let row = move |i: usize| {
-        let field = move |f: fn(&DraftParam) -> String| move || draft.with(|d| d.parameters.get(i).map(f).unwrap_or_default());
+        let field =
+            move |f: fn(&DraftParam) -> String| move || draft.with(|d| d.parameters.get(i).map(f).unwrap_or_default());
         view! {
             <tr>
                 <td><input type="text" class="mono" aria-label=move || i18n.t(K::Name) prop:value=field(|p| p.name.clone())
@@ -962,8 +1070,15 @@ fn ParametersCard(draft: RwSignal<Draft>) -> impl IntoView {
     };
     let add = move |_| {
         draft.update(|d| {
-            let name = (1..).map(|n| format!("param_{n}")).find(|n| !d.parameters.iter().any(|p| &p.name == n)).unwrap_or_default();
-            d.parameters.push(DraftParam { name, kind: "string".into(), ..Default::default() });
+            let name = (1..)
+                .map(|n| format!("param_{n}"))
+                .find(|n| !d.parameters.iter().any(|p| &p.name == n))
+                .unwrap_or_default();
+            d.parameters.push(DraftParam {
+                name,
+                kind: "string".into(),
+                ..Default::default()
+            });
         })
     };
     view! {
@@ -998,11 +1113,23 @@ fn OutputsCard(draft: RwSignal<Draft>, schemas: RwSignal<HashMap<String, Resourc
     let i18n = use_i18n();
     let count = Memo::new(move |_| draft.with(|d| d.outputs.len()));
     let row = move |i: usize| {
-        let field = move |f: fn(&DraftOutput) -> String| move || draft.with(|d| d.outputs.get(i).map(f).unwrap_or_default());
+        let field =
+            move |f: fn(&DraftOutput) -> String| move || draft.with(|d| d.outputs.get(i).map(f).unwrap_or_default());
         let resources = move || draft.with(|d| d.resources.iter().map(|r| r.name.clone()).collect::<Vec<_>>());
         let attributes = move || {
-            let kind = draft.with(|d| d.outputs.get(i).and_then(|o| d.resource(&o.resource)).map(|r| r.kind.clone()));
-            kind.and_then(|k| schemas.with(|s| s.get(&k).map(|s| s.attributes.iter().map(|a| a.name.clone()).collect::<Vec<_>>()))).unwrap_or_default()
+            let kind = draft.with(|d| {
+                d.outputs
+                    .get(i)
+                    .and_then(|o| d.resource(&o.resource))
+                    .map(|r| r.kind.clone())
+            });
+            kind.and_then(|k| {
+                schemas.with(|s| {
+                    s.get(&k)
+                        .map(|s| s.attributes.iter().map(|a| a.name.clone()).collect::<Vec<_>>())
+                })
+            })
+            .unwrap_or_default()
         };
         view! {
             <tr>
@@ -1027,8 +1154,14 @@ fn OutputsCard(draft: RwSignal<Draft>, schemas: RwSignal<HashMap<String, Resourc
     };
     let add = move |_| {
         draft.update(|d| {
-            let name = (1..).map(|n| format!("output_{n}")).find(|n| !d.outputs.iter().any(|o| &o.name == n)).unwrap_or_default();
-            d.outputs.push(DraftOutput { name, ..Default::default() });
+            let name = (1..)
+                .map(|n| format!("output_{n}"))
+                .find(|n| !d.outputs.iter().any(|o| &o.name == n))
+                .unwrap_or_default();
+            d.outputs.push(DraftOutput {
+                name,
+                ..Default::default()
+            });
         })
     };
     view! {
@@ -1058,7 +1191,10 @@ mod tests {
 
     #[test]
     fn palette_labels_break_between_words() {
-        assert_eq!(camel_breaks("FloatingIPAssociation"), "Floating\u{200B}IP\u{200B}Association");
+        assert_eq!(
+            camel_breaks("FloatingIPAssociation"),
+            "Floating\u{200B}IP\u{200B}Association"
+        );
         assert_eq!(camel_breaks("Server"), "Server");
     }
 }

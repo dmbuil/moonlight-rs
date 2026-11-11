@@ -4,7 +4,7 @@ use leptos_router::hooks::use_location;
 
 use super::dialog::Dialogs;
 use super::nav;
-use crate::i18n::{use_i18n, K};
+use crate::i18n::{K, use_i18n};
 use crate::model::{AppError, ErrorKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +66,10 @@ pub fn Pill(tone: Tone, #[prop(into)] label: String) -> impl IntoView {
 
 /// Breadcrumb + page title, derived from the navigation model.
 #[component]
-pub fn PageHeader(#[prop(optional, into)] title: Option<Signal<String>>, #[prop(optional)] children: Option<Children>) -> impl IntoView {
+pub fn PageHeader(
+    #[prop(optional, into)] title: Option<Signal<String>>,
+    #[prop(optional)] children: Option<Children>,
+) -> impl IntoView {
     let i18n = use_i18n();
     let location = use_location();
     let crumbs = move || {
@@ -128,7 +131,9 @@ pub fn Skeleton(#[prop(default = 6)] rows: usize) -> impl IntoView {
 
 /// `-` for empty values, like Horizon.
 pub fn dash(v: Option<impl Into<String>>) -> String {
-    v.map(Into::into).filter(|s: &String| !s.is_empty()).unwrap_or_else(|| "-".into())
+    v.map(Into::into)
+        .filter(|s: &String| !s.is_empty())
+        .unwrap_or_else(|| "-".into())
 }
 
 /// `data:` URL for a plain-text download link (`<a href=… download=…>`).
@@ -183,7 +188,10 @@ pub struct RegionMenuRef {
 /// Errors that another region may not have: a missing service, a region gone
 /// from the catalog, or one that does not answer.
 pub fn region_may_help(kind: ErrorKind) -> bool {
-    matches!(kind, ErrorKind::ServiceUnavailable | ErrorKind::RegionUnavailable | ErrorKind::Timeout)
+    matches!(
+        kind,
+        ErrorKind::ServiceUnavailable | ErrorKind::RegionUnavailable | ErrorKind::Timeout
+    )
 }
 
 /// Page-level failure: what happened, in plain words, and a way out that
@@ -201,12 +209,23 @@ pub fn ErrorPage(error: AppError) -> impl IntoView {
     let escape = move || region_menu.and_then(|m| m.others.with(|o| o.first().cloned()));
     // The first contextual action is the primary button; else Back to safety.
     let contextual = sign_in || dialogs.is_some();
-    let safety_class = move || if contextual || escape().is_some() { "btn" } else { "btn btn-primary" };
+    let safety_class = move || {
+        if contextual || escape().is_some() {
+            "btn"
+        } else {
+            "btn btn-primary"
+        }
+    };
     let kind = match error.kind {
         ErrorKind::OpenStack(s) => format!("HTTP {s}"),
         k => format!("{k:?}"),
     };
-    let AppError { detail, service, request_id, .. } = error;
+    let AppError {
+        detail,
+        service,
+        request_id,
+        ..
+    } = error;
     view! {
         <section class="error-page" role="alert">
             <svg class="error-icon" aria-hidden="true" viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -296,8 +315,14 @@ pub fn age_cell_since(lang: crate::i18n::Lang, rfc3339: &str) -> AnyView {
 /// zone; they are UTC), so a reader in another zone doesn't take them for
 /// local time (roadmap 57).
 pub fn utc_time(v: &str) -> String {
-    let utc = v.ends_with('Z') || v.ends_with("+00:00") || chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S%.f").is_ok();
-    if utc { format!("{} UTC", short_time(v)) } else { short_time(v) }
+    let utc = v.ends_with('Z')
+        || v.ends_with("+00:00")
+        || chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S%.f").is_ok();
+    if utc {
+        format!("{} UTC", short_time(v))
+    } else {
+        short_time(v)
+    }
 }
 
 /// Short, readable timestamp: `2026-09-14 10:22`.
@@ -388,7 +413,10 @@ pub fn FlavorPopover(flavor: crate::model::FlavorInfo, #[prop(into)] key: String
     let id = format!("flv-{key}");
     let f = flavor;
     let gb = |v: Option<i64>| v.map(|g| format!("{g} GB")).unwrap_or_else(|| "-".into());
-    let ram = f.ram_mb.map(|m| crate::i18n::bytes(m.max(0) as u64 * 1024 * 1024)).unwrap_or_else(|| "-".into());
+    let ram = f
+        .ram_mb
+        .map(|m| crate::i18n::bytes(m.max(0) as u64 * 1024 * 1024))
+        .unwrap_or_else(|| "-".into());
     let row = move |k: K, v: String| view! { <dt>{move || i18n.t(k)}</dt><dd>{v}</dd> };
     // Fixed positioning so the card is not clipped by scrolling table wrappers.
     let host = NodeRef::<leptos::html::Span>::new();
@@ -401,7 +429,10 @@ pub fn FlavorPopover(flavor: crate::model::FlavorInfo, #[prop(into)] key: String
             let vw = window().inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1200.0);
             let left = r.left().min(vw - 380.0).max(8.0);
             pos.set(if r.bottom() + 280.0 > vh {
-                format!("left:{left}px;top:{}px;transform:translateY(calc(-100% - 8px))", r.top())
+                format!(
+                    "left:{left}px;top:{}px;transform:translateY(calc(-100% - 8px))",
+                    r.top()
+                )
             } else {
                 format!("left:{left}px;top:{}px", r.bottom() + 8.0)
             });
@@ -430,7 +461,15 @@ pub fn FlavorPopover(flavor: crate::model::FlavorInfo, #[prop(into)] key: String
 // ---------------------------------------------------------------------------
 
 /// Statuses Nova uses while an operation is in flight, even without a task_state.
-const TRANSITIONAL: &[&str] = &["BUILD", "REBOOT", "HARD_REBOOT", "RESIZE", "MIGRATING", "REBUILD", "PASSWORD"];
+const TRANSITIONAL: &[&str] = &[
+    "BUILD",
+    "REBOOT",
+    "HARD_REBOOT",
+    "RESIZE",
+    "MIGRATING",
+    "REBUILD",
+    "PASSWORD",
+];
 
 /// True while the instance has an operation in progress.
 pub fn is_busy(task_state: Option<&str>, status: &str) -> bool {
@@ -440,12 +479,30 @@ pub fn is_busy(task_state: Option<&str>, status: &str) -> bool {
 /// Cinder volume statuses that change on their own (roadmap 46): the page keeps
 /// refetching while a row is in one. Lowercase, as Cinder reports them.
 const VOLUME_TRANSITIONAL: &[&str] = &[
-    "creating", "deleting", "extending", "attaching", "detaching", "downloading", "uploading", "retyping",
-    "backing-up", "restoring-backup", "reserved", "awaiting-transfer", "maintenance",
+    "creating",
+    "deleting",
+    "extending",
+    "attaching",
+    "detaching",
+    "downloading",
+    "uploading",
+    "retyping",
+    "backing-up",
+    "restoring-backup",
+    "reserved",
+    "awaiting-transfer",
+    "maintenance",
 ];
 
 /// Cinder snapshot statuses that change on their own (roadmap 46).
-const SNAPSHOT_TRANSITIONAL: &[&str] = &["creating", "deleting", "updating", "restoring", "backing-up", "unmanaging"];
+const SNAPSHOT_TRANSITIONAL: &[&str] = &[
+    "creating",
+    "deleting",
+    "updating",
+    "restoring",
+    "backing-up",
+    "unmanaging",
+];
 
 /// Whether a Glance image is still being created or imported (`queued` until its data
 /// arrives, then `saving` / `importing`; roadmap 45). `killed`, `deleted` and the like are final.
@@ -501,8 +558,10 @@ where
             if loaded && busy() && *n < p.poll_rounds() {
                 *n += 1;
                 polling.set(true);
-                if let Ok(h) = set_timeout_with_handle(move || resource.refetch(), Duration::from_millis(u64::from(p.poll_interval_ms)))
-                    && let Some(old) = handle.lock().unwrap().replace(h)
+                if let Ok(h) = set_timeout_with_handle(
+                    move || resource.refetch(),
+                    Duration::from_millis(u64::from(p.poll_interval_ms)),
+                ) && let Some(old) = handle.lock().unwrap().replace(h)
                 {
                     old.clear();
                 }
@@ -534,7 +593,9 @@ pub fn copy_to_clipboard(_text: &str) {
         // Fallback for non-secure contexts: hidden textarea + execCommand.
         let Some(doc) = window().document() else { return };
         let Ok(el) = doc.create_element("textarea") else { return };
-        let Ok(ta) = el.dyn_into::<web_sys::HtmlTextAreaElement>() else { return };
+        let Ok(ta) = el.dyn_into::<web_sys::HtmlTextAreaElement>() else {
+            return;
+        };
         ta.set_value(_text);
         let _ = ta.set_attribute("style", "position:fixed;opacity:0");
         if let Some(body) = doc.body() {
@@ -679,7 +740,11 @@ pub fn InfoTip(#[prop(into)] text: String, #[prop(into)] label: String, #[prop(i
             let vw = window().inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1200.0);
             // Right of the icon when there is room, else under it, kept on screen.
             let left = (r.right() + 8.0).min(vw - 428.0).max(8.0);
-            let top = if left > r.right() { r.top() - 8.0 } else { r.bottom() + 6.0 };
+            let top = if left > r.right() {
+                r.top() - 8.0
+            } else {
+                r.bottom() + 6.0
+            };
             let top = top.min(vh - 340.0).max(8.0);
             let _ = pos.try_set(format!("left:{left}px;top:{top}px"));
         }
@@ -722,9 +787,17 @@ mod tests {
 
     #[test]
     fn utc_values_say_so() {
-        assert_eq!(utc_time("2026-10-27T03:15:00.000000"), "2026-10-27 03:15 UTC", "Keystone's expiry: no zone, UTC");
+        assert_eq!(
+            utc_time("2026-10-27T03:15:00.000000"),
+            "2026-10-27 03:15 UTC",
+            "Keystone's expiry: no zone, UTC"
+        );
         assert_eq!(utc_time("2026-10-27T03:15:00Z"), "2026-10-27 03:15 UTC");
-        assert_eq!(utc_time("2026-10-27T04:15:00+01:00"), "2026-10-27 04:15", "another offset is shown as given, unlabelled");
+        assert_eq!(
+            utc_time("2026-10-27T04:15:00+01:00"),
+            "2026-10-27 04:15",
+            "another offset is shown as given, unlabelled"
+        );
     }
 
     #[test]
@@ -755,13 +828,27 @@ mod tests {
 
     #[test]
     fn volume_and_snapshot_busy_states() {
-        for s in ["creating", "deleting", "extending", "attaching", "detaching", "uploading", "retyping", "Reserved"] {
+        for s in [
+            "creating",
+            "deleting",
+            "extending",
+            "attaching",
+            "detaching",
+            "uploading",
+            "retyping",
+            "Reserved",
+        ] {
             assert!(volume_busy(s), "{s}");
         }
         for s in ["available", "in-use", "error", "error_deleting", "error_extending"] {
             assert!(!volume_busy(s), "{s}: settled, no polling");
         }
-        assert!(snapshot_busy("creating") && snapshot_busy("deleting") && !snapshot_busy("available") && !snapshot_busy("error"));
+        assert!(
+            snapshot_busy("creating")
+                && snapshot_busy("deleting")
+                && !snapshot_busy("available")
+                && !snapshot_busy("error")
+        );
     }
 
     #[test]
@@ -770,7 +857,12 @@ mod tests {
         // Zones seen on the production cloud must never share a colour.
         let zones = ["alh1", "mad1", "mer1", "nova"];
         let distinct: std::collections::HashSet<_> = zones.iter().map(|z| az_color(z)).collect();
-        assert_eq!(distinct.len(), zones.len(), "{:?}", zones.iter().map(|z| (z, az_color(z))).collect::<Vec<_>>());
+        assert_eq!(
+            distinct.len(),
+            zones.len(),
+            "{:?}",
+            zones.iter().map(|z| (z, az_color(z))).collect::<Vec<_>>()
+        );
     }
 
     /// WCAG contrast ratio between two `#rrggbb` colours.
@@ -778,7 +870,11 @@ mod tests {
         fn lum(hex: &str) -> f64 {
             let c = |i: usize| {
                 let v = u8::from_str_radix(&hex[i..i + 2], 16).unwrap() as f64 / 255.0;
-                if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+                if v <= 0.03928 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
             };
             0.2126 * c(1) + 0.7152 * c(3) + 0.0722 * c(5)
         }
@@ -790,8 +886,16 @@ mod tests {
     fn az_colours_are_readable_in_both_themes() {
         // Light: white page. Dark: the raised surface (cards, menus), the lightest dark background.
         for (light, dark) in AZ_PALETTE {
-            assert!(contrast(light, "#ffffff") >= 4.5, "{light} on white: {:.2}", contrast(light, "#ffffff"));
-            assert!(contrast(dark, "#1b2230") >= 4.5, "{dark} on dark: {:.2}", contrast(dark, "#1b2230"));
+            assert!(
+                contrast(light, "#ffffff") >= 4.5,
+                "{light} on white: {:.2}",
+                contrast(light, "#ffffff")
+            );
+            assert!(
+                contrast(dark, "#1b2230") >= 4.5,
+                "{dark} on dark: {:.2}",
+                contrast(dark, "#1b2230")
+            );
         }
         let darks: std::collections::HashSet<_> = AZ_PALETTE.iter().map(|p| p.1).collect();
         assert_eq!(darks.len(), AZ_PALETTE.len());
@@ -812,7 +916,10 @@ mod tests {
         ];
         let titles: std::collections::HashSet<_> = kinds.iter().map(|k| error_text(*k).0).collect();
         assert_eq!(titles.len(), kinds.len());
-        assert_eq!(error_text(ErrorKind::OpenStack(409)), error_text(ErrorKind::OpenStack(503)));
+        assert_eq!(
+            error_text(ErrorKind::OpenStack(409)),
+            error_text(ErrorKind::OpenStack(503))
+        );
     }
 
     #[test]
@@ -855,10 +962,27 @@ mod tests {
         use TipInline::*;
         assert_eq!(
             tip_inline("**Gnocchi** uses `cpu` in *ns*; see **`rate:mean`**."),
-            [Bold(vec![Text("Gnocchi".into())]), Text(" uses ".into()), Code("cpu".into()), Text(" in ".into()), Italic(vec![Text("ns".into())]), Text("; see ".into()), Bold(vec![Code("rate:mean".into())]), Text(".".into())]
+            [
+                Bold(vec![Text("Gnocchi".into())]),
+                Text(" uses ".into()),
+                Code("cpu".into()),
+                Text(" in ".into()),
+                Italic(vec![Text("ns".into())]),
+                Text("; see ".into()),
+                Bold(vec![Code("rate:mean".into())]),
+                Text(".".into())
+            ]
         );
-        assert_eq!(tip_inline("`a*b*c` and `{\"=\": 1}`"), [Code("a*b*c".into()), Text(" and ".into()), Code("{\"=\": 1}".into())], "no formatting inside code");
-        assert_eq!(tip_inline("2 * 3 = 6"), [Text("2 * 3 = 6".into())], "an unpaired marker is text");
+        assert_eq!(
+            tip_inline("`a*b*c` and `{\"=\": 1}`"),
+            [Code("a*b*c".into()), Text(" and ".into()), Code("{\"=\": 1}".into())],
+            "no formatting inside code"
+        );
+        assert_eq!(
+            tip_inline("2 * 3 = 6"),
+            [Text("2 * 3 = 6".into())],
+            "an unpaired marker is text"
+        );
         assert_eq!(tip_inline("x ** y"), [Text("x ** y".into())]);
     }
 }

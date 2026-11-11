@@ -28,15 +28,27 @@ pub fn classify(context: &str, err: &str) -> AppError {
         ErrorKind::ServiceUnavailable
     } else if lower.contains("resource cannot be found") {
         ErrorKind::NotFound
-    } else if ["timed out", "timeout", "deadline has elapsed", "error sending request", "connection refused", "dns error"]
-        .iter()
-        .any(|m| lower.contains(m))
+    } else if [
+        "timed out",
+        "timeout",
+        "deadline has elapsed",
+        "error sending request",
+        "connection refused",
+        "dns error",
+    ]
+    .iter()
+    .any(|m| lower.contains(m))
     {
         ErrorKind::Timeout
     } else {
         ErrorKind::Internal
     };
-    AppError { kind, detail, service: backticked_after(err, "Service `"), request_id: backticked_after(err, "request-id: `") }
+    AppError {
+        kind,
+        detail,
+        service: backticked_after(err, "Service `"),
+        request_id: backticked_after(err, "request-id: `"),
+    }
 }
 
 /// What the browser may see of a classified error (roadmap 50). Without
@@ -84,9 +96,15 @@ mod tests {
         assert_eq!(e.request_id.as_deref(), Some("req-abc"));
         assert!(e.detail.starts_with("GET servers/x: api error"));
 
-        assert_eq!(classify("c", &api("401 Unauthorized", "")).kind, ErrorKind::Unauthenticated);
+        assert_eq!(
+            classify("c", &api("401 Unauthorized", "")).kind,
+            ErrorKind::Unauthenticated
+        );
         assert_eq!(classify("c", &api("403 Forbidden", "")).kind, ErrorKind::Forbidden);
-        assert_eq!(classify("c", &api("500 Internal Server Error", "")).kind, ErrorKind::OpenStack(500));
+        assert_eq!(
+            classify("c", &api("500 Internal Server Error", "")).kind,
+            ErrorKind::OpenStack(500)
+        );
         assert_eq!(classify("c", &api("504 Gateway Timeout", "")).kind, ErrorKind::Timeout);
         assert_eq!(classify("c", &api("409 Conflict", "")).kind, ErrorKind::OpenStack(409));
         // empty request id → None
@@ -96,16 +114,27 @@ mod tests {
     #[test]
     fn aodh_policy_refusals_are_not_expired_sessions() {
         let aodh = "openstack server error:\n\turi: `https://aodh.example/v2/alarms?`\n\tstatus: `401 Unauthorized`\n\tdata: `{\"error_message\":{\"debuginfo\":null,\"faultcode\":\"Client\",\"faultstring\":\"You are not authorized to create action: log://\"}}`\n\trequest-id: `req-1`";
-        assert_eq!(classify("POST alarms", aodh).kind, ErrorKind::Forbidden, "a 401 that is a refusal must not sign the user out");
+        assert_eq!(
+            classify("POST alarms", aodh).kind,
+            ErrorKind::Forbidden,
+            "a 401 that is a refusal must not sign the user out"
+        );
         let keystone = "openstack server error:\n\tstatus: `401 Unauthorized`\n\tdata: `{\"error\": {\"message\": \"The request you have made requires authentication.\", \"code\": 401}}`";
         assert_eq!(classify("GET servers", keystone).kind, ErrorKind::Unauthenticated);
     }
 
     #[test]
     fn understands_the_other_status_formats() {
-        assert_eq!(classify("login", "openstack HTTP error: 401 Unauthorized").kind, ErrorKind::Unauthenticated);
         assert_eq!(
-            classify("discovery", "service_catalog error: HTTP request failed with status 503 Service Unavailable: busy").kind,
+            classify("login", "openstack HTTP error: 401 Unauthorized").kind,
+            ErrorKind::Unauthenticated
+        );
+        assert_eq!(
+            classify(
+                "discovery",
+                "service_catalog error: HTTP request failed with status 503 Service Unavailable: busy"
+            )
+            .kind,
             ErrorKind::OpenStack(503)
         );
     }
@@ -116,8 +145,16 @@ mod tests {
         let hidden = public(full.clone(), "GET servers/x", false);
         assert_eq!(hidden.detail, "GET servers/x");
         assert!(!hidden.detail.contains("nova.example"));
-        assert_eq!((hidden.kind, hidden.request_id.as_deref()), (ErrorKind::NotFound, Some("req-abc")), "kind and request ID stay");
-        assert_eq!(public(full.clone(), "GET servers/x", true), full, "[ui] show_error_details = true");
+        assert_eq!(
+            (hidden.kind, hidden.request_id.as_deref()),
+            (ErrorKind::NotFound, Some("req-abc")),
+            "kind and request ID stay"
+        );
+        assert_eq!(
+            public(full.clone(), "GET servers/x", true),
+            full,
+            "[ui] show_error_details = true"
+        );
     }
 
     #[test]

@@ -5,14 +5,16 @@
 
 use leptos::prelude::*;
 
-use super::details::{param, Card, DetailHeader, Kv};
+use super::details::{Card, DetailHeader, Kv, param};
 use super::lists::{link, moving_status};
 use crate::api::*;
 use crate::components::dialog::data_version;
 use crate::components::ops;
-use crate::components::table::{col, DataTable};
-use crate::components::widgets::{dash, poll_while_busy, render, short_time, snapshot_busy, volume_busy, Copyable, Skeleton};
-use crate::i18n::{use_i18n, K};
+use crate::components::table::{DataTable, col};
+use crate::components::widgets::{
+    Copyable, Skeleton, dash, poll_while_busy, render, short_time, snapshot_busy, volume_busy,
+};
+use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
 /// Volume group detail: overview, its volumes and its group snapshots.
@@ -22,7 +24,9 @@ pub fn VolumeGroupDetailPage() -> impl IntoView {
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_volume_group(id));
     // Same transitional statuses as snapshots (see `lists::VolumeGroupsPage`).
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.row.status))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.row.status)))
+    });
     view! {
         <Transition fallback=|| view! { <Skeleton rows=6/> }>
             {move || render(data.get(), move |td| {
@@ -74,7 +78,9 @@ pub fn GroupSnapshotDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_group_snapshot(id));
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.row.status))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.row.status)))
+    });
     view! {
         <Transition fallback=|| view! { <Skeleton rows=6/> }>
             {move || render(data.get(), move |td| {

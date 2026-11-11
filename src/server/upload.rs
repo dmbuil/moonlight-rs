@@ -24,15 +24,19 @@ use secrecy::ExposeSecret;
 
 use super::config::state;
 use super::{os, session};
-use openstack_sdk::api::AsyncClient;
-use crate::model::{check_id, AppError, UploadTicket, WriteMode};
+use crate::model::{AppError, UploadTicket, WriteMode, check_id};
 use crate::prefs::ImageUpload;
+use openstack_sdk::api::AsyncClient;
 
 /// Glance's upload URL for `id`: the image endpoint from the catalog, which may or may not
 /// carry its version (`https://glance:9292` or `…/v2`).
 pub fn file_url(endpoint: &str, id: &str) -> String {
     let base = endpoint.trim_end_matches('/');
-    let base = if base.ends_with("/v2") { base.to_string() } else { format!("{base}/v2") };
+    let base = if base.ends_with("/v2") {
+        base.to_string()
+    } else {
+        format!("{base}/v2")
+    };
     format!("{base}/images/{id}/file")
 }
 
@@ -46,7 +50,10 @@ pub fn allowed(upload: ImageUpload, want: ImageUpload, max_bytes: u64, bytes: u6
         return Err("the file is empty".into());
     }
     if bytes > max_bytes {
-        return Err(format!("the file is larger than [images] max_upload_gb ({} GiB)", max_bytes >> 30));
+        return Err(format!(
+            "the file is larger than [images] max_upload_gb ({} GiB)",
+            max_bytes >> 30
+        ));
     }
     Ok(())
 }
@@ -76,7 +83,9 @@ fn client() -> Result<&'static reqwest::Client, AppError> {
 
 /// The scoped token and Glance's upload URL for `id`.
 async fn target(os: &AsyncOpenStack, id: &str) -> Result<(String, String), AppError> {
-    let token = os.get_auth_token().ok_or_else(|| AppError::internal("no token for the image service"))?;
+    let token = os
+        .get_auth_token()
+        .ok_or_else(|| AppError::internal("no token for the image service"))?;
     let ep = os
         .get_service_endpoint(&openstack_sdk::types::ServiceType::Image, None)
         .await
@@ -85,7 +94,12 @@ async fn target(os: &AsyncOpenStack, id: &str) -> Result<(String, String), AppEr
 }
 
 /// What both modes check before touching Glance: the session, the mode and the settings.
-async fn gate(headers: &HeaderMap, id: &str, want: ImageUpload, bytes: u64) -> Result<(session::Session, AsyncOpenStack), (StatusCode, String)> {
+async fn gate(
+    headers: &HeaderMap,
+    id: &str,
+    want: ImageUpload,
+    bytes: u64,
+) -> Result<(session::Session, AsyncOpenStack), (StatusCode, String)> {
     let cfg = &state().config;
     let s = session::from_headers(headers)
         .filter(|s| !s.is_expired(chrono::Utc::now(), cfg.session_timeout, cfg.token_margin))
@@ -96,7 +110,9 @@ async fn gate(headers: &HeaderMap, id: &str, want: ImageUpload, bytes: u64) -> R
     if cfg.writes != WriteMode::On {
         return Err((StatusCode::CONFLICT, "writes are disabled ([writes] mode)".into()));
     }
-    let c = os::scoped(&s).await.map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let c = os::scoped(&s)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
     Ok((s, c))
 }
 
@@ -154,7 +170,14 @@ pub async fn proxy(Path(id): Path<String>, headers: HeaderMap, body: Body) -> Re
             let status = r.status();
             let why = r.text().await.unwrap_or_default();
             tracing::warn!(user = %s.user, client = %client_ip, image = %id, %status, "image upload (proxy) refused by the image service");
-            (StatusCode::BAD_GATEWAY, format!("the image service answered {status}: {}", why.chars().take(300).collect::<String>())).into_response()
+            (
+                StatusCode::BAD_GATEWAY,
+                format!(
+                    "the image service answered {status}: {}",
+                    why.chars().take(300).collect::<String>()
+                ),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::warn!(user = %s.user, client = %client_ip, image = %id, "image upload (proxy) failed: {e}");
@@ -166,7 +189,9 @@ pub async fn proxy(Path(id): Path<String>, headers: HeaderMap, body: Body) -> Re
 /// `direct` mode: the URL and the scoped token for one `PUT` of `bytes` to `id`'s data.
 /// The token only travels in this response, and is never logged.
 pub async fn ticket(headers: &HeaderMap, id: &str, bytes: u64) -> Result<UploadTicket, AppError> {
-    let (s, c) = gate(headers, id, ImageUpload::Direct, bytes).await.map_err(|(_, e)| AppError::invalid(e))?;
+    let (s, c) = gate(headers, id, ImageUpload::Direct, bytes)
+        .await
+        .map_err(|(_, e)| AppError::invalid(e))?;
     let (token, url) = target(&c, id).await?;
     tracing::info!(user = %s.user, project = %s.project_name, client = %session::client_ip_of(headers), image = %id, bytes, "image upload (direct): ticket issued");
     Ok(UploadTicket { url, token })
@@ -182,7 +207,11 @@ mod tests {
         let want = "https://glance.example:9292/v2/images/abc/file";
         assert_eq!(file_url("https://glance.example:9292", "abc"), want);
         assert_eq!(file_url("https://glance.example:9292/", "abc"), want);
-        assert_eq!(file_url("https://glance.example:9292/v2/", "abc"), want, "discovery may add the version");
+        assert_eq!(
+            file_url("https://glance.example:9292/v2/", "abc"),
+            want,
+            "discovery may add the version"
+        );
     }
 
     #[test]
@@ -190,12 +219,25 @@ mod tests {
         let gib = 1u64 << 30;
         let ok = |mode, want, bytes| allowed(mode, want, 2 * gib, bytes);
         assert!(ok(ImageUpload::Proxy, ImageUpload::Proxy, gib).is_ok());
-        assert!(ok(ImageUpload::Proxy, ImageUpload::Proxy, 2 * gib).is_ok(), "the limit itself fits");
-        assert!(ok(ImageUpload::Proxy, ImageUpload::Proxy, 2 * gib + 1).unwrap_err().contains("max_upload_gb"));
+        assert!(
+            ok(ImageUpload::Proxy, ImageUpload::Proxy, 2 * gib).is_ok(),
+            "the limit itself fits"
+        );
+        assert!(
+            ok(ImageUpload::Proxy, ImageUpload::Proxy, 2 * gib + 1)
+                .unwrap_err()
+                .contains("max_upload_gb")
+        );
         assert!(ok(ImageUpload::Proxy, ImageUpload::Proxy, 0).is_err(), "empty file");
         assert!(ok(ImageUpload::Off, ImageUpload::Proxy, 1).is_err(), "off");
-        assert!(ok(ImageUpload::Direct, ImageUpload::Proxy, 1).is_err(), "the proxy route is not open in direct mode");
-        assert!(ok(ImageUpload::Proxy, ImageUpload::Direct, 1).is_err(), "no tickets in proxy mode");
+        assert!(
+            ok(ImageUpload::Direct, ImageUpload::Proxy, 1).is_err(),
+            "the proxy route is not open in direct mode"
+        );
+        assert!(
+            ok(ImageUpload::Proxy, ImageUpload::Direct, 1).is_err(),
+            "no tickets in proxy mode"
+        );
     }
 
     #[test]

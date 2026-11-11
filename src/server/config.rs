@@ -111,10 +111,22 @@ pub fn init(settings: &Settings) -> Result<&'static AppState, String> {
         (super::downloads::OPENRC, a.openrc_template.clone()),
         (super::downloads::CLOUDS_YAML, a.clouds_yaml_template.clone()),
         (super::downloads::APP_OPENRC, a.app_credential_openrc_template.clone()),
-        (super::downloads::APP_CLOUDS_YAML, a.app_credential_clouds_yaml_template.clone()),
-        (super::downloads::WEBSSO_CLOUDS_YAML, a.websso_clouds_yaml_template.clone()),
+        (
+            super::downloads::APP_CLOUDS_YAML,
+            a.app_credential_clouds_yaml_template.clone(),
+        ),
+        (
+            super::downloads::WEBSSO_CLOUDS_YAML,
+            a.websso_clouds_yaml_template.clone(),
+        ),
     ])?;
-    let cookie_key = match settings.session.cookie_key.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let cookie_key = match settings
+        .session
+        .cookie_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         Some(b64) => {
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(b64)
@@ -157,7 +169,10 @@ pub fn init(settings: &Settings) -> Result<&'static AppState, String> {
             .weigher(|_, v: &std::sync::Arc<Vec<serde_json::Value>>| u32::try_from(v.len()).unwrap_or(u32::MAX).max(1))
             .time_to_live(lookup_ttl)
             .build(),
-        login_throttle: super::throttle::Throttle::new(settings.login.max_failures, Duration::from_secs(u64::from(settings.login.lockout_seconds))),
+        login_throttle: super::throttle::Throttle::new(
+            settings.login.max_failures,
+            Duration::from_secs(u64::from(settings.login.lockout_seconds)),
+        ),
         // A nonce is refused after its own lifetime anyway.
         websso_used: Cache::builder()
             .max_capacity(100_000)
@@ -173,5 +188,7 @@ pub fn try_state() -> Option<&'static AppState> {
 }
 
 pub fn state() -> &'static AppState {
-    STATE.get().expect("server::config::init() must run before serving requests")
+    STATE
+        .get()
+        .expect("server::config::init() must run before serving requests")
 }

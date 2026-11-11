@@ -1575,7 +1575,11 @@ pub fn t(lang: Lang, k: K) -> &'static str {
 /// that stopped early (*Count all*'s cap) and reads "of 100000+".
 pub fn page_range(lang: Lang, from: usize, shown: usize, count: Option<(u64, bool)>) -> String {
     let to = from + shown.saturating_sub(1);
-    let range = if shown == 0 { "0".to_string() } else { format!("{from}–{to}") };
+    let range = if shown == 0 {
+        "0".to_string()
+    } else {
+        format!("{from}–{to}")
+    };
     let count = count.map(|(n, more)| if more { format!("{n}+") } else { n.to_string() });
     match (lang, count) {
         (Lang::EnUs, None) => format!("Items {range}"),
@@ -1604,7 +1608,11 @@ pub fn topology_too_many(lang: Lang, n: usize, max: usize) -> String {
 
 /// Bulk button label with the selection size: "Delete Volumes (3)".
 pub fn with_count(lang: Lang, k: K, n: usize) -> String {
-    if n == 0 { t(lang, k).to_string() } else { format!("{} ({n})", t(lang, k)) }
+    if n == 0 {
+        t(lang, k).to_string()
+    } else {
+        format!("{} ({n})", t(lang, k))
+    }
 }
 
 /// Quota sub-label under each overview chart.
@@ -1703,15 +1711,45 @@ pub fn image_visibility(lang: Lang, v: &str) -> String {
 /// Nova server group policy as Horizon shows it (*Soft Anti Affinity*).
 /// A month's name (1-12) for the date picker.
 pub fn month_name(lang: Lang, m: u32) -> &'static str {
-    const EN: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const ES: [&str; 12] = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    const EN: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    const ES: [&str; 12] = [
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
+    ];
     let i = (m.clamp(1, 12) - 1) as usize;
     if lang == Lang::EsEs { ES[i] } else { EN[i] }
 }
 
 /// Monday-first weekday initials for the date picker.
 pub fn weekday_initials(lang: Lang) -> &'static [&'static str; 7] {
-    if lang == Lang::EsEs { &["L", "M", "X", "J", "V", "S", "D"] } else { &["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] }
+    if lang == Lang::EsEs {
+        &["L", "M", "X", "J", "V", "S", "D"]
+    } else {
+        &["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    }
 }
 
 pub fn server_group_policy(lang: Lang, p: &str) -> String {
@@ -1810,7 +1848,10 @@ pub fn resource_status(lang: Lang, status: &str) -> String {
 /// A Heat status (`CREATE_COMPLETE`, `UPDATE_IN_PROGRESS`…, roadmap 62):
 /// action and state translated apart, as Horizon shows them ("Create Complete").
 pub fn stack_status(lang: Lang, status: &str) -> String {
-    let Some((action, state)) = ["_IN_PROGRESS", "_COMPLETE", "_FAILED"].iter().find_map(|st| status.strip_suffix(st).map(|a| (a, &st[1..]))) else {
+    let Some((action, state)) = ["_IN_PROGRESS", "_COMPLETE", "_FAILED"]
+        .iter()
+        .find_map(|st| status.strip_suffix(st).map(|a| (a, &st[1..])))
+    else {
         return title_case(status);
     };
     // Spanish: a noun for the action, agreeing with the state ("Creación completada").
@@ -1932,8 +1973,12 @@ pub fn job_summary(lang: Lang, ok: usize, failed: usize) -> String {
 /// A background job stopped by an expired session.
 pub fn job_expired(lang: Lang, done: usize, total: usize) -> String {
     match lang {
-        Lang::EnUs => format!("Stopped after {done} of {total}: the session expired. Sign in again; the rest was not sent."),
-        Lang::EsEs => format!("Detenido tras {done} de {total}: la sesión ha caducado. Inicie sesión de nuevo; el resto no se ha enviado."),
+        Lang::EnUs => {
+            format!("Stopped after {done} of {total}: the session expired. Sign in again; the rest was not sent.")
+        }
+        Lang::EsEs => format!(
+            "Detenido tras {done} de {total}: la sesión ha caducado. Inicie sesión de nuevo; el resto no se ha enviado."
+        ),
     }
 }
 
@@ -1988,7 +2033,9 @@ pub fn provider_summary(lang: Lang, p: &crate::model::ProviderNetwork) -> String
     }
     let parts = parts.join(" · ");
     match lang {
-        Lang::EnUs => format!("Provider network: {parts}. Set when the network was created; Neutron doesn't change it."),
+        Lang::EnUs => {
+            format!("Provider network: {parts}. Set when the network was created; Neutron doesn't change it.")
+        }
         Lang::EsEs => format!("Red del proveedor: {parts}. Se fija al crear la red; Neutron no la cambia."),
     }
 }
@@ -2160,7 +2207,11 @@ mod tests {
         assert_eq!(page_range(Lang::EnUs, 1, 86, Some((186, false))), "Items 1–86 of 186");
         assert_eq!(page_range(Lang::EsEs, 1, 3, Some((3, false))), "Elementos 1–3 de 3");
         assert_eq!(page_range(Lang::EnUs, 1, 0, None), "Items 0");
-        assert_eq!(page_range(Lang::EnUs, 1, 50, Some((100_000, true))), "Items 1–50 of 100000+", "a capped count says so");
+        assert_eq!(
+            page_range(Lang::EnUs, 1, 50, Some((100_000, true))),
+            "Items 1–50 of 100000+",
+            "a capped count says so"
+        );
     }
 
     #[test]
@@ -2168,8 +2219,16 @@ mod tests {
         assert_eq!(stack_status(Lang::EnUs, "CREATE_COMPLETE"), "Create Complete");
         assert_eq!(stack_status(Lang::EnUs, "UPDATE_IN_PROGRESS"), "Update In Progress");
         assert_eq!(stack_status(Lang::EsEs, "ROLLBACK_FAILED"), "Reversión fallida");
-        assert_eq!(stack_status(Lang::EsEs, "ABANDON_COMPLETE"), "Abandono completado", "masculine noun");
-        assert_eq!(stack_status(Lang::EnUs, "WEIRD_STATE"), "Weird state", "unknown: title case");
+        assert_eq!(
+            stack_status(Lang::EsEs, "ABANDON_COMPLETE"),
+            "Abandono completado",
+            "masculine noun"
+        );
+        assert_eq!(
+            stack_status(Lang::EnUs, "WEIRD_STATE"),
+            "Weird state",
+            "unknown: title case"
+        );
     }
 
     #[test]
@@ -2177,7 +2236,10 @@ mod tests {
         assert_eq!(image_visibility(Lang::EnUs, "public"), "Public");
         assert_eq!(image_visibility(Lang::EsEs, "shared"), "Compartida");
         assert_eq!(image_visibility(Lang::EnUs, "odd"), "odd");
-        assert_eq!(server_group_policy(Lang::EnUs, "soft-anti-affinity"), "Soft Anti Affinity");
+        assert_eq!(
+            server_group_policy(Lang::EnUs, "soft-anti-affinity"),
+            "Soft Anti Affinity"
+        );
         assert_eq!(server_group_policy(Lang::EnUs, "custom"), "custom");
     }
 
@@ -2241,11 +2303,23 @@ mod tests {
     fn grouped_splits_thousands_by_language() {
         let both = |v: f64, p: usize| (grouped(Lang::EnUs, v, p), grouped(Lang::EsEs, v, p));
         assert_eq!(both(1234567.891, 2), ("1,234,567.89".into(), "1.234.567,89".into()));
-        assert_eq!(both(1234.5, 2), ("1,234.50".into(), "1234,50".into()), "Spanish leaves four digits ungrouped");
+        assert_eq!(
+            both(1234.5, 2),
+            ("1,234.50".into(), "1234,50".into()),
+            "Spanish leaves four digits ungrouped"
+        );
         assert_eq!(both(12345.5, 2), ("12,345.50".into(), "12.345,50".into()));
         assert_eq!(both(999.99, 2), ("999.99".into(), "999,99".into()));
-        assert_eq!(both(-1234567.0, 0), ("-1,234,567".into(), "-1.234.567".into()), "the sign stays in front");
-        assert_eq!(both(-0.0, 2), ("0.00".into(), "0,00".into()), "never -0.00 (roadmap 60)");
+        assert_eq!(
+            both(-1234567.0, 0),
+            ("-1,234,567".into(), "-1.234.567".into()),
+            "the sign stays in front"
+        );
+        assert_eq!(
+            both(-0.0, 2),
+            ("0.00".into(), "0,00".into()),
+            "never -0.00 (roadmap 60)"
+        );
         assert_eq!(both(100000.0, 0), ("100,000".into(), "100.000".into()));
     }
 

@@ -13,9 +13,9 @@ use leptos::task::spawn_local;
 
 use super::details::param;
 use crate::api::*;
-use crate::components::dialog::{use_dialogs, Dialog, FileLoad, RequestList};
-use crate::components::widgets::{render, PageHeader, Skeleton};
-use crate::i18n::{t, use_i18n, Lang, K};
+use crate::components::dialog::{Dialog, FileLoad, RequestList, use_dialogs};
+use crate::components::widgets::{PageHeader, Skeleton, render};
+use crate::i18n::{K, Lang, t, use_i18n};
 use crate::model::*;
 
 /// What the form holds when *Launch*/*Preview* is pressed.
@@ -41,20 +41,36 @@ pub fn stack_spec(lang: Lang, f: &StackForm, params: &[TemplateParam]) -> Result
     }
     let timeout_mins = match f.timeout.trim() {
         "" => None,
-        x => Some(x.parse::<u32>().ok().filter(|m| *m > 0).ok_or_else(|| format!("{}: ?", t(lang, K::StackTimeout)))?),
+        x => Some(
+            x.parse::<u32>()
+                .ok()
+                .filter(|m| *m > 0)
+                .ok_or_else(|| format!("{}: ?", t(lang, K::StackTimeout)))?,
+        ),
     };
     let mut parameters = vec![];
     for p in params {
         match f.values.get(&p.name).map(|v| v.trim()).filter(|v| !v.is_empty()) {
             Some(v) => parameters.push((p.name.clone(), v.to_string())),
             None if p.default.is_none() && !f.update => {
-                return Err(format!("{}: {}", p.label.as_deref().unwrap_or(&p.name), t(lang, K::RequiredField)));
+                return Err(format!(
+                    "{}: {}",
+                    p.label.as_deref().unwrap_or(&p.name),
+                    t(lang, K::RequiredField)
+                ));
             }
             None => {}
         }
     }
     let hidden = params.iter().filter(|p| p.hidden).map(|p| p.name.clone()).collect();
-    Ok(StackSpec { name, source: f.source.clone(), parameters, hidden, timeout_mins, disable_rollback: !f.rollback })
+    Ok(StackSpec {
+        name,
+        source: f.source.clone(),
+        parameters,
+        hidden,
+        timeout_mins,
+        disable_rollback: !f.rollback,
+    })
 }
 
 /// The values the form starts with: an update's current values (not Heat's
@@ -63,8 +79,16 @@ pub fn initial_values(params: &[TemplateParam], current: &[(String, String)]) ->
     params
         .iter()
         .filter_map(|p| {
-            let now = current.iter().find(|(k, _)| *k == p.name).map(|(_, v)| v.clone()).filter(|v| v != "******");
-            let v = if current.is_empty() { p.default.clone().filter(|_| !p.hidden) } else { now };
+            let now = current
+                .iter()
+                .find(|(k, _)| *k == p.name)
+                .map(|(_, v)| v.clone())
+                .filter(|v| v != "******");
+            let v = if current.is_empty() {
+                p.default.clone().filter(|_| !p.hidden)
+            } else {
+                now
+            };
             Some((p.name.clone(), v?))
         })
         .collect()
@@ -113,11 +137,23 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
     let stack_id = existing.as_ref().map(|d| d.stack.id.clone()).unwrap_or_default();
     let use_url = RwSignal::new(false);
     let handed = if update { None } else { take_handed() };
-    let template = RwSignal::new(existing.as_ref().map(|d| d.template.clone()).or(handed).unwrap_or_default());
+    let template = RwSignal::new(
+        existing
+            .as_ref()
+            .map(|d| d.template.clone())
+            .or(handed)
+            .unwrap_or_default(),
+    );
     let url = RwSignal::new(String::new());
     let env = RwSignal::new(String::new());
     let name = RwSignal::new(existing.as_ref().map(|d| d.stack.name.clone()).unwrap_or_default());
-    let timeout = RwSignal::new(existing.as_ref().and_then(|d| d.timeout_mins).map(|m| m.to_string()).unwrap_or_else(|| "60".into()));
+    let timeout = RwSignal::new(
+        existing
+            .as_ref()
+            .and_then(|d| d.timeout_mins)
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "60".into()),
+    );
     let rollback = RwSignal::new(existing.as_ref().is_some_and(|d| !d.disable_rollback));
     let info = RwSignal::new(None::<TemplateInfo>);
     let values = RwSignal::new(HashMap::<String, String>::new());
@@ -126,7 +162,11 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
     let preview = RwSignal::new(None::<ConsoleReply<Vec<PreviewResource>>>);
 
     let source = move || TemplateSource {
-        template: if use_url.get_untracked() { String::new() } else { template.get_untracked() },
+        template: if use_url.get_untracked() {
+            String::new()
+        } else {
+            template.get_untracked()
+        },
         url: use_url.get_untracked().then(|| url.get_untracked()),
         environment: Some(env.get_untracked()).filter(|e| !e.trim().is_empty()),
     };
@@ -183,11 +223,22 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
             Err(e) => return error.set(Some(e)),
         };
         let (title, intro, then) = if update {
-            (K::ChangeStackTemplate, K::UpdateStackIntro, format!("/project/stacks/{}", sid.get_value()))
+            (
+                K::ChangeStackTemplate,
+                K::UpdateStackIntro,
+                format!("/project/stacks/{}", sid.get_value()),
+            )
         } else {
             (K::LaunchStack, K::LaunchStackIntro, "/project/stacks".to_string())
         };
-        let action = if update { OsAction::StackUpdate { id: sid.get_value(), spec: s.clone() } } else { OsAction::StackCreate(s.clone()) };
+        let action = if update {
+            OsAction::StackUpdate {
+                id: sid.get_value(),
+                spec: s.clone(),
+            }
+        } else {
+            OsAction::StackCreate(s.clone())
+        };
         let mut d = Dialog::form(t(lang, title), t(lang, title), vec![], move |_| Ok(action.clone())).then_go(then);
         d.intro = vec![t(lang, intro).to_string()];
         d.selection = vec![s.name];
@@ -246,19 +297,26 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
             let n = n.clone();
             move || values.with(|v| v.get(&n).cloned().unwrap_or_default())
         };
-        let put = move |v: String| values.update(|m| {
-            m.insert(n.clone(), v);
-        });
+        let put = move |v: String| {
+            values.update(|m| {
+                m.insert(n.clone(), v);
+            })
+        };
         let label = p.label.clone().unwrap_or_else(|| p.name.clone());
         let required = p.default.is_none() && !update;
-        let choices = if p.kind == "boolean" && p.allowed.is_empty() { vec!["true".to_string(), "false".to_string()] } else { p.allowed.clone() };
+        let choices = if p.kind == "boolean" && p.allowed.is_empty() {
+            vec!["true".to_string(), "false".to_string()]
+        } else {
+            p.allowed.clone()
+        };
         let control = if !choices.is_empty() {
             view! {
                 <select id=id.clone() prop:value=get.clone() on:change=move |ev| put(event_target_value(&ev))>
                     <option value="">"-"</option>
                     {choices.into_iter().map(|c| view! { <option value=c.clone()>{c.clone()}</option> }).collect_view()}
                 </select>
-            }.into_any()
+            }
+            .into_any()
         } else if p.hidden {
             view! { <input id=id.clone() type="password" autocomplete="new-password" prop:value=get.clone() on:input=move |ev| put(event_target_value(&ev))/> }.into_any()
         } else if p.kind == "json" {
@@ -329,7 +387,8 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
                     <p class="muted">{move || i18n.t(K::PreviewDryRun)}</p>
                     <RequestList requests=r.requests/>
                 </section>
-            }.into_any(),
+            }
+            .into_any(),
             Some(rows) => view! {
                 <section class="card stack-form">
                     <h2>{move || i18n.t(K::PreviewResources)}</h2>
@@ -341,7 +400,8 @@ fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
                         }).collect_view()}
                     </ul>
                 </section>
-            }.into_any(),
+            }
+            .into_any(),
         })
     };
 
@@ -360,13 +420,24 @@ mod tests {
     use super::*;
 
     fn p(name: &str, default: Option<&str>, hidden: bool) -> TemplateParam {
-        TemplateParam { name: name.into(), label: None, description: None, kind: "string".into(), default: default.map(Into::into), hidden, allowed: vec![] }
+        TemplateParam {
+            name: name.into(),
+            label: None,
+            description: None,
+            kind: "string".into(),
+            default: default.map(Into::into),
+            hidden,
+            allowed: vec![],
+        }
     }
 
     fn form(values: &[(&str, &str)], update: bool) -> StackForm {
         StackForm {
             name: "web".into(),
-            source: TemplateSource { template: "heat_template_version: 2018-08-31".into(), ..TemplateSource::default() },
+            source: TemplateSource {
+                template: "heat_template_version: 2018-08-31".into(),
+                ..TemplateSource::default()
+            },
             timeout: "60".into(),
             rollback: false,
             values: values.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
@@ -378,11 +449,25 @@ mod tests {
     fn launch_needs_parameters_without_defaults() {
         let params = [p("flavor", Some("m1.small"), false), p("db_password", None, true)];
         let l = Lang::EnUs;
-        assert!(stack_spec(l, &form(&[], false), &params).unwrap_err().starts_with("db_password"));
+        assert!(
+            stack_spec(l, &form(&[], false), &params)
+                .unwrap_err()
+                .starts_with("db_password")
+        );
         let s = stack_spec(l, &form(&[("db_password", "x"), ("flavor", " ")], false), &params).unwrap();
-        assert_eq!(s.parameters, [("db_password".to_string(), "x".to_string())], "blank: Heat's default");
-        assert_eq!((s.hidden.clone(), s.timeout_mins, s.disable_rollback), (vec!["db_password".to_string()], Some(60), true));
-        assert!(stack_spec(l, &form(&[], true), &params).is_ok(), "an update keeps what is left blank");
+        assert_eq!(
+            s.parameters,
+            [("db_password".to_string(), "x".to_string())],
+            "blank: Heat's default"
+        );
+        assert_eq!(
+            (s.hidden.clone(), s.timeout_mins, s.disable_rollback),
+            (vec!["db_password".to_string()], Some(60), true)
+        );
+        assert!(
+            stack_spec(l, &form(&[], true), &params).is_ok(),
+            "an update keeps what is left blank"
+        );
         let mut bad = form(&[("db_password", "x")], false);
         bad.name = "9lives".into();
         assert!(stack_spec(l, &bad, &params).is_err());
@@ -397,7 +482,10 @@ mod tests {
         let launch = initial_values(&params, &[]);
         assert_eq!(launch.get("flavor").map(String::as_str), Some("m1.small"));
         assert!(!launch.contains_key("db_password"), "hidden defaults stay hidden");
-        let current = [("flavor".to_string(), "m1.large".to_string()), ("db_password".to_string(), "******".to_string())];
+        let current = [
+            ("flavor".to_string(), "m1.large".to_string()),
+            ("db_password".to_string(), "******".to_string()),
+        ];
         let change = initial_values(&params, &current);
         assert_eq!(change.get("flavor").map(String::as_str), Some("m1.large"));
         assert!(!change.contains_key("db_password"), "Heat's mask is not a value");

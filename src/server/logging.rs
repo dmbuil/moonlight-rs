@@ -62,8 +62,14 @@ const PRUNE_EVERY: Duration = Duration::from_secs(3600);
 /// start-up and then every hour by [`prune`].
 fn appender(path: &Path, log: &Log) -> Result<RollingFileAppender, String> {
     let err = |e: String| format!("[log] file {}: {e}", path.display());
-    let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| err("not a file name".into()))?;
+    let dir = path
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| err("not a file name".into()))?;
     // `tracing-appender` would create a missing directory; a typo should stop start-up instead.
     if !dir.is_dir() {
         return Err(err(format!("directory {} does not exist", dir.display())));
@@ -77,23 +83,31 @@ fn appender(path: &Path, log: &Log) -> Result<RollingFileAppender, String> {
     if !log.keep_current() {
         let current = dir.join(current_name(name, log.rotation, chrono::Utc::now()));
         match std::fs::remove_file(&current) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(err(format!("can't start {} empty: {e}", current.display()))),
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(err(format!("can't start {} empty: {e}", current.display())));
+            }
             _ => {}
         }
     }
     // No `max_log_files`: `tracing-appender` prunes before opening the current
     // file and keeps `max - 1`, so with 1 it deletes the file it is about to
     // append to, on every start (0.2.5, `prune_old_logs`; roadmap 84).
-    let appender = rolling::Builder::new().rotation(rotation).filename_prefix(name).build(dir).map_err(|e| err(chain(&e)))?;
+    let appender = rolling::Builder::new()
+        .rotation(rotation)
+        .filename_prefix(name)
+        .build(dir)
+        .map_err(|e| err(chain(&e)))?;
     let max = log.max_files() as usize;
     if max > 0 {
         let (dir, name) = (dir.to_path_buf(), name.to_string());
         prune(&dir, &name, max);
         std::thread::Builder::new()
             .name("log-prune".into())
-            .spawn(move || loop {
-                std::thread::sleep(PRUNE_EVERY);
-                prune(&dir, &name, max);
+            .spawn(move || {
+                loop {
+                    std::thread::sleep(PRUNE_EVERY);
+                    prune(&dir, &name, max);
+                }
             })
             .map_err(|e| err(format!("can't start the pruning thread: {e}")))?;
     }
@@ -185,7 +199,11 @@ mod tests {
             .map(|e| {
                 let p = e.unwrap().path();
                 let mode = std::fs::metadata(&p).unwrap().permissions().mode();
-                (p.file_name().unwrap().to_str().unwrap().to_string(), std::fs::read_to_string(&p).unwrap(), mode)
+                (
+                    p.file_name().unwrap().to_str().unwrap().to_string(),
+                    std::fs::read_to_string(&p).unwrap(),
+                    mode,
+                )
             })
             .collect();
         files.sort();
@@ -195,9 +213,15 @@ mod tests {
     #[test]
     fn a_log_file_gets_the_lines_without_colours_and_unreadable_by_others() {
         let t = Tmp::new("text");
-        let log = Log { file: Some(t.0.join("moonlight.log").display().to_string()), rotation: Rotation::Never, ..Log::default() };
+        let log = Log {
+            file: Some(t.0.join("moonlight.log").display().to_string()),
+            rotation: Rotation::Never,
+            ..Log::default()
+        };
         let files = log_one(&log, &t.0);
-        let [(name, text, mode)] = files.as_slice() else { panic!("one file expected: {files:?}") };
+        let [(name, text, mode)] = files.as_slice() else {
+            panic!("one file expected: {files:?}")
+        };
         assert_eq!(name, "moonlight.log", "`never` writes the configured name");
         assert!(text.contains("signed in") && text.contains("user=\"alice\""), "{text}");
         assert!(!text.contains('\x1b'), "no ANSI colours in the file: {text:?}");
@@ -207,21 +231,36 @@ mod tests {
     #[test]
     fn rotated_files_carry_the_date_and_json_is_one_object_per_line() {
         let t = Tmp::new("json");
-        let log = Log { file: Some(t.0.join("m.log").display().to_string()), format: LogFormat::Json, ..Log::default() };
+        let log = Log {
+            file: Some(t.0.join("m.log").display().to_string()),
+            format: LogFormat::Json,
+            ..Log::default()
+        };
         let files = log_one(&log, &t.0);
-        let [(name, text, _)] = files.as_slice() else { panic!("one file expected: {files:?}") };
+        let [(name, text, _)] = files.as_slice() else {
+            panic!("one file expected: {files:?}")
+        };
         let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
         assert_eq!(name, &format!("m.log.{date}"), "daily rotation by default");
         let line: serde_json::Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
-        assert_eq!((line["fields"]["message"].as_str(), line["fields"]["user"].as_str()), (Some("signed in"), Some("alice")));
+        assert_eq!(
+            (line["fields"]["message"].as_str(), line["fields"]["user"].as_str()),
+            (Some("signed in"), Some("alice"))
+        );
     }
 
     #[test]
     fn a_missing_log_directory_stops_start_up() {
         let t = Tmp::new("missing");
-        let log = Log { file: Some(t.0.join("nope/moonlight.log").display().to_string()), ..Log::default() };
+        let log = Log {
+            file: Some(t.0.join("nope/moonlight.log").display().to_string()),
+            ..Log::default()
+        };
         let err = subscriber(&log).err().unwrap();
-        assert!(err.starts_with("[log] file ") && err.contains("does not exist"), "{err}");
+        assert!(
+            err.starts_with("[log] file ") && err.contains("does not exist"),
+            "{err}"
+        );
         assert!(!t.0.join("nope").exists(), "the directory is not created");
     }
 
@@ -244,27 +283,68 @@ mod tests {
         let today = current_name("m.log", Rotation::Daily, chrono::Utc::now());
         for rotation in [Rotation::Daily, Rotation::Never] {
             let t = Tmp::new(&format!("restart-{rotation:?}"));
-            let name = if rotation == Rotation::Never { "m.log".to_string() } else { today.clone() };
-            let log = Log { file: Some(t.0.join("m.log").display().to_string()), rotation, max_files: Some(1), ..Log::default() };
+            let name = if rotation == Rotation::Never {
+                "m.log".to_string()
+            } else {
+                today.clone()
+            };
+            let log = Log {
+                file: Some(t.0.join("m.log").display().to_string()),
+                rotation,
+                max_files: Some(1),
+                ..Log::default()
+            };
             run(&log, "before restart");
             run(&log, "after restart");
-            assert_eq!(read(&t.0, &name), "before restart\nafter restart\n", "{rotation:?}, keep = yes, max_files = 1");
-            let fresh = Log { keep: KeepSetting::Flag(false), ..log };
+            assert_eq!(
+                read(&t.0, &name),
+                "before restart\nafter restart\n",
+                "{rotation:?}, keep = yes, max_files = 1"
+            );
+            let fresh = Log {
+                keep: KeepSetting::Flag(false),
+                ..log
+            };
             run(&fresh, "fresh start");
-            assert_eq!(read(&t.0, &name), "fresh start\n", "{rotation:?}, keep = no: starts empty");
+            assert_eq!(
+                read(&t.0, &name),
+                "fresh start\n",
+                "{rotation:?}, keep = no: starts empty"
+            );
         }
     }
 
     #[test]
     fn pruning_keeps_the_newest_files_and_ignores_others() {
         let t = Tmp::new("prune");
-        for n in ["m.log.2026-10-27", "m.log.2026-10-28", "m.log.2026-10-29", "m.log.2026-10-30", "other.log", "m.logs"] {
+        for n in [
+            "m.log.2026-10-27",
+            "m.log.2026-10-28",
+            "m.log.2026-10-29",
+            "m.log.2026-10-30",
+            "other.log",
+            "m.logs",
+        ] {
             std::fs::write(t.0.join(n), "x").unwrap();
         }
         prune(&t.0, "m.log", 2);
-        let mut left: Vec<_> = std::fs::read_dir(&t.0).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        let mut left: Vec<_> = std::fs::read_dir(&t.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
         left.sort();
-        assert_eq!(left, ["m.log.2026-10-29", "m.log.2026-10-30", "m.logs", "other.log"], "newest two of this log; other files untouched");
-        assert_eq!(current_name("m.log", Rotation::Hourly, chrono::DateTime::from_timestamp(0, 0).unwrap()), "m.log.1970-01-01-00");
+        assert_eq!(
+            left,
+            ["m.log.2026-10-29", "m.log.2026-10-30", "m.logs", "other.log"],
+            "newest two of this log; other files untouched"
+        );
+        assert_eq!(
+            current_name(
+                "m.log",
+                Rotation::Hourly,
+                chrono::DateTime::from_timestamp(0, 0).unwrap()
+            ),
+            "m.log.1970-01-01-00"
+        );
     }
 }

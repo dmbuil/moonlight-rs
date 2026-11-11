@@ -20,9 +20,21 @@ pub struct Size {
 
 impl Size {
     /// Box and gap sizes of the normal view.
-    pub const NORMAL: Size = Size { box_w: 150.0, box_h: 44.0, row_gap: 36.0, bar_w: 30.0, pad: 18.0 };
+    pub const NORMAL: Size = Size {
+        box_w: 150.0,
+        box_h: 44.0,
+        row_gap: 36.0,
+        bar_w: 30.0,
+        pad: 18.0,
+    };
     /// Box and gap sizes of the *Small* view (labels cut to fit).
-    pub const SMALL: Size = Size { box_w: 44.0, box_h: 30.0, row_gap: 18.0, bar_w: 18.0, pad: 12.0 };
+    pub const SMALL: Size = Size {
+        box_w: 44.0,
+        box_h: 30.0,
+        row_gap: 18.0,
+        bar_w: 18.0,
+        pad: 12.0,
+    };
 
     /// The sizes for the chosen view.
     pub fn of(small: bool) -> Size {
@@ -109,7 +121,10 @@ pub fn columns(t: &Topology, s: Size, collapsed: bool) -> Columns {
         .iter()
         .enumerate()
         .map(|(di, d)| {
-            let cols: Vec<usize> = t.links_of(&d.id).filter_map(|l| net_ix.get(l.network_id.as_str()).copied()).collect();
+            let cols: Vec<usize> = t
+                .links_of(&d.id)
+                .filter_map(|l| net_ix.get(l.network_id.as_str()).copied())
+                .collect();
             let lo = cols.iter().min().copied().unwrap_or(orphan_col);
             let hi = cols.iter().max().copied().unwrap_or(orphan_col);
             (di, lo, hi)
@@ -135,8 +150,17 @@ pub fn columns(t: &Topology, s: Size, collapsed: bool) -> Columns {
     let row_h = s.box_h + s.row_gap;
     let bar_h = (rows.len() as f64 * row_h + s.row_gap).max(MIN_BAR_H);
     let bar_x = |c: usize| MARGIN + c as f64 * s.col_w();
-    let bars: Vec<Bar> =
-        t.networks.iter().enumerate().map(|(i, n)| Bar { id: n.id.clone(), x: bar_x(i), y: MARGIN, h: bar_h }).collect();
+    let bars: Vec<Bar> = t
+        .networks
+        .iter()
+        .enumerate()
+        .map(|(i, n)| Bar {
+            id: n.id.clone(),
+            x: bar_x(i),
+            y: MARGIN,
+            h: bar_h,
+        })
+        .collect();
 
     let mut by_device: HashMap<&str, Vec<(&str, Vec<usize>)>> = HashMap::new();
     for (dev, net, links) in pairs(t) {
@@ -151,14 +175,31 @@ pub fn columns(t: &Topology, s: Size, collapsed: bool) -> Columns {
         let mid = y + s.box_h / 2.0;
         for (net, links) in by_device.remove(d.id.as_str()).unwrap_or_default() {
             let Some(&c) = net_ix.get(net) else { continue };
-            let (x1, x2) = if c == lo { (x, bar_x(c) + s.bar_w) } else { (x + s.box_w, bar_x(c)) };
-            wires.push(Wire { device_id: d.id.clone(), network_id: net.to_string(), x1, x2, y: mid, links });
+            let (x1, x2) = if c == lo {
+                (x, bar_x(c) + s.bar_w)
+            } else {
+                (x + s.box_w, bar_x(c))
+            };
+            wires.push(Wire {
+                device_id: d.id.clone(),
+                network_id: net.to_string(),
+                x1,
+                x2,
+                y: mid,
+                links,
+            });
         }
         boxes.push(Boxed { id: d.id.clone(), x, y });
     }
     let has_orphans = spans.iter().any(|&(_, lo, _)| lo == orphan_col);
     let cols = t.networks.len() + usize::from(has_orphans);
-    Columns { width: 2.0 * MARGIN + cols.max(1) as f64 * s.col_w(), height: 2.0 * MARGIN + bar_h, bars, boxes, wires }
+    Columns {
+        width: 2.0 * MARGIN + cols.max(1) as f64 * s.col_w(),
+        height: 2.0 * MARGIN + bar_h,
+        bars,
+        boxes,
+        wires,
+    }
 }
 
 // --- Graph tab --------------------------------------------------------------
@@ -178,9 +219,17 @@ pub const ITERATIONS: usize = 300;
 /// Fruchterman–Reingold force layout of networks and devices joined by links.
 /// `room` is the space per node, so bigger nodes spread further.
 pub fn force(t: &Topology, room: f64) -> Graph {
-    let ids: Vec<&str> =
-        t.networks.iter().map(|n| n.id.as_str()).chain(t.devices.iter().map(|d| d.id.as_str())).collect();
-    force_edges(&ids, t.links.iter().map(|l| (l.device_id.as_str(), l.network_id.as_str())), room)
+    let ids: Vec<&str> = t
+        .networks
+        .iter()
+        .map(|n| n.id.as_str())
+        .chain(t.devices.iter().map(|d| d.id.as_str()))
+        .collect();
+    force_edges(
+        &ids,
+        t.links.iter().map(|l| (l.device_id.as_str(), l.network_id.as_str())),
+        room,
+    )
 }
 
 /// [`force`] for any graph: `ids` are the nodes, `links` pairs of their IDs
@@ -191,8 +240,10 @@ pub fn force_edges<'a>(ids: &[&str], links: impl IntoIterator<Item = (&'a str, &
         return Graph::default();
     }
     let ix: HashMap<&str, usize> = ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
-    let mut edges: Vec<(usize, usize)> =
-        links.into_iter().filter_map(|(a, b)| Some((*ix.get(a)?, *ix.get(b)?))).collect();
+    let mut edges: Vec<(usize, usize)> = links
+        .into_iter()
+        .filter_map(|(a, b)| Some((*ix.get(a)?, *ix.get(b)?)))
+        .collect();
     edges.sort_unstable();
     edges.dedup();
 
@@ -243,13 +294,21 @@ pub fn force_edges<'a>(ids: &[&str], links: impl IntoIterator<Item = (&'a str, &
         temp -= cool;
     }
     // Fit to the nodes with a margin of one node's room.
-    let (minx, maxx) = p.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(q.0), b.max(q.0)));
-    let (miny, maxy) = p.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(q.1), b.max(q.1)));
+    let (minx, maxx) = p
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(q.0), b.max(q.0)));
+    let (miny, maxy) = p
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(q.1), b.max(q.1)));
     let m = room / 2.0;
     Graph {
         width: maxx - minx + 2.0 * m,
         height: maxy - miny + 2.0 * m,
-        pos: ids.iter().zip(p).map(|(id, q)| (id.to_string(), (q.0 - minx + m, q.1 - miny + m))).collect(),
+        pos: ids
+            .iter()
+            .zip(p)
+            .map(|(id, q)| (id.to_string(), (q.0 - minx + m, q.1 - miny + m)))
+            .collect(),
     }
 }
 
@@ -316,13 +375,33 @@ mod tests {
     use crate::model::{TopoDevice, TopoLink, TopoNetwork};
 
     fn net(id: &str, external: bool) -> TopoNetwork {
-        TopoNetwork { id: id.into(), name: id.into(), external, shared: false, owned: !external, status: "ACTIVE".into(), cidrs: vec![] }
+        TopoNetwork {
+            id: id.into(),
+            name: id.into(),
+            external,
+            shared: false,
+            owned: !external,
+            status: "ACTIVE".into(),
+            cidrs: vec![],
+        }
     }
     fn dev(id: &str, kind: TopoKind) -> TopoDevice {
-        TopoDevice { id: id.into(), name: id.into(), kind, status: "ACTIVE".into() }
+        TopoDevice {
+            id: id.into(),
+            name: id.into(),
+            kind,
+            status: "ACTIVE".into(),
+        }
     }
     fn link(d: &str, n: &str) -> TopoLink {
-        TopoLink { device_id: d.into(), network_id: n.into(), port_id: None, ips: vec![], floating: vec![], gateway: false }
+        TopoLink {
+            device_id: d.into(),
+            network_id: n.into(),
+            port_id: None,
+            ips: vec![],
+            floating: vec![],
+            gateway: false,
+        }
     }
     /// ext ─ r1 ─ a ; vm1 on a and b ; vm2 on b ; lone on nothing
     fn sample() -> Topology {
@@ -334,7 +413,13 @@ mod tests {
                 dev("vm1", TopoKind::Server),
                 dev("vm2", TopoKind::Server),
             ],
-            links: vec![link("r1", "ext"), link("r1", "a"), link("vm1", "a"), link("vm1", "b"), link("vm2", "b")],
+            links: vec![
+                link("r1", "ext"),
+                link("r1", "a"),
+                link("vm1", "a"),
+                link("vm1", "b"),
+                link("vm2", "b"),
+            ],
             max_networks: 0,
         }
     }
@@ -348,7 +433,10 @@ mod tests {
         assert_eq!(bx("r1").x, bar(0) + s.bar_w + s.pad);
         assert_eq!(bx("vm1").x, bar(1) + s.bar_w + s.pad);
         assert_eq!(bx("vm2").x, bar(2) + s.bar_w + s.pad);
-        assert!(bx("lone").x > bar(2) + s.bar_w, "unconnected devices go in an extra column");
+        assert!(
+            bx("lone").x > bar(2) + s.bar_w,
+            "unconnected devices go in an extra column"
+        );
         // One device per row; bars as tall as the rows.
         let mut ys: Vec<_> = c.boxes.iter().map(|b| b.y).collect();
         ys.dedup();
@@ -366,8 +454,16 @@ mod tests {
         let b = c.boxes.iter().find(|b| b.id == "vm1").unwrap();
         let to_a = vm1.iter().find(|w| w.network_id == "a").unwrap();
         let to_b = vm1.iter().find(|w| w.network_id == "b").unwrap();
-        assert_eq!((to_a.x1, to_a.x2), (b.x, c.bars[1].x + s.bar_w), "left: box edge to the bar's right side");
-        assert_eq!((to_b.x1, to_b.x2), (b.x + s.box_w, c.bars[2].x), "right: box edge to the bar's left side");
+        assert_eq!(
+            (to_a.x1, to_a.x2),
+            (b.x, c.bars[1].x + s.bar_w),
+            "left: box edge to the bar's right side"
+        );
+        assert_eq!(
+            (to_b.x1, to_b.x2),
+            (b.x + s.box_w, c.bars[2].x),
+            "right: box edge to the bar's left side"
+        );
         assert_eq!(to_a.y, b.y + s.box_h / 2.0);
     }
 
@@ -388,8 +484,14 @@ mod tests {
     fn wheel_zoom_is_proportional_to_the_distance() {
         let notch = wheel_factor(-100.0, false, false);
         assert!((1.15..1.3).contains(&notch), "a mouse notch zooms in ~1.2x: {notch}");
-        assert!((wheel_factor(100.0, false, false) * notch - 1.0).abs() < 1e-9, "out undoes in");
-        assert!((wheel_factor(-3.0, true, false) - notch).abs() < 0.05, "3 lines ~ 100 px");
+        assert!(
+            (wheel_factor(100.0, false, false) * notch - 1.0).abs() < 1e-9,
+            "out undoes in"
+        );
+        assert!(
+            (wheel_factor(-3.0, true, false) - notch).abs() < 0.05,
+            "3 lines ~ 100 px"
+        );
         // 30 trackpad events of 4 px: a gentle zoom, not the 1.2^30 = 237x of a fixed step.
         let swipe = wheel_factor(-4.0, false, false).powi(30);
         assert!(swipe < 1.5, "trackpad swipe zoomed {swipe}x");
@@ -420,7 +522,10 @@ mod tests {
             let (p, q) = (g.pos[a], g.pos[b]);
             ((p.0 - q.0).powi(2) + (p.1 - q.1).powi(2)).sqrt()
         };
-        assert!(d("vm2", "b") < d("vm2", "ext"), "a linked pair ends closer than an unlinked one");
+        assert!(
+            d("vm2", "b") < d("vm2", "ext"),
+            "a linked pair ends closer than an unlinked one"
+        );
         assert_eq!(force(&Topology::default(), 120.0), Graph::default());
     }
 
@@ -446,16 +551,26 @@ mod tests {
         }
         let started = std::time::Instant::now();
         let g = force(&t, 120.0);
-        assert!(started.elapsed().as_secs() < 5, "force layout of 144 nodes took {:?}", started.elapsed());
+        assert!(
+            started.elapsed().as_secs() < 5,
+            "force layout of 144 nodes took {:?}",
+            started.elapsed()
+        );
         assert_eq!(g.pos.len(), 144);
-        assert!(g.pos.values().all(|&(x, y)| x.is_finite() && y.is_finite() && (0.0..=g.width).contains(&x) && (0.0..=g.height).contains(&y)));
+        assert!(g.pos.values().all(|&(x, y)| x.is_finite()
+            && y.is_finite()
+            && (0.0..=g.width).contains(&x)
+            && (0.0..=g.height).contains(&y)));
         for collapsed in [false, true] {
             let c = columns(&t, Size::NORMAL, collapsed);
             assert_eq!(c.boxes.len(), 132, "every device gets a box (collapsed: {collapsed})");
             assert!(c.height.is_finite() && c.height > 0.0);
         }
         let packed = columns(&t, Size::NORMAL, true).height;
-        assert!(packed < columns(&t, Size::NORMAL, false).height, "collapsing shortens a tall topology");
+        assert!(
+            packed < columns(&t, Size::NORMAL, false).height,
+            "collapsing shortens a tall topology"
+        );
     }
 
     #[test]
@@ -470,10 +585,19 @@ mod tests {
         let min = p
             .iter()
             .enumerate()
-            .flat_map(|(i, a)| p[i + 1..].iter().map(move |b| ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()))
+            .flat_map(|(i, a)| {
+                p[i + 1..]
+                    .iter()
+                    .map(move |b| ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt())
+            })
             .fold(f64::MAX, f64::min);
         assert!(min > 90.0, "closest pair {min:.0} apart");
-        assert!(g.width < 10.0 * 180.0 && g.height < 10.0 * 180.0, "compact: {:.0}x{:.0}", g.width, g.height);
+        assert!(
+            g.width < 10.0 * 180.0 && g.height < 10.0 * 180.0,
+            "compact: {:.0}x{:.0}",
+            g.width,
+            g.height
+        );
     }
 
     #[test]
@@ -485,7 +609,10 @@ mod tests {
         assert_eq!(v.0 + v.2 * 0.25, 250.0);
         let tiny = zoom(v, 1000.0, 0.5, 0.5, full);
         assert_eq!(tiny.2, 100.0, "clamped at 10x");
-        assert_eq!(pan((0.0, 0.0, 500.0, 250.0), 100.0, -50.0, 1000.0), (-50.0, 25.0, 500.0, 250.0));
+        assert_eq!(
+            pan((0.0, 0.0, 500.0, 250.0), 100.0, -50.0, 1000.0),
+            (-50.0, 25.0, 500.0, 250.0)
+        );
         // A 1000x500 drawing in a 1200x300 box: height-bound, centred horizontally.
         assert_eq!(fit((0.0, 0.0, 1000.0, 500.0), 1200.0, 300.0), (0.6, 300.0));
     }

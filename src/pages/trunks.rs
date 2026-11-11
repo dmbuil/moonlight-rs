@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 
-use super::details::{mono, param, Card, DetailHeader, Kv};
+use super::details::{Card, DetailHeader, Kv, mono, param};
 use super::lists::{admin_state, link, status_pill};
 use crate::api::*;
-use crate::components::dialog::{data_version, CreateButton, RowActions};
+use crate::components::dialog::{CreateButton, RowActions, data_version};
 use crate::components::ops;
-use crate::components::table::{col, DataTable};
-use crate::components::widgets::{dash, render, Copyable, Skeleton};
-use crate::i18n::{use_i18n, K};
+use crate::components::table::{DataTable, col};
+use crate::components::widgets::{Copyable, Skeleton, dash, render};
+use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
 #[component]

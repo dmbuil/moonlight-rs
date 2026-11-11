@@ -7,15 +7,19 @@
 use chrono::{Datelike, NaiveDate, NaiveTime, Timelike};
 use leptos::prelude::*;
 
-use crate::i18n::{month_name, use_i18n, weekday_initials, K};
+use crate::i18n::{K, month_name, use_i18n, weekday_initials};
 
 /// The days to draw for `year`/`month`: whole Monday-first weeks, `None` for
 /// the blanks before the 1st and after the last day.
 pub fn month_grid(year: i32, month: u32) -> Vec<Option<NaiveDate>> {
-    let Some(first) = NaiveDate::from_ymd_opt(year, month, 1) else { return vec![] };
+    let Some(first) = NaiveDate::from_ymd_opt(year, month, 1) else {
+        return vec![];
+    };
     let lead = first.weekday().num_days_from_monday() as usize;
     let (ny, nm) = shift_month(year, month, 1);
-    let days = NaiveDate::from_ymd_opt(ny, nm, 1).map(|n| (n - first).num_days()).unwrap_or(30) as u32;
+    let days = NaiveDate::from_ymd_opt(ny, nm, 1)
+        .map(|n| (n - first).num_days())
+        .unwrap_or(30) as u32;
     let mut out: Vec<Option<NaiveDate>> = vec![None; lead];
     out.extend((1..=days).map(|d| NaiveDate::from_ymd_opt(year, month, d)));
     while !out.len().is_multiple_of(7) {
@@ -32,7 +36,9 @@ pub fn shift_month(year: i32, month: u32, by: i32) -> (i32, u32) {
 
 /// `HH:MM` with one part replaced; the other part kept from `current` (or 00).
 pub fn set_time_part(current: &str, hour: Option<u32>, minute: Option<u32>) -> String {
-    let now = NaiveTime::parse_from_str(current.trim(), "%H:%M").or_else(|_| NaiveTime::parse_from_str(current.trim(), "%H:%M:%S")).ok();
+    let now = NaiveTime::parse_from_str(current.trim(), "%H:%M")
+        .or_else(|_| NaiveTime::parse_from_str(current.trim(), "%H:%M:%S"))
+        .ok();
     let h = hour.or(now.map(|t| t.hour())).unwrap_or(0);
     let m = minute.or(now.map(|t| t.minute())).unwrap_or(0);
     format!("{h:02}:{m:02}")
@@ -46,7 +52,9 @@ fn today() -> NaiveDate {
 fn place(anchor: NodeRef<leptos::html::Div>, height: f64) -> String {
     #[cfg(feature = "hydrate")]
     {
-        let Some(a) = anchor.get_untracked() else { return String::new() };
+        let Some(a) = anchor.get_untracked() else {
+            return String::new();
+        };
         let r = a.get_bounding_client_rect();
         let vh = window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0);
         let below = vh - r.bottom();
@@ -181,7 +189,11 @@ pub fn TimePicker(
     let open = RwSignal::new(false);
     let pos = RwSignal::new(String::new());
     let anchor: NodeRef<leptos::html::Div> = NodeRef::new();
-    let parts = move || NaiveTime::parse_from_str(value.get().trim(), "%H:%M").ok().map(|t| (t.hour(), t.minute()));
+    let parts = move || {
+        NaiveTime::parse_from_str(value.get().trim(), "%H:%M")
+            .ok()
+            .map(|t| (t.hour(), t.minute()))
+    };
     let toggle = move |_| {
         if !open.get_untracked() {
             pos.set(place(anchor, 260.0));

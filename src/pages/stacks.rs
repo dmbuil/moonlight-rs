@@ -9,19 +9,21 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 
-use super::details::{mono, param, Card, DetailHeader, Kv, Tabs};
+use super::details::{Card, DetailHeader, Kv, Tabs, mono, param};
 use super::lists::link;
 use super::topology::clip;
 use crate::api::*;
-use crate::components::dialog::{data_version, BulkButton, RowActions};
-use crate::components::ops;
+use crate::components::dialog::{BulkButton, RowActions, data_version};
 use crate::components::heat_icons::BOX;
+use crate::components::ops;
 use crate::components::stack_graph::{self, Edge};
+use crate::components::table::{Col, DataTable, Select, col};
 use crate::components::topo_canvas::{Canvas, KeptView};
 use crate::components::topo_layout as geo;
-use crate::components::table::{col, Col, DataTable, Select};
-use crate::components::widgets::{dash, poll_while_busy, render, short_time, Busy, Copyable, PageHeader, Pill, Skeleton, Tone};
-use crate::i18n::{stack_status, t, use_i18n, Lang, K};
+use crate::components::widgets::{
+    Busy, Copyable, PageHeader, Pill, Skeleton, Tone, dash, poll_while_busy, render, short_time,
+};
+use crate::i18n::{K, Lang, stack_status, t, use_i18n};
 use crate::model::*;
 
 /// Heat's status colours: failed red, in progress amber, deleted, suspended or
@@ -58,11 +60,22 @@ fn names(v: &[String]) -> String {
 
 fn stack_columns() -> Vec<Col<StackRow>> {
     vec![
-        col(K::Name, |x: &StackRow, _| link(format!("/project/stacks/{}", x.id), x.name.clone())).sort_text(|x| x.name.clone()),
-        col(K::Created, |x: &StackRow, _| short_time(&x.created)).sort_text(|x| x.created.clone()).class("nowrap"),
-        col(K::Updated, |x: &StackRow, _| dash(x.updated.as_deref().map(short_time))).sort_text(|x| x.updated.clone().unwrap_or_default()).class("nowrap"),
+        col(K::Name, |x: &StackRow, _| {
+            link(format!("/project/stacks/{}", x.id), x.name.clone())
+        })
+        .sort_text(|x| x.name.clone()),
+        col(K::Created, |x: &StackRow, _| short_time(&x.created))
+            .sort_text(|x| x.created.clone())
+            .class("nowrap"),
+        col(K::Updated, |x: &StackRow, _| dash(x.updated.as_deref().map(short_time)))
+            .sort_text(|x| x.updated.clone().unwrap_or_default())
+            .class("nowrap"),
         col(K::Status, |x: &StackRow, l| stack_pill(&x.status, l)).sort_text(|x| x.status.clone()),
-        col(K::Actions, |x: &StackRow, l| view! { <RowActions items=ops::stack_items(l, x)/> }).class("actions"),
+        col(
+            K::Actions,
+            |x: &StackRow, l| view! { <RowActions items=ops::stack_items(l, x)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -73,9 +86,14 @@ fn stack_columns() -> Vec<Col<StackRow>> {
 pub fn StacksPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_stacks());
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if td.data.iter().any(|s| stack_busy(&s.status)))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if td.data.iter().any(|s| stack_busy(&s.status))))
+    });
     let columns = StoredValue::new(stack_columns());
-    let select = Select { key: |x: &StackRow| Some((stack_key(&x.name, &x.id), x.name.clone())), picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: |x: &StackRow| Some((stack_key(&x.name, &x.id), x.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             {move || polling.get().then(|| view! { <span class="updating">{i18n.t(K::Updating)}</span> })}
@@ -118,9 +136,14 @@ fn resource_name_cell(r: &StackResource) -> AnyView {
 fn resource_columns() -> Vec<Col<StackResource>> {
     vec![
         col(K::StackResource, |r: &StackResource, _| resource_name_cell(r)).sort_text(|r| r.name.clone()),
-        col(K::ResourceId, |r: &StackResource, _| mono(r.physical_id.clone().unwrap_or_else(|| "-".into()))),
-        col(K::ResourceType, |r: &StackResource, _| mono(r.resource_type.clone())).sort_text(|r| r.resource_type.clone()),
-        col(K::Updated, |r: &StackResource, _| short_time(&r.updated)).sort_text(|r| r.updated.clone()).class("nowrap"),
+        col(K::ResourceId, |r: &StackResource, _| {
+            mono(r.physical_id.clone().unwrap_or_else(|| "-".into()))
+        }),
+        col(K::ResourceType, |r: &StackResource, _| mono(r.resource_type.clone()))
+            .sort_text(|r| r.resource_type.clone()),
+        col(K::Updated, |r: &StackResource, _| short_time(&r.updated))
+            .sort_text(|r| r.updated.clone())
+            .class("nowrap"),
         col(K::Status, |r: &StackResource, l| stack_pill(&r.status, l)).sort_text(|r| r.status.clone()),
         col(K::StatusReason, |r: &StackResource, _| dash(r.status_reason.clone())),
     ]
@@ -129,7 +152,8 @@ fn resource_columns() -> Vec<Col<StackResource>> {
 fn topology_columns() -> Vec<Col<StackResource>> {
     vec![
         col(K::StackResource, |r: &StackResource, _| resource_name_cell(r)).sort_text(|r| r.name.clone()),
-        col(K::ResourceType, |r: &StackResource, _| mono(r.resource_type.clone())).sort_text(|r| r.resource_type.clone()),
+        col(K::ResourceType, |r: &StackResource, _| mono(r.resource_type.clone()))
+            .sort_text(|r| r.resource_type.clone()),
         col(K::Status, |r: &StackResource, l| stack_pill(&r.status, l)).sort_text(|r| r.status.clone()),
         col(K::DependsOn, |r: &StackResource, _| names(&r.depends_on)).sort_num(|r| r.depends_on.len() as i64),
         col(K::RequiredBy, |r: &StackResource, _| names(&r.required_by)).sort_num(|r| r.required_by.len() as i64),
@@ -138,9 +162,13 @@ fn topology_columns() -> Vec<Col<StackResource>> {
 
 fn event_columns() -> Vec<Col<StackEvent>> {
     vec![
-        col(K::EventTime, |e: &StackEvent, _| short_time(&e.time)).sort_text(|e| e.time.clone()).class("nowrap"),
+        col(K::EventTime, |e: &StackEvent, _| short_time(&e.time))
+            .sort_text(|e| e.time.clone())
+            .class("nowrap"),
         col(K::StackResource, |e: &StackEvent, _| e.resource_name.clone()).sort_text(|e| e.resource_name.clone()),
-        col(K::ResourceId, |e: &StackEvent, _| mono(e.physical_id.clone().unwrap_or_else(|| "-".into()))),
+        col(K::ResourceId, |e: &StackEvent, _| {
+            mono(e.physical_id.clone().unwrap_or_else(|| "-".into()))
+        }),
         col(K::Status, |e: &StackEvent, l| event_pill(&e.status, l)).sort_text(|e| e.status.clone()),
         col(K::StatusReason, |e: &StackEvent, _| dash(e.status_reason.clone())),
     ]
@@ -163,11 +191,17 @@ fn output_columns() -> Vec<Col<StackOutput>> {
 pub fn StackDetailPage() -> impl IntoView {
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_stack(id));
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if stack_busy(&td.data.stack.status))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if stack_busy(&td.data.stack.status)))
+    });
     let i18n = use_i18n();
     let tab = RwSignal::new(1usize);
     // Out here so that the polling's re-renders keep the list toggle, zoom and pan.
-    let graph = GraphOpts { list: RwSignal::new(false), center: RwSignal::new(0), keep: StoredValue::new(None) };
+    let graph = GraphOpts {
+        list: RwSignal::new(false),
+        center: RwSignal::new(0),
+        keep: StoredValue::new(None),
+    };
     view! {
         <Transition fallback=|| view! { <Skeleton rows=8/> }>
             {move || render(data.get(), move |td| {
@@ -234,7 +268,11 @@ fn topology_tab(d: StackDetail, opts: GraphOpts) -> AnyView {
 /// What the graph's lines and colours mean (the icons speak for themselves).
 fn graph_legend(lang: Lang) -> AnyView {
     let line = |dashed: bool, key: K| {
-        let (class, marker) = if dashed { ("stack-edge root", None) } else { ("stack-edge", Some("url(#stack-legend-arrow)")) };
+        let (class, marker) = if dashed {
+            ("stack-edge root", None)
+        } else {
+            ("stack-edge", Some("url(#stack-legend-arrow)"))
+        };
         view! {
             <li>
                 <svg width="34" height="12" viewBox="0 0 34 12" aria-hidden="true">
@@ -297,7 +335,13 @@ impl GraphCtx {
         match self.focus.try_get().flatten() {
             None => "",
             Some(h) if h == id => " hl",
-            Some(h) if edges.iter().any(|e| (e.from == h && e.to == id) || (e.to == h && e.from == id)) => " hl",
+            Some(h)
+                if edges
+                    .iter()
+                    .any(|e| (e.from == h && e.to == id) || (e.to == h && e.from == id)) =>
+            {
+                " hl"
+            }
             Some(_) => " dim",
         }
     }
@@ -308,7 +352,11 @@ impl GraphCtx {
 #[component]
 fn StackGraph(d: StackDetail, opts: GraphOpts) -> impl IntoView {
     let i18n = use_i18n();
-    let ctx = GraphCtx { focus: RwSignal::new(None), at: RwSignal::new((0.0, 0.0)), moved: RwSignal::new(false) };
+    let ctx = GraphCtx {
+        focus: RwSignal::new(None),
+        at: RwSignal::new((0.0, 0.0)),
+        moved: RwSignal::new(false),
+    };
     let stack = d.stack.clone();
     let edges = StoredValue::new(stack_graph::edges(&stack.id, &d.resources));
     let resources = StoredValue::new(d.resources);
@@ -317,7 +365,9 @@ fn StackGraph(d: StackDetail, opts: GraphOpts) -> impl IntoView {
     let stack_id = stack.id.clone();
     Effect::new(move |_| {
         let g = resources.with_value(|rs| {
-            let ids: Vec<&str> = std::iter::once(stack_id.as_str()).chain(rs.iter().map(|r| r.name.as_str())).collect();
+            let ids: Vec<&str> = std::iter::once(stack_id.as_str())
+                .chain(rs.iter().map(|r| r.name.as_str()))
+                .collect();
             edges.with_value(|es| geo::force_edges(&ids, es.iter().map(|e| (e.from.as_str(), e.to.as_str())), ROOM))
         });
         layout.set(Some(g));
@@ -334,7 +384,8 @@ fn StackGraph(d: StackDetail, opts: GraphOpts) -> impl IntoView {
             .get_value()
             .into_iter()
             .filter_map(|e| {
-                let ((x1, y1), (x2, y2)) = stack_graph::trim(at(&e.from), at(&e.to), radius(&e.from), radius(&e.to) + 2.0)?;
+                let ((x1, y1), (x2, y2)) =
+                    stack_graph::trim(at(&e.from), at(&e.to), radius(&e.from), radius(&e.to) + 2.0)?;
                 let class = if e.depends { "stack-edge" } else { "stack-edge root" };
                 let marker = e.depends.then_some("url(#stack-arrow)");
                 let (from, to) = (e.from, e.to);
@@ -436,7 +487,12 @@ fn GraphNode(
         }
     };
     let open2 = open.clone();
-    let class = format!("topo-node stack-node {}{}{}", tone.key(), if busy { " busy" } else { "" }, if link { " link" } else { "" });
+    let class = format!(
+        "topo-node stack-node {}{}{}",
+        tone.key(),
+        if busy { " busy" } else { "" },
+        if link { " link" } else { "" }
+    );
     view! {
         <g node_ref=g class=move || format!("{class}{}", edges.try_with_value(|es| ctx.state(&state_id, es)).unwrap_or(""))
             transform=transform tabindex="0" role=if link { "link" } else { "img" } aria-label=label
@@ -471,7 +527,13 @@ fn StackTip(ctx: GraphCtx, stack: StoredValue<StackRow>, resources: StoredValue<
         let (x, y) = ctx.at.try_get()?;
         let (title, kind, status, reason, deps) = if stack.try_with_value(|s| s.id == id)? {
             let s = stack.try_get_value()?;
-            (s.name, t(lang, K::StackNode).to_string(), s.status, s.status_reason, vec![])
+            (
+                s.name,
+                t(lang, K::StackNode).to_string(),
+                s.status,
+                s.status_reason,
+                vec![],
+            )
         } else {
             let r = resources.try_with_value(|rs| rs.iter().find(|r| r.name == id).cloned())??;
             (r.name, r.resource_type, r.status, r.status_reason, r.depends_on)
@@ -479,7 +541,11 @@ fn StackTip(ctx: GraphCtx, stack: StoredValue<StackRow>, resources: StoredValue<
         let deps = (!deps.is_empty()).then(|| format!("{}: {}", t(lang, K::DependsOn), deps.join(", ")));
         // Left of the pointer near the right edge, so it stays on screen (max-width 340px).
         let vw = window().inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(f64::MAX);
-        let side = if x + 14.0 + 340.0 > vw { format!("right:{}px", vw - x + 14.0) } else { format!("left:{}px", x + 14.0) };
+        let side = if x + 14.0 + 340.0 > vw {
+            format!("right:{}px", vw - x + 14.0)
+        } else {
+            format!("left:{}px", x + 14.0)
+        };
         Some(view! {
             <div class="topo-tip" role="tooltip" style=format!("{side};top:{}px", y + 14.0)>
                 <strong>{title}</strong>
@@ -537,7 +603,11 @@ fn overview_tab(d: StackDetail, polling: RwSignal<bool>) -> AnyView {
     let params = if d.parameters.is_empty() {
         view! { <dt>"-"</dt><dd></dd> }.into_any()
     } else {
-        d.parameters.iter().map(|(k, v)| view! { <dt class="mono">{k.clone()}</dt><dd class="mono">{v.clone()}</dd> }).collect_view().into_any()
+        d.parameters
+            .iter()
+            .map(|(k, v)| view! { <dt class="mono">{k.clone()}</dt><dd class="mono">{v.clone()}</dd> })
+            .collect_view()
+            .into_any()
     };
     view! {
         <div class="cards">

@@ -3,17 +3,20 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos_router::components::A;
 
-use crate::components::dialog::{data_version, BulkButton, CreateButton, RowActions};
+use crate::components::dialog::{BulkButton, CreateButton, RowActions, data_version};
 use crate::components::ops;
 
 use std::collections::HashMap;
 
 use crate::api::{get_boot_images, list_instances};
-use crate::components::pager::{paged_table, use_list_query, PagerState};
-use crate::components::table::{col, Select};
-use crate::components::widgets::{age_cell_since, dash, is_busy, poll_while_busy, render, AzPill, Busy, FlavorPopover, LockIcon, PageHeader, Pill, Skeleton, Tone};
-use crate::i18n::{power_state, server_status, t, task_state, use_i18n, Lang, K};
-use crate::model::{Address, Instance, ListScope, OsAction, PagedList, BOOT_IMAGE_CHUNK};
+use crate::components::pager::{PagerState, paged_table, use_list_query};
+use crate::components::table::{Select, col};
+use crate::components::widgets::{
+    AzPill, Busy, FlavorPopover, LockIcon, PageHeader, Pill, Skeleton, Tone, age_cell_since, dash, is_busy,
+    poll_while_busy, render,
+};
+use crate::i18n::{K, Lang, power_state, server_status, t, task_state, use_i18n};
+use crate::model::{Address, BOOT_IMAGE_CHUNK, Instance, ListScope, OsAction, PagedList};
 
 #[component]
 pub fn IpList(addresses: Vec<Address>) -> impl IntoView {
@@ -61,7 +64,8 @@ pub fn image_cell(i: &Instance, l: crate::i18n::Lang) -> AnyView {
     match (&i.image_name, i.image_from_volume) {
         (Some(n), true) => view! {
             <span>{n.clone()}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span>
-        }.into_any(),
+        }
+        .into_any(),
         (Some(n), false) => n.clone().into_any(),
         (None, _) => "-".into_any(),
     }
@@ -81,7 +85,10 @@ pub fn late_image_cell(i: &Instance, l: Lang, boot: BootImages) -> AnyView {
     (move || match boot.with(|m| m.get(&id).cloned()) {
         None => view! { <span class="muted" title=t(l, K::LoadingChoices)>"…"</span> }.into_any(),
         Some(None) => "-".into_any(),
-        Some(Some(n)) => view! { <span>{n}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span> }.into_any(),
+        Some(Some(n)) => {
+            view! { <span>{n}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span> }
+                .into_any()
+        }
     })
     .into_any()
 }
@@ -116,7 +123,10 @@ pub fn load_boot_images(rows: Vec<(String, Vec<String>)>, boot: BootImages) {
     }
     leptos::task::spawn_local(async move {
         for (servers, ids) in chunks {
-            let found: HashMap<String, String> = get_boot_images(ids).await.map(|t| t.data.into_iter().collect()).unwrap_or_default();
+            let found: HashMap<String, String> = get_boot_images(ids)
+                .await
+                .map(|t| t.data.into_iter().collect())
+                .unwrap_or_default();
             // A failed chunk or a server without an image shows "-", not "…" forever.
             let _ = boot.try_update(|m| {
                 for s in servers {
@@ -149,14 +159,23 @@ pub fn InstancesPage() -> impl IntoView {
     let query = use_list_query();
     let data = Resource::new(move || (query.get(), data_version()), |(q, _)| list_instances(q));
     let polling = poll_while_busy(data, move || {
-        data.with(|r| matches!(r, Some(Ok(td)) if td.data.rows.iter().any(|i| is_busy(i.task_state.as_deref(), &i.status))))
+        data.with(
+            |r| matches!(r, Some(Ok(td)) if td.data.rows.iter().any(|i| is_busy(i.task_state.as_deref(), &i.status))),
+        )
     });
     // A paged page (roadmap 88 slice E) names its boot-from-volume rows' images later.
     let boot: BootImages = RwSignal::new(HashMap::new());
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };
         if t.data.paged {
-            load_boot_images(t.data.rows.iter().map(|i| (i.id.clone(), i.boot_volume_ids.clone())).collect(), boot);
+            load_boot_images(
+                t.data
+                    .rows
+                    .iter()
+                    .map(|i| (i.id.clone(), i.boot_volume_ids.clone()))
+                    .collect(),
+                boot,
+            );
         }
     });
     let stack = PagerState::new();
@@ -188,7 +207,10 @@ pub fn InstancesPage() -> impl IntoView {
         .class("actions"),
     ];
     let columns = StoredValue::new(columns);
-    let select = Select { key: |i: &Instance| Some((i.id.clone(), i.name.clone())), picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: |i: &Instance| Some((i.id.clone(), i.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <PageHeader>
             {move || polling.get().then(|| view! { <span class="updating">{i18n.t(K::Updating)}</span> })}
@@ -226,10 +248,17 @@ mod tests {
             ("big".to_string(), ids("x", BOOT_IMAGE_CHUNK + 5)),
         ];
         let chunks = boot_chunks(&rows);
-        let shape: Vec<(Vec<&str>, usize)> = chunks.iter().map(|(s, v)| (s.iter().map(String::as_str).collect(), v.len())).collect();
+        let shape: Vec<(Vec<&str>, usize)> = chunks
+            .iter()
+            .map(|(s, v)| (s.iter().map(String::as_str).collect(), v.len()))
+            .collect();
         assert_eq!(
             shape,
-            [(vec!["a", "b"], 50), (vec!["c"], 1), (vec!["big"], BOOT_IMAGE_CHUNK + 5)],
+            [
+                (vec!["a", "b"], 50),
+                (vec!["c"], 1),
+                (vec!["big"], BOOT_IMAGE_CHUNK + 5)
+            ],
             "a and b fill a chunk; c would make 51, so it starts the next; a server is never split; rows without volumes ask nothing"
         );
         assert!(boot_chunks(&[]).is_empty());
@@ -237,7 +266,10 @@ mod tests {
 
     #[test]
     fn task_label_prefers_the_task_then_a_transitional_status() {
-        assert_eq!(task_label(Some("spawning"), "BUILD", Lang::EnUs).as_deref(), Some("Spawning"));
+        assert_eq!(
+            task_label(Some("spawning"), "BUILD", Lang::EnUs).as_deref(),
+            Some("Spawning")
+        );
         assert_eq!(task_label(None, "BUILD", Lang::EnUs).as_deref(), Some("Build"));
         assert_eq!(task_label(Some(""), "ACTIVE", Lang::EnUs), None);
         assert_eq!(task_label(None, "ACTIVE", Lang::EnUs), None);

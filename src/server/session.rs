@@ -20,11 +20,7 @@ pub const SECURE_SESSION_COOKIE: &str = "__Host-ml_session";
 
 /// The session cookie's name for this deployment.
 pub fn cookie_name(secure: bool) -> &'static str {
-    if secure {
-        SECURE_SESSION_COOKIE
-    } else {
-        SESSION_COOKIE
-    }
+    if secure { SECURE_SESSION_COOKIE } else { SESSION_COOKIE }
 }
 
 /// The signed-in user, as stored in the cookie. `Debug` hides the token.
@@ -94,12 +90,7 @@ impl Session {
     }
 
     /// `margin` keeps a request from starting with a dying token.
-    pub fn is_expired(
-        &self,
-        now: DateTime<Utc>,
-        timeout: chrono::Duration,
-        margin: chrono::Duration,
-    ) -> bool {
+    pub fn is_expired(&self, now: DateTime<Utc>, timeout: chrono::Duration, margin: chrono::Duration) -> bool {
         self.ends_at(timeout) <= now + margin
     }
 
@@ -124,9 +115,7 @@ pub fn encode(session: &Session, key: &Key, secure: bool, ends_at: DateTime<Utc>
             .same_site(SameSite::Lax)
             .max_age(cookie::time::Duration::seconds(max_age)),
     );
-    jar.get(cookie_name(secure))
-        .expect("cookie just added")
-        .to_string()
+    jar.get(cookie_name(secure)).expect("cookie just added").to_string()
 }
 
 /// Browsers keep a cookie only if its name and value total at most 4096 bytes
@@ -150,13 +139,11 @@ pub fn decode(cookie_header: &str, key: &Key) -> Option<Session> {
         jar.add_original(c.into_owned());
     }
     let private = jar.private(key);
-    [SECURE_SESSION_COOKIE, SESSION_COOKIE]
-        .iter()
-        .find_map(|name| {
-            private
-                .get(name)
-                .and_then(|plain| serde_json::from_str(plain.value()).ok())
-        })
+    [SECURE_SESSION_COOKIE, SESSION_COOKIE].iter().find_map(|name| {
+        private
+            .get(name)
+            .and_then(|plain| serde_json::from_str(plain.value()).ok())
+    })
 }
 
 /// `Set-Cookie` values that delete the session cookie under both names (a
@@ -202,15 +189,7 @@ pub fn from_headers(headers: &http::HeaderMap) -> Option<Session> {
 /// The session, or a redirect to the login page.
 pub fn require() -> Result<Session, AppError> {
     match current() {
-        Some(s)
-            if !s.is_expired(
-                Utc::now(),
-                state().config.session_timeout,
-                state().config.token_margin,
-            ) =>
-        {
-            Ok(s)
-        }
+        Some(s) if !s.is_expired(Utc::now(), state().config.session_timeout, state().config.token_margin) => Ok(s),
         _ => {
             leptos_axum::redirect("/login");
             // During an SSR render `redirect` only adds the Location header. Only
@@ -218,9 +197,14 @@ pub fn require() -> Result<Session, AppError> {
             // a resource load) must get its JSON error and Leptos' redirect header
             // instead; a 302 makes `fetch` follow it and parse the login page
             // ("error deserializing server function results").
-            let accept = use_context::<http::request::Parts>()
-                .and_then(|p| p.headers.get(http::header::ACCEPT).and_then(|v| v.to_str().ok()).map(str::to_string));
-            if let Some(resp) = use_context::<leptos_axum::ResponseOptions>().filter(|_| wants_html(accept.as_deref())) {
+            let accept = use_context::<http::request::Parts>().and_then(|p| {
+                p.headers
+                    .get(http::header::ACCEPT)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string)
+            });
+            if let Some(resp) = use_context::<leptos_axum::ResponseOptions>().filter(|_| wants_html(accept.as_deref()))
+            {
                 resp.set_status(http::StatusCode::FOUND);
                 tracing::info!(uri = ?use_context::<http::request::Parts>().map(|p| p.uri), reason = why_not_signed_in(), "page load sent to the login page");
             }
@@ -234,10 +218,20 @@ pub fn require() -> Result<Session, AppError> {
 /// decrypt (another key, e.g. after a restart without `[session] cookie_key`),
 /// a logged-out token, or an expired sign-in.
 fn why_not_signed_in() -> &'static str {
-    let Some(parts) = use_context::<http::request::Parts>() else { return "no request" };
+    let Some(parts) = use_context::<http::request::Parts>() else {
+        return "no request";
+    };
     let st = state();
-    let headers: Vec<&str> = parts.headers.get_all(COOKIE).iter().filter_map(|v| v.to_str().ok()).collect();
-    let named = headers.iter().flat_map(|h| Cookie::split_parse(*h).flatten()).any(|c| [SECURE_SESSION_COOKIE, SESSION_COOKIE].contains(&c.name()));
+    let headers: Vec<&str> = parts
+        .headers
+        .get_all(COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect();
+    let named = headers
+        .iter()
+        .flat_map(|h| Cookie::split_parse(*h).flatten())
+        .any(|c| [SECURE_SESSION_COOKIE, SESSION_COOKIE].contains(&c.name()));
     if !named {
         return "no session cookie";
     }
@@ -262,8 +256,7 @@ pub fn client_ip() -> String {
         .client_ip_header
         .as_ref()
         .and_then(|h| {
-            use_context::<http::request::Parts>()
-                .and_then(|p| client_ip_from(&p.headers, h, st.config.trusted_proxies))
+            use_context::<http::request::Parts>().and_then(|p| client_ip_from(&p.headers, h, st.config.trusted_proxies))
         })
         .unwrap_or_else(|| "-".into())
 }
@@ -271,7 +264,11 @@ pub fn client_ip() -> String {
 /// [`client_ip`] for a plain axum handler, from the request's headers.
 pub fn client_ip_of(headers: &http::HeaderMap) -> String {
     let st = state();
-    st.config.client_ip_header.as_ref().and_then(|h| client_ip_from(headers, h, st.config.trusted_proxies)).unwrap_or_else(|| "-".into())
+    st.config
+        .client_ip_header
+        .as_ref()
+        .and_then(|h| client_ip_from(headers, h, st.config.trusted_proxies))
+        .unwrap_or_else(|| "-".into())
 }
 
 /// The client's entry in a `X-Forwarded-For`-style list. Each proxy appends the
@@ -280,11 +277,7 @@ pub fn client_ip_of(headers: &http::HeaderMap) -> String {
 /// entry `trusted` places from the right, or the leftmost when the list is
 /// shorter; `trusted == 0` takes the leftmost (the behaviour before item 63).
 /// Several header lines count as one list, in order.
-pub fn client_ip_from(
-    headers: &http::HeaderMap,
-    name: &http::HeaderName,
-    trusted: u32,
-) -> Option<String> {
+pub fn client_ip_from(headers: &http::HeaderMap, name: &http::HeaderName, trusted: u32) -> Option<String> {
     let hops: Vec<&str> = headers
         .get_all(name)
         .iter()
@@ -294,7 +287,11 @@ pub fn client_ip_from(
         .filter(|a| !a.is_empty())
         .collect();
     let from_right = usize::try_from(trusted).unwrap_or(usize::MAX);
-    let i = if from_right == 0 { 0 } else { hops.len().saturating_sub(from_right) };
+    let i = if from_right == 0 {
+        0
+    } else {
+        hops.len().saturating_sub(from_right)
+    };
     hops.get(i).map(|a| a.to_string())
 }
 
@@ -330,8 +327,14 @@ mod tests {
 
     #[test]
     fn only_page_loads_get_the_login_redirect_status() {
-        assert!(wants_html(Some("text/html,application/xhtml+xml,*/*;q=0.8")), "a browser navigation");
-        assert!(!wants_html(Some("application/json")), "a server function call: its JSON error, not the login page");
+        assert!(
+            wants_html(Some("text/html,application/xhtml+xml,*/*;q=0.8")),
+            "a browser navigation"
+        );
+        assert!(
+            !wants_html(Some("application/json")),
+            "a server function call: its JSON error, not the login page"
+        );
         assert!(!wants_html(None));
     }
 
@@ -374,7 +377,10 @@ mod tests {
         let mut s = sample();
         assert!(fits_in_a_cookie(&enc(&s, &key, true)), "a password token fits");
         s.token = "g".repeat(3000);
-        assert!(!fits_in_a_cookie(&enc(&s, &key, true)), "base64 and AES-GCM grow it past 4096 bytes: the browser would drop it");
+        assert!(
+            !fits_in_a_cookie(&enc(&s, &key, true)),
+            "base64 and AES-GCM grow it past 4096 bytes: the browser would drop it"
+        );
     }
 
     #[test]
@@ -384,10 +390,7 @@ mod tests {
         let set = enc(&original, &key, false);
         assert!(set.contains("HttpOnly"));
         assert!(set.contains("SameSite=Lax"));
-        assert!(
-            !set.contains("secret-token"),
-            "token must not travel in clear text"
-        );
+        assert!(!set.contains("secret-token"), "token must not travel in clear text");
         let header = format!("other=1; {}", header_from_set_cookie(&set));
         assert_eq!(decode(&header, &key), Some(original));
     }
@@ -413,20 +416,14 @@ mod tests {
         let key = Key::generate();
         let secure = enc(&sample(), &key, true);
         assert!(
-            secure.starts_with("__Host-ml_session=")
-                && secure.contains("Path=/")
-                && !secure.contains("Domain"),
+            secure.starts_with("__Host-ml_session=") && secure.contains("Path=/") && !secure.contains("Domain"),
             "{secure}"
         );
         let plain = enc(&sample(), &key, false);
         assert!(plain.starts_with("ml_session="));
         for set in [secure, plain] {
             let user = decode(&header_from_set_cookie(&set), &key).map(|s| s.user);
-            assert_eq!(
-                user.as_deref(),
-                Some("admin2"),
-                "both names are read: {set}"
-            );
+            assert_eq!(user.as_deref(), Some("admin2"), "both names are read: {set}");
         }
         let gone = removal(false);
         assert_eq!(gone.len(), 2, "logout deletes both names");
@@ -490,14 +487,38 @@ mod tests {
         assert_eq!(client_ip_from(&h, &name, 1), None);
         // Forged by the client, then the real client as seen by proxy 1, then proxy 1 as seen by proxy 2.
         h.insert(&name, http::HeaderValue::from_static(" 6.6.6.6, 203.0.113.9 ,10.0.0.1"));
-        assert_eq!(client_ip_from(&h, &name, 0).as_deref(), Some("6.6.6.6"), "0: leftmost, as before");
-        assert_eq!(client_ip_from(&h, &name, 1).as_deref(), Some("10.0.0.1"), "1: rightmost");
-        assert_eq!(client_ip_from(&h, &name, 2).as_deref(), Some("203.0.113.9"), "2: the forged entry is skipped");
-        assert_eq!(client_ip_from(&h, &name, 5).as_deref(), Some("6.6.6.6"), "short list: leftmost");
+        assert_eq!(
+            client_ip_from(&h, &name, 0).as_deref(),
+            Some("6.6.6.6"),
+            "0: leftmost, as before"
+        );
+        assert_eq!(
+            client_ip_from(&h, &name, 1).as_deref(),
+            Some("10.0.0.1"),
+            "1: rightmost"
+        );
+        assert_eq!(
+            client_ip_from(&h, &name, 2).as_deref(),
+            Some("203.0.113.9"),
+            "2: the forged entry is skipped"
+        );
+        assert_eq!(
+            client_ip_from(&h, &name, 5).as_deref(),
+            Some("6.6.6.6"),
+            "short list: leftmost"
+        );
         h.insert(&name, http::HeaderValue::from_static("203.0.113.9"));
-        assert_eq!(client_ip_from(&h, &name, 1).as_deref(), Some("203.0.113.9"), "single value (X-Real-IP)");
+        assert_eq!(
+            client_ip_from(&h, &name, 1).as_deref(),
+            Some("203.0.113.9"),
+            "single value (X-Real-IP)"
+        );
         h.append(&name, http::HeaderValue::from_static("10.0.0.1"));
-        assert_eq!(client_ip_from(&h, &name, 2).as_deref(), Some("203.0.113.9"), "several header lines are one list");
+        assert_eq!(
+            client_ip_from(&h, &name, 2).as_deref(),
+            Some("203.0.113.9"),
+            "several header lines are one list"
+        );
     }
 
     #[test]
@@ -508,10 +529,6 @@ mod tests {
         s.password_expires_at = Some(now + chrono::Duration::days(3) + chrono::Duration::hours(1));
         assert_eq!(s.password_warning(now, Some(7)), Some(3));
         assert_eq!(s.password_warning(now, Some(2)), None);
-        assert_eq!(
-            s.password_warning(now, None),
-            None,
-            "warning disabled (default)"
-        );
+        assert_eq!(s.password_warning(now, None), None, "warning disabled (default)");
     }
 }

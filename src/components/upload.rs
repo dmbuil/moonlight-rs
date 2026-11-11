@@ -86,8 +86,12 @@ pub fn start(url: &str, token: Option<&str>, progress: Callback<(f64, f64)>, don
         done.run(Err(msg.to_string()));
         Upload::default()
     };
-    let Some(file) = PICKED.with(|p| p.borrow().clone()) else { return fail("no file picked") };
-    let Ok(xhr) = XmlHttpRequest::new() else { return fail("this browser can't upload files") };
+    let Some(file) = PICKED.with(|p| p.borrow().clone()) else {
+        return fail("no file picked");
+    };
+    let Ok(xhr) = XmlHttpRequest::new() else {
+        return fail("this browser can't upload files");
+    };
     if xhr.open_with_async("PUT", url, true).is_err() {
         return fail("invalid upload address");
     }
@@ -111,7 +115,9 @@ pub fn start(url: &str, token: Option<&str>, progress: Callback<(f64, f64)>, don
             done.run(Ok(()));
         } else {
             let text = x.response_text().ok().flatten().unwrap_or_default();
-            done.run(Err(format!("{status} {}", text.chars().take(300).collect::<String>()).trim().to_string()));
+            done.run(Err(format!("{status} {}", text.chars().take(300).collect::<String>())
+                .trim()
+                .to_string()));
         }
     });
     xhr.set_onload(Some(on_load.as_ref().unchecked_ref()));
@@ -160,7 +166,10 @@ mod tests {
 
     #[test]
     fn the_field_value_roundtrips() {
-        let p = Picked { name: "a.iso".into(), size: 7 };
+        let p = Picked {
+            name: "a.iso".into(),
+            size: 7,
+        };
         assert_eq!(Picked::decode(&p.encode()), Some(p));
         assert_eq!(Picked::decode(""), None, "nothing picked");
     }

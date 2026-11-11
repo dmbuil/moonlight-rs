@@ -10,11 +10,13 @@ use leptos_router::hooks::use_params_map;
 
 use super::lists::{admin_state, attachments, link, moving_status, status_pill};
 use crate::api::*;
-use crate::components::dialog::{caps, data_version, CreateButton, MenuItem, RowActions};
+use crate::components::dialog::{CreateButton, MenuItem, RowActions, caps, data_version};
 use crate::components::ops;
-use crate::components::table::{col, DataTable, TimingChip};
-use crate::components::widgets::{dash, poll_while_busy, render, short_time, snapshot_busy, volume_busy, Copyable, Skeleton};
-use crate::i18n::{bytes, image_visibility, server_group_policy, server_status, t, use_i18n, Lang, K};
+use crate::components::table::{DataTable, TimingChip, col};
+use crate::components::widgets::{
+    Copyable, Skeleton, dash, poll_while_busy, render, short_time, snapshot_busy, volume_busy,
+};
+use crate::i18n::{K, Lang, bytes, image_visibility, server_group_policy, server_status, t, use_i18n};
 use crate::model::*;
 
 // ---------------------------------------------------------------------------
@@ -118,7 +120,8 @@ pub(crate) fn lines(items: Vec<String>) -> AnyView {
     if items.is_empty() {
         return "-".into_any();
     }
-    view! { <ul class="plain">{items.into_iter().map(|x| view! { <li class="mono">{x}</li> }).collect_view()}</ul> }.into_any()
+    view! { <ul class="plain">{items.into_iter().map(|x| view! { <li class="mono">{x}</li> }).collect_view()}</ul> }
+        .into_any()
 }
 
 fn pairs(items: Vec<(String, String)>) -> AnyView {
@@ -133,7 +136,11 @@ fn pairs(items: Vec<(String, String)>) -> AnyView {
 }
 
 fn port_label(p: &PortRow) -> String {
-    if p.name.is_empty() { format!("({})", &p.id[..p.id.len().min(8)]) } else { p.name.clone() }
+    if p.name.is_empty() {
+        format!("({})", &p.id[..p.id.len().min(8)])
+    } else {
+        p.name.clone()
+    }
 }
 
 fn device_cell(p: &PortRow, lang: Lang) -> AnyView {
@@ -203,14 +210,23 @@ fn network_overview(d: NetworkDetail) -> impl IntoView {
 /// `owned`: the network is the project's; other networks' subnets are read-only.
 fn subnet_columns(owned: bool) -> Vec<crate::components::table::Col<SubnetRow>> {
     let mut cols = vec![
-        col(K::Name, |s: &SubnetRow, _| link(format!("/project/networks/subnets/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone()),
+        col(K::Name, |s: &SubnetRow, _| {
+            link(format!("/project/networks/subnets/{}", s.id), s.name.clone())
+        })
+        .sort_text(|s| s.name.clone()),
         col(K::NetworkAddress, |s: &SubnetRow, _| mono(s.cidr.clone())).sort_text(|s| s.cidr.clone()),
         col(K::IpVersion, |s: &SubnetRow, _| format!("IPv{}", s.ip_version)),
         col(K::GatewayIp, |s: &SubnetRow, _| mono(dash(s.gateway_ip.clone()))),
         col(K::EnableDhcp, |s: &SubnetRow, l| yes_no(l, s.enable_dhcp)),
     ];
     if owned {
-        cols.push(col(K::Actions, |s: &SubnetRow, l| view! { <RowActions items=ops::subnet_items(l, s)/> }).class("actions"));
+        cols.push(
+            col(
+                K::Actions,
+                |s: &SubnetRow, l| view! { <RowActions items=ops::subnet_items(l, s)/> },
+            )
+            .class("actions"),
+        );
     }
     cols
 }
@@ -231,18 +247,32 @@ fn network_subnets(d: NetworkDetail) -> impl IntoView {
 
 fn port_columns() -> Vec<crate::components::table::Col<PortRow>> {
     vec![
-        col(K::Name, |p: &PortRow, _| link(format!("/project/networks/ports/{}", p.id), port_label(p))).sort_text(port_label),
+        col(K::Name, |p: &PortRow, _| {
+            link(format!("/project/networks/ports/{}", p.id), port_label(p))
+        })
+        .sort_text(port_label),
         col(K::FixedIps, |p: &PortRow, _| lines(p.fixed_ips.clone())),
         col(K::MacAddress, |p: &PortRow, _| mono(p.mac.clone())),
         col(K::AttachedDevice, |p: &PortRow, l| device_cell(p, l)),
         col(K::Status, |p: &PortRow, l| status_pill(&p.status, l)).sort_text(|p| p.status.clone()),
         col(K::AdminState, |p: &PortRow, l| admin_state(l, p.admin_up)),
-        col(K::Actions, |p: &PortRow, l| view! { <RowActions items=ops::port_items(l, p)/> }).class("actions"),
+        col(
+            K::Actions,
+            |p: &PortRow, l| view! { <RowActions items=ops::port_items(l, p)/> },
+        )
+        .class("actions"),
     ]
 }
 
 fn port_search(p: &PortRow) -> String {
-    format!("{} {} {} {} {}", p.name, p.id, p.fixed_ips.join(" "), p.mac, p.device_name.as_deref().unwrap_or(""))
+    format!(
+        "{} {} {} {} {}",
+        p.name,
+        p.id,
+        p.fixed_ips.join(" "),
+        p.mac,
+        p.device_name.as_deref().unwrap_or("")
+    )
 }
 
 fn network_ports(d: NetworkDetail) -> impl IntoView {
@@ -411,7 +441,9 @@ fn router_interfaces(d: RouterDetail) -> impl IntoView {
     let rid = d.row.id.clone();
     let rid2 = rid.clone();
     let columns = vec![
-        col(K::Name, |p: &PortRow, _| link(format!("/project/networks/ports/{}", p.id), port_label(p))),
+        col(K::Name, |p: &PortRow, _| {
+            link(format!("/project/networks/ports/{}", p.id), port_label(p))
+        }),
         col(K::FixedIps, |p: &PortRow, _| lines(p.fixed_ips.clone())),
         col(K::Network, |p: &PortRow, _| {
             let n = p.network_name.clone().unwrap_or_else(|| p.network_id.clone());
@@ -420,7 +452,11 @@ fn router_interfaces(d: RouterDetail) -> impl IntoView {
         col(K::Status, |p: &PortRow, l| status_pill(&p.status, l)),
         col(K::Type, |p: &PortRow, _| mono(dash(p.device_owner.clone()))),
         col(K::AdminState, |p: &PortRow, l| admin_state(l, p.admin_up)),
-        col(K::Actions, move |p: &PortRow, l| view! { <RowActions items=ops::interface_items(l, &rid2, p)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |p: &PortRow, l| view! { <RowActions items=ops::interface_items(l, &rid2, p)/> },
+        )
+        .class("actions"),
     ];
     view! {
         <div class="subtable-actions">
@@ -519,7 +555,9 @@ pub fn VolumeDetailPage() -> impl IntoView {
     // Follows a volume that is changing state (roadmap 46). A volume deleted
     // meanwhile turns the next fetch into a 404: polling stops and the
     // friendly not-found page shows.
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if volume_busy(&td.data.volume.status))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if volume_busy(&td.data.volume.status)))
+    });
     view! {
         <Transition fallback=|| view! { <Skeleton rows=8/> }>
             {move || render(data.get(), move |td| {
@@ -593,7 +631,9 @@ pub fn SnapshotDetailPage() -> impl IntoView {
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_snapshot(id));
     // As for volumes (roadmap 46).
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.status))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.status)))
+    });
     view! {
         <Transition fallback=|| view! { <Skeleton rows=6/> }>
             {move || render(data.get(), move |td| {
@@ -629,7 +669,9 @@ pub fn BackupDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_backup(id));
-    let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.status))));
+    let polling = poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.status)))
+    });
     view! {
         <Transition fallback=|| view! { <Skeleton rows=6/> }>
             {move || render(data.get(), move |td| {

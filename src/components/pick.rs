@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 
-use crate::i18n::{resource_status, use_i18n, Lang, K};
+use crate::i18n::{K, Lang, resource_status, use_i18n};
 use crate::model::{Choice, ChoiceSet};
 
 /// How a raw cell is shown.
@@ -32,12 +32,30 @@ pub fn columns(set: Option<ChoiceSet>) -> Vec<(K, Fmt)> {
     use K::*;
     match set {
         Some(ChoiceSet::LaunchImages | ChoiceSet::InstanceSnapshots) => {
-            vec![(Name, Text), (Updated, Text), (Size, Text), (Format, Text), (Visibility, Text)]
+            vec![
+                (Name, Text),
+                (Updated, Text),
+                (Size, Text),
+                (Format, Text),
+                (Visibility, Text),
+            ]
         }
         Some(ChoiceSet::AvailableVolumes) => {
-            vec![(Name, Text), (Description, Text), (Size, Text), (Type, Text), (AvailabilityZone, Text)]
+            vec![
+                (Name, Text),
+                (Description, Text),
+                (Size, Text),
+                (Type, Text),
+                (AvailabilityZone, Text),
+            ]
         }
-        Some(ChoiceSet::VolumeSnapshots) => vec![(Name, Text), (Description, Text), (Size, Text), (Created, Text), (Status, State)],
+        Some(ChoiceSet::VolumeSnapshots) => vec![
+            (Name, Text),
+            (Description, Text),
+            (Size, Text),
+            (Created, Text),
+            (Status, State),
+        ],
         Some(ChoiceSet::Flavors) => vec![
             (Name, Text),
             (Vcpus, Text),
@@ -47,10 +65,21 @@ pub fn columns(set: Option<ChoiceSet>) -> Vec<(K, Fmt)> {
             (EphemeralDisk, Text),
             (Public, YesNo),
         ],
-        Some(ChoiceSet::Networks) => vec![(Network, Text), (SubnetsAssociated, Text), (Shared, YesNo), (AdminState, UpDown), (Status, State)],
+        Some(ChoiceSet::Networks) => vec![
+            (Network, Text),
+            (SubnetsAssociated, Text),
+            (Shared, YesNo),
+            (AdminState, UpDown),
+            (Status, State),
+        ],
         Some(ChoiceSet::FreePorts) => vec![(Name, Text), (IpAddress, Text), (AdminState, UpDown), (Status, State)],
         // Ports are seldom named: what they belong to comes first (roadmap 93).
-        Some(ChoiceSet::FirewallPorts) => vec![(K::Device, Text), (Type, Fmt::Device), (IpAddresses, Text), (Port, Text)],
+        Some(ChoiceSet::FirewallPorts) => vec![
+            (K::Device, Text),
+            (Type, Fmt::Device),
+            (IpAddresses, Text),
+            (Port, Text),
+        ],
         Some(ChoiceSet::FirewallRules) => vec![(Name, Text), (Action, FwAction), (K::Protocol, Fmt::Protocol)],
         Some(ChoiceSet::SecurityGroups | ChoiceSet::SecurityGroupIds) => vec![(Name, Text), (Description, Text)],
         Some(ChoiceSet::KeyPairs) => vec![(Name, Text), (Type, Text), (Fingerprint, Text)],
@@ -92,7 +121,12 @@ fn available_hint(options: usize, left: usize) -> K {
 
 /// The selected values, in order.
 pub fn selected(value: &str) -> Vec<String> {
-    value.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Adds `id` (at the end); a single pick replaces the current one.
@@ -108,7 +142,11 @@ pub fn allocate(value: &str, id: &str, multi: bool) -> String {
 }
 
 pub fn deallocate(value: &str, id: &str) -> String {
-    selected(value).into_iter().filter(|x| x != id).collect::<Vec<_>>().join(",")
+    selected(value)
+        .into_iter()
+        .filter(|x| x != id)
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Moves `id` one place earlier (network order = NIC order).
@@ -142,7 +180,13 @@ pub fn PickTable(
     let query = RwSignal::new(String::new());
     let cols = move || columns(set.get());
     let cells = move |c: &Choice, n: usize| -> Vec<String> {
-        if c.cells.len() == n { c.cells.clone() } else { std::iter::once(c.label.clone()).chain(std::iter::repeat_n(String::new(), n.saturating_sub(1))).collect() }
+        if c.cells.len() == n {
+            c.cells.clone()
+        } else {
+            std::iter::once(c.label.clone())
+                .chain(std::iter::repeat_n(String::new(), n.saturating_sub(1)))
+                .collect()
+        }
     };
     let header = move || {
         view! {
@@ -155,24 +199,43 @@ pub fn PickTable(
     let row_cells = move |c: &Choice| {
         let l = i18n.lang();
         let fmts: Vec<Fmt> = cols().into_iter().map(|(_, f)| f).collect();
-        cells(c, fmts.len()).into_iter().zip(fmts).enumerate().map(|(i, (raw, f))| {
-            let text = cell(l, f, &raw);
-            if i == 0 { view! { <td class="strong">{text}</td> }.into_any() } else { view! { <td>{text}</td> }.into_any() }
-        }).collect_view()
+        cells(c, fmts.len())
+            .into_iter()
+            .zip(fmts)
+            .enumerate()
+            .map(|(i, (raw, f))| {
+                let text = cell(l, f, &raw);
+                if i == 0 {
+                    view! { <td class="strong">{text}</td> }.into_any()
+                } else {
+                    view! { <td>{text}</td> }.into_any()
+                }
+            })
+            .collect_view()
     };
 
     let allocated = move || {
         let list = options.get().unwrap_or_default();
-        selected(&value.get()).into_iter().filter_map(|v| list.iter().find(|c| c.value == v).cloned()).collect::<Vec<_>>()
+        selected(&value.get())
+            .into_iter()
+            .filter_map(|v| list.iter().find(|c| c.value == v).cloned())
+            .collect::<Vec<_>>()
     };
     let available = move || {
         let chosen = selected(&value.get());
         let q = query.get();
-        options.get().unwrap_or_default().into_iter().filter(|c| !chosen.contains(&c.value) && matches(c, &q)).collect::<Vec<_>>()
+        options
+            .get()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| !chosen.contains(&c.value) && matches(c, &q))
+            .collect::<Vec<_>>()
     };
     let total_available = move || {
         let chosen = selected(&value.get());
-        options.get().map(|l| l.iter().filter(|c| !chosen.contains(&c.value)).count())
+        options
+            .get()
+            .map(|l| l.iter().filter(|c| !chosen.contains(&c.value)).count())
     };
 
     view! {
@@ -283,23 +346,58 @@ mod tests {
         assert_eq!(cell(Lang::EsEs, Fmt::UpDown, "false"), "Inactivo");
         assert_eq!(cell(Lang::EnUs, Fmt::Text, ""), "-");
         assert_eq!(columns(Some(ChoiceSet::Flavors)).len(), 7);
-        assert_eq!((cell(Lang::EsEs, Fmt::Device, "instance"), cell(Lang::EnUs, Fmt::Device, "router")), ("Instancia".into(), "Router".into()));
-        assert_eq!(columns(Some(ChoiceSet::FirewallPorts)).len(), 4, "one per cell of mapping::firewall_port_choices");
-        assert_eq!(columns(Some(ChoiceSet::FirewallRules)).len(), 3, "one per cell of mapping::firewall_rule_choices");
-        assert_eq!((cell(Lang::EsEs, Fmt::FwAction, "deny"), cell(Lang::EnUs, Fmt::FwAction, "allow")), ("Denegar".into(), "Allow".into()));
-        assert_eq!((cell(Lang::EsEs, Fmt::Protocol, ""), cell(Lang::EnUs, Fmt::Protocol, "icmp")), ("Cualquiera".into(), "ICMP".into()));
+        assert_eq!(
+            (
+                cell(Lang::EsEs, Fmt::Device, "instance"),
+                cell(Lang::EnUs, Fmt::Device, "router")
+            ),
+            ("Instancia".into(), "Router".into())
+        );
+        assert_eq!(
+            columns(Some(ChoiceSet::FirewallPorts)).len(),
+            4,
+            "one per cell of mapping::firewall_port_choices"
+        );
+        assert_eq!(
+            columns(Some(ChoiceSet::FirewallRules)).len(),
+            3,
+            "one per cell of mapping::firewall_rule_choices"
+        );
+        assert_eq!(
+            (
+                cell(Lang::EsEs, Fmt::FwAction, "deny"),
+                cell(Lang::EnUs, Fmt::FwAction, "allow")
+            ),
+            ("Denegar".into(), "Allow".into())
+        );
+        assert_eq!(
+            (
+                cell(Lang::EsEs, Fmt::Protocol, ""),
+                cell(Lang::EnUs, Fmt::Protocol, "icmp")
+            ),
+            ("Cualquiera".into(), "ICMP".into())
+        );
     }
 
     #[test]
     fn an_empty_available_table_says_why() {
-        assert_eq!(available_hint(0, 0), K::NothingToChoose, "e.g. no router or instance ports for a firewall group");
+        assert_eq!(
+            available_hint(0, 0),
+            K::NothingToChoose,
+            "e.g. no router or instance ports for a firewall group"
+        );
         assert_eq!(available_hint(3, 0), K::AllAllocated);
         assert_eq!(available_hint(3, 2), K::NoMatches, "the filter hides them");
     }
 
     #[test]
     fn filter_looks_at_every_cell() {
-        let c = Choice { value: "f".into(), label: "C3.1-2".into(), cells: vec!["C3.1-2".into(), "1".into(), "2 GB".into()], ..Default::default() };
+        let c = Choice {
+            value: "f".into(),
+            label: "C3.1-2".into(),
+            cells: vec!["C3.1-2".into(), "1".into(), "2 GB".into()],
+            ..Default::default()
+        };
         assert!(matches(&c, "c3 2 gb"));
         assert!(!matches(&c, "a3"));
     }

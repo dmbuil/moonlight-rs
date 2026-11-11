@@ -14,8 +14,11 @@ use crate::api::{count_rows, get_choices, get_late_names};
 use crate::components::dialog::data_version;
 use crate::components::select::Combo;
 use crate::components::table::{Col, DataTable, Select, ServerSort};
-use crate::i18n::{page_range, use_i18n, K};
-use crate::model::{Choice, ChoiceSet, FilterKind, LateName, ListQuery, ListScope, NameKind, Page, PagedList, RowCount, Timed, BOOT_IMAGE_CHUNK};
+use crate::i18n::{K, page_range, use_i18n};
+use crate::model::{
+    BOOT_IMAGE_CHUNK, Choice, ChoiceSet, FilterKind, LateName, ListQuery, ListScope, NameKind, Page, PagedList,
+    RowCount, Timed,
+};
 
 /// What a *Count all* is for: the filter (field, value) and the page's
 /// `data_version` when it was asked. A new filter or a write makes it stale.
@@ -42,7 +45,10 @@ pub struct PagerState {
 impl PagerState {
     /// No history, nothing counted.
     pub fn new() -> Self {
-        PagerState { markers: RwSignal::new(Vec::new()), total: RwSignal::new(None) }
+        PagerState {
+            markers: RwSignal::new(Vec::new()),
+            total: RwSignal::new(None),
+        }
     }
 }
 
@@ -81,7 +87,10 @@ pub struct LateNames {
 impl LateNames {
     /// Empty and active, for a page's columns (built before its rows load).
     pub fn new() -> Self {
-        LateNames { names: RwSignal::new(HashMap::new()), active: RwSignal::new(true) }
+        LateNames {
+            names: RwSignal::new(HashMap::new()),
+            active: RwSignal::new(true),
+        }
     }
 }
 
@@ -112,7 +121,10 @@ pub fn load_late(kind: NameKind, ids: Vec<String>, late: LateNames) {
     }
     leptos::task::spawn_local(async move {
         for chunk in chunks {
-            let found: HashMap<String, LateName> = get_late_names(kind, chunk.clone()).await.map(|t| t.data.into_iter().map(|n| (n.id.clone(), n)).collect()).unwrap_or_default();
+            let found: HashMap<String, LateName> = get_late_names(kind, chunk.clone())
+                .await
+                .map(|t| t.data.into_iter().map(|n| (n.id.clone(), n)).collect())
+                .unwrap_or_default();
             // The page may be gone by now (navigated away): `try_update` then does nothing.
             let _ = names.try_update(|m| {
                 for id in chunk {
@@ -130,7 +142,11 @@ pub fn late_text(late: LateNames, id: String, pick: fn(&LateName) -> Option<Stri
     (move || match late.names.with(|m| m.get(&id).cloned()) {
         None if late.active.get() => view! { <span class="muted">"…"</span> }.into_any(),
         None => missing.clone().into_any(),
-        Some(found) => found.as_ref().and_then(pick).unwrap_or_else(|| missing.clone()).into_any(),
+        Some(found) => found
+            .as_ref()
+            .and_then(pick)
+            .unwrap_or_else(|| missing.clone())
+            .into_any(),
     })
     .into_any()
 }
@@ -149,7 +165,13 @@ pub fn late_host(n: &LateName) -> Option<String> {
 /// Empty values count as absent.
 pub fn query_of(m: &ParamsMap) -> ListQuery {
     let get = |k: &str| m.get(k).filter(|v| !v.is_empty());
-    ListQuery { marker: get("marker"), field: get("f"), value: get("q"), sort: get("sort"), desc: get("dir").as_deref() == Some("desc") }
+    ListQuery {
+        marker: get("marker"),
+        field: get("f"),
+        value: get("q"),
+        sort: get("sort"),
+        desc: get("dir").as_deref() == Some("desc"),
+    }
 }
 
 /// The query string (with its `?`, percent-encoded) of `m` with `marker` replaced
@@ -248,9 +270,19 @@ pub fn FilterBar(list: PagedList, #[prop(optional)] scope: ListScope) -> impl In
     let qmap = use_query_map();
     let defs = StoredValue::new(list.filters_in(scope));
     let now = query.get_untracked();
-    let field = RwSignal::new(defs.with_value(|ds| now.field.filter(|f| ds.iter().any(|d| d.key == f)).unwrap_or_else(|| ds[0].key.to_string())));
+    let field = RwSignal::new(defs.with_value(|ds| {
+        now.field
+            .filter(|f| ds.iter().any(|d| d.key == f))
+            .unwrap_or_else(|| ds[0].key.to_string())
+    }));
     let value = RwSignal::new(now.value.unwrap_or_default());
-    let kind = move || defs.with_value(|ds| ds.iter().find(|d| d.key == field.get()).map_or(FilterKind::Text, |d| d.kind));
+    let kind = move || {
+        defs.with_value(|ds| {
+            ds.iter()
+                .find(|d| d.key == field.get())
+                .map_or(FilterKind::Text, |d| d.kind)
+        })
+    };
     // The picked field's choices, loaded when it is chosen; a different `Pick` field
     // reloads them (projects, flavors, images).
     let choices: RwSignal<Option<(ChoiceSet, Vec<Choice>)>> = RwSignal::new(None);
@@ -368,7 +400,11 @@ pub fn Pager(
     let marker = move || map.with(|m| m.get("marker").filter(|v| !v.is_empty()));
     let key = move || count_key(&map.with(query_of), data_version());
     let total = move || stack.total.with(|t| shown_total(count, t.as_ref(), &key()));
-    let counting = move || stack.total.with(|t| t.as_ref().filter(|(k, _)| *k == key()).map(|(_, c)| *c));
+    let counting = move || {
+        stack
+            .total
+            .with(|t| t.as_ref().filter(|(k, _)| *k == key()).map(|(_, c)| *c))
+    };
     let count_all = move |_| {
         let (q, k) = (map.with_untracked(query_of), key());
         stack.total.set(Some((k.clone(), Counting::Running)));
@@ -453,14 +489,20 @@ pub fn server_key(header: K) -> Option<&'static str> {
 
 /// `cols` with their [`server_key`]s, for a paged table.
 pub fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
-    cols.into_iter().map(|c| match server_key(c.header) { Some(k) => c.server_sort(k), None => c }).collect()
+    cols.into_iter()
+        .map(|c| match server_key(c.header) {
+            Some(k) => c.server_sort(k),
+            None => c,
+        })
+        .collect()
 }
 
 /// A paged list's [`FilterBar`], and under it, when the server waited for a
 /// filter (`[admin] filter_first`, roadmap 89), why the table is empty.
 pub fn filter_bar(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyView {
     let i18n = use_i18n();
-    let note = needs_filter.then(|| view! { <p class="muted filter-first" role="status">{move || i18n.t(K::FilterFirstNote)}</p> });
+    let note = needs_filter
+        .then(|| view! { <p class="muted filter-first" role="status">{move || i18n.t(K::FilterFirstNote)}</p> });
     view! { <FilterBar list=list scope=scope/> {note} }.into_any()
 }
 
@@ -509,7 +551,18 @@ mod tests {
     #[test]
     fn every_server_sort_key_comes_from_a_header() {
         use crate::model::PagedList;
-        let all = [PagedList::Instances, PagedList::Volumes, PagedList::Snapshots, PagedList::FloatingIps, PagedList::Networks, PagedList::Routers, PagedList::Trunks, PagedList::Images, PagedList::VolumeGroups, PagedList::GroupSnapshots];
+        let all = [
+            PagedList::Instances,
+            PagedList::Volumes,
+            PagedList::Snapshots,
+            PagedList::FloatingIps,
+            PagedList::Networks,
+            PagedList::Routers,
+            PagedList::Trunks,
+            PagedList::Images,
+            PagedList::VolumeGroups,
+            PagedList::GroupSnapshots,
+        ];
         let headers = [K::Name, K::Status, K::Size, K::Age, K::Created, K::Host, K::IpAddress];
         let keys: Vec<_> = headers.iter().filter_map(|h| server_key(*h)).collect();
         for l in all {
@@ -530,26 +583,57 @@ mod tests {
 
     #[test]
     fn the_query_string_spells_the_list_query() {
-        let q = query_of(&map(&[("marker", "abc"), ("f", "host"), ("q", "cmp-1"), ("sort", "name"), ("dir", "desc")]));
-        assert_eq!(q, ListQuery { marker: Some("abc".into()), field: Some("host".into()), value: Some("cmp-1".into()), sort: Some("name".into()), desc: true });
-        assert_eq!(query_of(&map(&[("marker", ""), ("q", "")])), ListQuery::default(), "empty values are absent");
+        let q = query_of(&map(&[
+            ("marker", "abc"),
+            ("f", "host"),
+            ("q", "cmp-1"),
+            ("sort", "name"),
+            ("dir", "desc"),
+        ]));
+        assert_eq!(
+            q,
+            ListQuery {
+                marker: Some("abc".into()),
+                field: Some("host".into()),
+                value: Some("cmp-1".into()),
+                sort: Some("name".into()),
+                desc: true
+            }
+        );
+        assert_eq!(
+            query_of(&map(&[("marker", ""), ("q", "")])),
+            ListQuery::default(),
+            "empty values are absent"
+        );
     }
 
     #[test]
     fn paging_keeps_the_filter_and_encodes_it() {
         let m = map(&[("f", "name"), ("q", "web & db/01")]);
         let qs = with_marker(&m, Some("m1"));
-        let back = query_of(&ParamsMap::from_iter(
-            qs.trim_start_matches('?').split('&').map(|kv| {
-                let (k, v) = kv.split_once('=').unwrap();
-                (k.to_string(), url_decoded(v))
-            }),
-        ));
-        assert_eq!((back.marker.as_deref(), back.value.as_deref()), (Some("m1"), Some("web & db/01")), "{qs}");
-        assert!(!qs.contains(' ') && !qs.contains("& "), "the value is percent-encoded: {qs}");
-        assert!(!with_marker(&map(&[("marker", "m1")]), None).contains("marker"), "None drops the marker");
+        let back = query_of(&ParamsMap::from_iter(qs.trim_start_matches('?').split('&').map(|kv| {
+            let (k, v) = kv.split_once('=').unwrap();
+            (k.to_string(), url_decoded(v))
+        })));
+        assert_eq!(
+            (back.marker.as_deref(), back.value.as_deref()),
+            (Some("m1"), Some("web & db/01")),
+            "{qs}"
+        );
+        assert!(
+            !qs.contains(' ') && !qs.contains("& "),
+            "the value is percent-encoded: {qs}"
+        );
+        assert!(
+            !with_marker(&map(&[("marker", "m1")]), None).contains("marker"),
+            "None drops the marker"
+        );
         let again = with_marker(&map(&[("marker", "m1")]), Some("m2"));
-        assert_eq!(again.matches("marker=").count(), 1, "the next marker replaces the current one, not adds to it: {again}");
+        assert_eq!(
+            again.matches("marker=").count(),
+            1,
+            "the next marker replaces the current one, not adds to it: {again}"
+        );
         assert!(again.contains("marker=m2"), "{again}");
     }
 
@@ -572,41 +656,111 @@ mod tests {
 
     #[test]
     fn a_new_filter_keeps_the_sort_and_drops_the_marker() {
-        let m = map(&[("marker", "m1"), ("f", "host"), ("q", "old"), ("sort", "name"), ("dir", "desc")]);
+        let m = map(&[
+            ("marker", "m1"),
+            ("f", "host"),
+            ("q", "old"),
+            ("sort", "name"),
+            ("dir", "desc"),
+        ]);
         let q = query_of(&parse(&with_filter(&m, "project", " p1 ")));
-        assert_eq!(q, ListQuery { marker: None, field: Some("project".into()), value: Some("p1".into()), sort: Some("name".into()), desc: true });
+        assert_eq!(
+            q,
+            ListQuery {
+                marker: None,
+                field: Some("project".into()),
+                value: Some("p1".into()),
+                sort: Some("name".into()),
+                desc: true
+            }
+        );
         let cleared = query_of(&parse(&with_filter(&m, "host", "  ")));
-        assert_eq!((cleared.field, cleared.value, cleared.sort.as_deref()), (None, None, Some("name")), "an empty value clears the filter, not the sort");
+        assert_eq!(
+            (cleared.field, cleared.value, cleared.sort.as_deref()),
+            (None, None, Some("name")),
+            "an empty value clears the filter, not the sort"
+        );
     }
 
     fn parse(qs: &str) -> ParamsMap {
-        ParamsMap::from_iter(qs.trim_start_matches('?').split('&').filter(|kv| !kv.is_empty()).map(|kv| {
-            let (k, v) = kv.split_once('=').unwrap();
-            (k.to_string(), url_decoded(v))
-        }))
+        ParamsMap::from_iter(
+            qs.trim_start_matches('?')
+                .split('&')
+                .filter(|kv| !kv.is_empty())
+                .map(|kv| {
+                    let (k, v) = kv.split_once('=').unwrap();
+                    (k.to_string(), url_decoded(v))
+                }),
+        )
     }
 
     #[test]
     fn a_new_sort_keeps_the_filter_and_drops_the_marker() {
         let m = map(&[("marker", "m1"), ("f", "host"), ("q", "c1"), ("sort", "name")]);
         let q = query_of(&parse(&with_sort(&m, Some(("created", true)))));
-        assert_eq!(q, ListQuery { marker: None, field: Some("host".into()), value: Some("c1".into()), sort: Some("created".into()), desc: true });
+        assert_eq!(
+            q,
+            ListQuery {
+                marker: None,
+                field: Some("host".into()),
+                value: Some("c1".into()),
+                sort: Some("created".into()),
+                desc: true
+            }
+        );
         let q = query_of(&parse(&with_sort(&m, None)));
-        assert_eq!((q.sort, q.desc, q.value.as_deref()), (None, false, Some("c1")), "back to the API's order, still filtered");
+        assert_eq!(
+            (q.sort, q.desc, q.value.as_deref()),
+            (None, false, Some("c1")),
+            "back to the API's order, still filtered"
+        );
     }
 
     #[test]
     fn a_count_shows_only_for_its_own_filter_and_data() {
-        let q = ListQuery { field: Some("host".into()), value: Some("c1".into()), ..Default::default() };
+        let q = ListQuery {
+            field: Some("host".into()),
+            value: Some("c1".into()),
+            ..Default::default()
+        };
         let key = count_key(&q, 3);
         let done = |k: CountKey| Some((k, Counting::Done(RowCount { count: 42, more: false })));
         assert_eq!(shown_total(None, done(key.clone()).as_ref(), &key), Some((42, false)));
-        assert_eq!(shown_total(Some(7), done(key.clone()).as_ref(), &key), Some((7, false)), "the API's own count wins");
-        let other_filter = count_key(&ListQuery { value: Some("c2".into()), ..q.clone() }, 3);
-        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &other_filter), None, "a new filter needs a new count");
-        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &count_key(&q, 4)), None, "a write makes it stale");
-        let paged_on = count_key(&ListQuery { marker: Some("m".into()), sort: Some("name".into()), ..q.clone() }, 3);
-        assert_eq!(shown_total(None, done(key.clone()).as_ref(), &paged_on), Some((42, false)), "the next page or another sort keep it");
+        assert_eq!(
+            shown_total(Some(7), done(key.clone()).as_ref(), &key),
+            Some((7, false)),
+            "the API's own count wins"
+        );
+        let other_filter = count_key(
+            &ListQuery {
+                value: Some("c2".into()),
+                ..q.clone()
+            },
+            3,
+        );
+        assert_eq!(
+            shown_total(None, done(key.clone()).as_ref(), &other_filter),
+            None,
+            "a new filter needs a new count"
+        );
+        assert_eq!(
+            shown_total(None, done(key.clone()).as_ref(), &count_key(&q, 4)),
+            None,
+            "a write makes it stale"
+        );
+        let paged_on = count_key(
+            &ListQuery {
+                marker: Some("m".into()),
+                sort: Some("name".into()),
+                ..q.clone()
+            },
+            3,
+        );
+        assert_eq!(
+            shown_total(None, done(key.clone()).as_ref(), &paged_on),
+            Some((42, false)),
+            "the next page or another sort keep it"
+        );
         assert_eq!(shown_total(None, Some(&(key.clone(), Counting::Running)), &key), None);
     }
 
@@ -616,7 +770,11 @@ mod tests {
         ids.push("id000".into());
         ids.push(String::new());
         let chunks = late_chunks(ids);
-        assert_eq!(chunks.iter().map(Vec::len).collect::<Vec<_>>(), [50, 50, 20], "repeats and blanks dropped, {BOOT_IMAGE_CHUNK} a request");
+        assert_eq!(
+            chunks.iter().map(Vec::len).collect::<Vec<_>>(),
+            [50, 50, 20],
+            "repeats and blanks dropped, {BOOT_IMAGE_CHUNK} a request"
+        );
         assert!(late_chunks(vec![]).is_empty());
     }
 
@@ -624,6 +782,10 @@ mod tests {
     fn row_numbers_are_known_only_with_a_history() {
         assert_eq!(first_row(false, 0, 100), Some(1));
         assert_eq!(first_row(true, 2, 100), Some(201));
-        assert_eq!(first_row(true, 0, 100), None, "a link to page N has no history to count");
+        assert_eq!(
+            first_row(true, 0, 100),
+            None,
+            "a link to page N has no history to count"
+        );
     }
 }

@@ -5,11 +5,14 @@ use leptos_router::hooks::use_params_map;
 use super::instances::IpList;
 use super::lists::{admin_state, link};
 use crate::api::{get_instance, run_instance_console, run_instance_log};
-use crate::components::dialog::{data_version, prefs, RequestList, RowActions};
+use crate::components::dialog::{RequestList, RowActions, data_version, prefs};
 use crate::components::ops;
 use crate::components::table::TimingChip;
-use crate::components::widgets::{age_since, dash, is_busy, poll_while_busy, render, short_time, AzPill, Busy, Copyable, LockIcon, Pill, Skeleton, Tone};
-use crate::i18n::{bytes, power_state, server_status, task_state, use_i18n, K};
+use crate::components::widgets::{
+    AzPill, Busy, Copyable, LockIcon, Pill, Skeleton, Tone, age_since, dash, is_busy, poll_while_busy, render,
+    short_time,
+};
+use crate::i18n::{K, bytes, power_state, server_status, task_state, use_i18n};
 use crate::model::{Address, AppError, ConsoleReply, Instance, InstanceDetail};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -169,7 +172,15 @@ fn LogTab(id: String) -> impl IntoView {
         run_instance_log(id.get_value(), l)
     });
     let go = move || {
-        lines.set(input.get_untracked().trim().parse::<u32>().ok().filter(|n| *n > 0).or(Some(default)));
+        lines.set(
+            input
+                .get_untracked()
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|n| *n > 0)
+                .or(Some(default)),
+        );
         round.update(|r| *r += 1);
     };
     view! {
@@ -246,7 +257,12 @@ const CONSOLE_FIT_KEY: &str = "moonlight.console.fit";
 /// *Fit* unless this browser last picked *1:1* (or can't tell: storage blocked).
 fn console_fit() -> bool {
     #[cfg(feature = "hydrate")]
-    if let Some(v) = window().local_storage().ok().flatten().and_then(|st| st.get_item(CONSOLE_FIT_KEY).ok().flatten()) {
+    if let Some(v) = window()
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|st| st.get_item(CONSOLE_FIT_KEY).ok().flatten())
+    {
         return v != "false";
     }
     true
@@ -475,7 +491,12 @@ mod tests {
 
     #[test]
     fn groups_addresses_by_network_in_order() {
-        let a = |n: &str, ip: &str| Address { network: n.into(), addr: ip.into(), floating: false, mac: None };
+        let a = |n: &str, ip: &str| Address {
+            network: n.into(),
+            addr: ip.into(),
+            floating: false,
+            mac: None,
+        };
         let g = by_network(&[a("b", "1"), a("a", "2"), a("b", "3")]);
         assert_eq!(g.len(), 2);
         assert_eq!(g[0].0, "b");

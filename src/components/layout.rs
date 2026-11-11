@@ -4,16 +4,16 @@
 use leptos::html::Details;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_router::components::{Outlet, A};
+use leptos_router::components::{A, Outlet};
 use leptos_router::hooks::use_location;
 
 use super::nav;
-use crate::api::{get_session_info, switch_project, switch_region, Logout};
-use crate::i18n::{use_i18n, Lang, K};
-use crate::components::dialog::{focus_summary, install_menu_dismissal, DialogHost, Dialogs};
+use crate::api::{Logout, get_session_info, switch_project, switch_region};
+use crate::components::dialog::{DialogHost, Dialogs, focus_summary, install_menu_dismissal};
 use crate::components::widgets::{ErrorBox, ErrorPage, RegionMenuRef};
-use crate::theme::{use_theme, Theme};
-use crate::model::{needs, AppError, ErrorKind, SessionInfo, WriteMode};
+use crate::i18n::{K, Lang, use_i18n};
+use crate::model::{AppError, ErrorKind, SessionInfo, WriteMode, needs};
+use crate::theme::{Theme, use_theme};
 
 /// Makes `id` the session's project (header menu, Identity › Projects' *Set as
 /// Active Project*) and reloads on the Project dashboard.
@@ -57,7 +57,10 @@ pub fn Layout() -> impl IntoView {
     let location = use_location();
     let region_menu = NodeRef::<Details>::new();
     let other_regions = RwSignal::new(Vec::<String>::new());
-    provide_context(RegionMenuRef { menu: region_menu, others: other_regions });
+    provide_context(RegionMenuRef {
+        menu: region_menu,
+        others: other_regions,
+    });
     Effect::new(move |_| install_menu_dismissal());
     Effect::new(move |_| {
         if let Some(Ok(s)) = info.get() {
@@ -307,7 +310,11 @@ fn NavSheet(caps: crate::model::Capabilities) -> impl IntoView {
     let admin = needs::ADMIN.met(&caps);
     let dash = move || nav::dashboard(&location.pathname.get()).0;
     let active_panel = move || nav::active(&location.pathname.get()).map(|(_, p)| p.href);
-    let dashboards = [(K::Project, "/project", true), (K::Admin, "/admin", admin), (K::Identity, "/identity/projects", true)];
+    let dashboards = [
+        (K::Project, "/project", true),
+        (K::Admin, "/admin", admin),
+        (K::Identity, "/identity/projects", true),
+    ];
     let caps = StoredValue::new(caps);
     view! {
         <nav class="sheet-dashboards" aria-label="Dashboards">
@@ -350,7 +357,12 @@ fn PrimaryNav(info: Resource<Result<SessionInfo, AppError>>) -> impl IntoView {
     let location = use_location();
     // From `info`, in a transition, so the server renders the menu of this
     // session's cloud and roles (see `Layout`'s gate).
-    let caps = move || info.get().and_then(Result::ok).map(|s| s.capabilities).unwrap_or_default();
+    let caps = move || {
+        info.get()
+            .and_then(Result::ok)
+            .map(|s| s.capabilities)
+            .unwrap_or_default()
+    };
     let active_group = move || nav::active(&location.pathname.get()).map(|(g, _)| g.label);
     let active_panel = move || nav::active(&location.pathname.get()).map(|(_, p)| p.href);
 
@@ -757,7 +769,11 @@ mod tests {
     #[test]
     fn place_names_group_and_panel_also_on_detail_pages() {
         assert_eq!(place("/project/instances"), (K::Compute, Some(K::Instances)));
-        assert_eq!(place("/project/instances/abc"), (K::Compute, Some(K::Instances)), "a detail page keeps its panel");
+        assert_eq!(
+            place("/project/instances/abc"),
+            (K::Compute, Some(K::Instances)),
+            "a detail page keeps its panel"
+        );
         assert_eq!(place("/nowhere").1, None, "no panel: the dashboard alone");
     }
 }

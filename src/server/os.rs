@@ -11,16 +11,16 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use openstack_sdk::AsyncOpenStack;
 use openstack_sdk::api::QueryAsync;
 use openstack_sdk::config::{Auth, CloudConfig};
-use openstack_sdk::AsyncOpenStack;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 
 use super::config::state;
 use super::session::Session;
 use super::sfe;
-use crate::model::{parse_microversion, AppError, Capabilities, ErrorKind, ProjectRef};
+use crate::model::{AppError, Capabilities, ErrorKind, ProjectRef, parse_microversion};
 
 pub struct LoginResult {
     pub token: String,
@@ -39,7 +39,11 @@ pub fn keystone_time(s: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .map(|t| t.with_timezone(&Utc))
         .ok()
-        .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").ok().map(|n| n.and_utc()))
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+                .ok()
+                .map(|n| n.and_utc())
+        })
 }
 
 fn base_config(auth_type: &str, auth: Auth, region: Option<String>) -> CloudConfig {
@@ -119,9 +123,13 @@ pub async fn login(username: &str, password: &str, domain: &str) -> Result<Login
         user_domain_name: Some(domain.into()),
         ..Default::default()
     };
-    let os = within(REQUEST_TIMEOUT, "keystone login", connect(&base_config("v3password", auth, None)))
-        .await?
-        .map_err(sfe("keystone login"))?;
+    let os = within(
+        REQUEST_TIMEOUT,
+        "keystone login",
+        connect(&base_config("v3password", auth, None)),
+    )
+    .await?
+    .map_err(sfe("keystone login"))?;
     login_result(&os).await
 }
 
@@ -136,9 +144,13 @@ pub async fn login_with_token(token: &str) -> Result<LoginResult, AppError> {
         token: Some(SecretString::from(token.to_string())),
         ..Default::default()
     };
-    let os = within(REQUEST_TIMEOUT, "keystone websso token", connect(&base_config("v3token", auth, None)))
-        .await?
-        .map_err(sfe("keystone websso token"))?;
+    let os = within(
+        REQUEST_TIMEOUT,
+        "keystone websso token",
+        connect(&base_config("v3token", auth, None)),
+    )
+    .await?
+    .map_err(sfe("keystone websso token"))?;
     login_result(&os).await
 }
 
@@ -162,7 +174,12 @@ async fn login_result(os: &AsyncOpenStack) -> Result<LoginResult, AppError> {
         user: info.token.user.name.clone(),
         // The name, else the ID: the Identity panels pair it with `users/{me}`'s
         // `domain_id`, so a placeholder like `Federated` would match nothing.
-        user_domain: info.token.user.domain.as_ref().and_then(|d| d.name.clone().or_else(|| d.id.clone())),
+        user_domain: info
+            .token
+            .user
+            .domain
+            .as_ref()
+            .and_then(|d| d.name.clone().or_else(|| d.id.clone())),
         projects,
         password_expires_at: info.token.user.password_expires_at.as_deref().and_then(keystone_time),
     })
@@ -171,7 +188,11 @@ async fn login_result(os: &AsyncOpenStack) -> Result<LoginResult, AppError> {
 /// The session for a sign-in: scoped to the first project, in the default
 /// region when the catalog has it, else the first. `Forbidden` without projects.
 pub async fn new_session(res: LoginResult, domain: String) -> Result<Session, AppError> {
-    let project = res.projects.first().cloned().ok_or_else(|| AppError::new(ErrorKind::Forbidden, "no projects"))?;
+    let project = res
+        .projects
+        .first()
+        .cloned()
+        .ok_or_else(|| AppError::new(ErrorKind::Forbidden, "no projects"))?;
     let mut sess = Session {
         token: res.token,
         expires_at: res.expires_at,
@@ -213,9 +234,13 @@ pub async fn projects(session: &Session) -> Result<Vec<ProjectRef>, AppError> {
         token: Some(SecretString::from(session.token.clone())),
         ..Default::default()
     };
-    let os = within(REQUEST_TIMEOUT, "keystone token", connect(&base_config("v3token", auth, None)))
-        .await?
-        .map_err(sfe("keystone token"))?;
+    let os = within(
+        REQUEST_TIMEOUT,
+        "keystone token",
+        connect(&base_config("v3token", auth, None)),
+    )
+    .await?
+    .map_err(sfe("keystone token"))?;
     let p = within(REQUEST_TIMEOUT, "keystone projects", list_projects_with(&os)).await??;
     st.projects.insert(key, p.clone()).await;
     Ok(p)
@@ -226,11 +251,7 @@ pub async fn scoped(session: &Session) -> Result<AsyncOpenStack, AppError> {
     scoped_to(session, &session.project_id, session.region.as_deref()).await
 }
 
-pub async fn scoped_to(
-    session: &Session,
-    project_id: &str,
-    region: Option<&str>,
-) -> Result<AsyncOpenStack, AppError> {
+pub async fn scoped_to(session: &Session, project_id: &str, region: Option<&str>) -> Result<AsyncOpenStack, AppError> {
     let st = state();
     let key = scoped_key(&session.token, project_id, region);
     if let Some(c) = st.connections.get(&key).await {
@@ -284,7 +305,10 @@ const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 pub async fn within<T>(limit: Duration, what: &str, fut: impl Future<Output = T>) -> Result<T, AppError> {
     tokio::time::timeout(limit, Box::pin(fut)).await.map_err(|_| {
         tracing::warn!("{what}: no answer within {} s", limit.as_secs());
-        AppError::new(ErrorKind::Timeout, format!("{what}: no answer within {} s", limit.as_secs()))
+        AppError::new(
+            ErrorKind::Timeout,
+            format!("{what}: no answer within {} s", limit.as_secs()),
+        )
     })
 }
 
@@ -329,15 +353,24 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
     if let Some(c) = st.capabilities.get(&key).await {
         return c;
     }
-    let services: Vec<String> = catalog(os, session.region.as_deref()).into_iter().map(|e| e.service_type).collect();
+    let services: Vec<String> = catalog(os, session.region.as_deref())
+        .into_iter()
+        .map(|e| e.service_type)
+        .collect();
     let has_network = services.iter().any(|s| s == "network");
     let max_mv = |ty: S| async move {
-        let ep = within(DISCOVERY_TIMEOUT, "version range", os.get_service_endpoint(&ty, None)).await.ok()?.ok()?;
+        let ep = within(DISCOVERY_TIMEOUT, "version range", os.get_service_endpoint(&ty, None))
+            .await
+            .ok()?
+            .ok()?;
         // Nova and Cinder put their highest microversion in the version
         // document's `version` ("2.95"), which the SDK keeps as the endpoint's
         // version; `max_version` is only set by some deployments.
         let v = ep.version();
-        ep.max_version().as_deref().and_then(parse_microversion).or((v.minor > 0).then_some((v.major as u16, v.minor as u16)))
+        ep.max_version()
+            .as_deref()
+            .and_then(parse_microversion)
+            .or((v.minor > 0).then_some((v.major as u16, v.minor as u16)))
     };
     let extensions = async {
         if !has_network {
@@ -345,9 +378,15 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
         }
         use openstack_sdk::api::network::v2::extension::list as m;
         let ep = m::Request::builder().build().ok()?;
-        let v: Result<Vec<serde_json::Value>, _> = within(DISCOVERY_TIMEOUT, "network extensions", ep.query_async(os)).await.ok()?;
+        let v: Result<Vec<serde_json::Value>, _> = within(DISCOVERY_TIMEOUT, "network extensions", ep.query_async(os))
+            .await
+            .ok()?;
         match v {
-            Ok(list) => Some(list.iter().filter_map(|e| e.get("alias").and_then(|a| a.as_str()).map(str::to_string)).collect()),
+            Ok(list) => Some(
+                list.iter()
+                    .filter_map(|e| e.get("alias").and_then(|a| a.as_str()).map(str::to_string))
+                    .collect(),
+            ),
             Err(e) => {
                 tracing::warn!("network extensions unavailable: {e}");
                 None
@@ -357,9 +396,7 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
     // Octavia has no microversions: discovery picks its newest version (`v2.27`),
     // which reads the same way (roadmap 54).
     let has_lb = services.iter().any(|s| s == "load-balancer" || s == "octavia");
-    let lb_mv = async {
-        if has_lb { max_mv(S::LoadBalancer).await } else { None }
-    };
+    let lb_mv = async { if has_lb { max_mv(S::LoadBalancer).await } else { None } };
     // Glance's enabled import methods; `None` (fail open) when the image service is missing
     // or the call fails, so the *URL* source is never hidden by a detection hiccup.
     let has_image = services.iter().any(|s| s == "image");
@@ -369,7 +406,9 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
         }
         use openstack_sdk::api::image::v2::info::import::get as m;
         let ep = m::Request::builder().build().ok()?;
-        let v: Result<serde_json::Value, _> = within(DISCOVERY_TIMEOUT, "image import methods", ep.query_async(os)).await.ok()?;
+        let v: Result<serde_json::Value, _> = within(DISCOVERY_TIMEOUT, "image import methods", ep.query_async(os))
+            .await
+            .ok()?;
         match v {
             Ok(v) => Some(import_methods(&v)),
             Err(e) => {
@@ -378,12 +417,29 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
             }
         }
     };
-    let (compute_mv, volume_mv, lb_mv, extensions, image_import) = tokio::join!(max_mv(S::Compute), max_mv(S::BlockStorage), lb_mv, extensions, image_import);
+    let (compute_mv, volume_mv, lb_mv, extensions, image_import) = tokio::join!(
+        max_mv(S::Compute),
+        max_mv(S::BlockStorage),
+        lb_mv,
+        extensions,
+        image_import
+    );
     let Some(network_extensions) = extensions else {
         return Capabilities::default();
     };
     // `plugins` comes from the configuration, added per request (`get_session_info`).
-    let caps = Capabilities { known: true, services, network_extensions, compute_mv, volume_mv, lb_mv, plugins: vec![], roles: token_roles(os), multidomain: false, image_import };
+    let caps = Capabilities {
+        known: true,
+        services,
+        network_extensions,
+        compute_mv,
+        volume_mv,
+        lb_mv,
+        plugins: vec![],
+        roles: token_roles(os),
+        multidomain: false,
+        image_import,
+    };
     st.capabilities.insert(key, caps.clone()).await;
     caps
 }
@@ -393,7 +449,11 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
 /// accepted too.
 fn import_methods(v: &serde_json::Value) -> Vec<String> {
     let list = v.get("value").unwrap_or(v);
-    list.as_array().into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect()
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|m| m.as_str().map(str::to_string))
+        .collect()
 }
 
 /// The scoped token's role names as Keystone spells them, sorted (application
@@ -440,13 +500,23 @@ pub fn fallback_region<'a>(current: Option<&str>, regions: &'a [String]) -> Opti
 /// Endpoints of the configured interface (`[keystone] interface`) in the
 /// current region, for the "API Access" page and service detection.
 pub fn catalog(os: &AsyncOpenStack, region: Option<&str>) -> Vec<crate::model::ApiEndpoint> {
-    catalog_entries(os.get_token_catalog().unwrap_or_default(), &state().config.interface, region, false)
+    catalog_entries(
+        os.get_token_catalog().unwrap_or_default(),
+        &state().config.interface,
+        region,
+        false,
+    )
 }
 
 /// Project › API Access: like [`catalog`], plus the services without an
 /// endpoint here (empty `url`), which Horizon lists with `-`.
 pub fn catalog_listing(os: &AsyncOpenStack, region: Option<&str>) -> Vec<crate::model::ApiEndpoint> {
-    catalog_entries(os.get_token_catalog().unwrap_or_default(), &state().config.interface, region, true)
+    catalog_entries(
+        os.get_token_catalog().unwrap_or_default(),
+        &state().config.interface,
+        region,
+        true,
+    )
 }
 
 /// Admin › System Information › *Services*: the token's catalog, one row per
@@ -457,11 +527,17 @@ pub fn catalog_services(os: &AsyncOpenStack) -> Vec<crate::model::CatalogService
     catalog_services_of(os.get_token_catalog().unwrap_or_default())
 }
 
-fn catalog_services_of(services: Vec<openstack_sdk::types::identity::v3::ServiceEndpoints>) -> Vec<crate::model::CatalogService> {
+fn catalog_services_of(
+    services: Vec<openstack_sdk::types::identity::v3::ServiceEndpoints>,
+) -> Vec<crate::model::CatalogService> {
     let mut out = Vec::new();
     for svc in services {
         // A service without endpoints (ttcp-dev's `ceilometer`) gets no row, as in Horizon.
-        let regions: BTreeSet<String> = svc.endpoints.iter().map(|e| e.region.clone().unwrap_or_else(|| "-".into())).collect();
+        let regions: BTreeSet<String> = svc
+            .endpoints
+            .iter()
+            .map(|e| e.region.clone().unwrap_or_else(|| "-".into()))
+            .collect();
         for region in regions {
             let mut endpoints: Vec<(String, String)> = svc
                 .endpoints
@@ -471,7 +547,9 @@ fn catalog_services_of(services: Vec<openstack_sdk::types::identity::v3::Service
                 .collect();
             endpoints.sort();
             out.push(crate::model::CatalogService {
-                name: Some(svc.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| svc.service_type.clone()),
+                name: Some(svc.name.clone())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| svc.service_type.clone()),
                 service_type: svc.service_type.clone(),
                 region,
                 endpoints,
@@ -520,8 +598,15 @@ mod tests {
         use serde_json::json;
         let wrapped = json!({"description": "Import methods available.", "type": "array", "value": ["glance-direct", "web-download"]});
         assert_eq!(super::import_methods(&wrapped), ["glance-direct", "web-download"]);
-        assert_eq!(super::import_methods(&json!(["web-download"])), ["web-download"], "bare array");
-        assert!(super::import_methods(&json!({"value": []})).is_empty(), "import disabled");
+        assert_eq!(
+            super::import_methods(&json!(["web-download"])),
+            ["web-download"],
+            "bare array"
+        );
+        assert!(
+            super::import_methods(&json!({"value": []})).is_empty(),
+            "import disabled"
+        );
     }
 
     use super::*;
@@ -538,9 +623,20 @@ mod tests {
         ]))
         .unwrap();
         let out = catalog_services_of(svc);
-        let rows: Vec<_> = out.iter().map(|s| (s.name.as_str(), s.region.as_str(), s.endpoints.len())).collect();
-        assert_eq!(rows, [("identity", "-", 1), ("octavia", "r1", 2), ("octavia", "r2", 1)], "unnamed → type; no region → `-`; one row per region; none without endpoints (Horizon)");
-        assert_eq!(out[1].endpoints[0], ("internal".to_string(), "https://octavia-internal".to_string()), "sorted by interface");
+        let rows: Vec<_> = out
+            .iter()
+            .map(|s| (s.name.as_str(), s.region.as_str(), s.endpoints.len()))
+            .collect();
+        assert_eq!(
+            rows,
+            [("identity", "-", 1), ("octavia", "r1", 2), ("octavia", "r2", 1)],
+            "unnamed → type; no region → `-`; one row per region; none without endpoints (Horizon)"
+        );
+        assert_eq!(
+            out[1].endpoints[0],
+            ("internal".to_string(), "https://octavia-internal".to_string()),
+            "sorted by interface"
+        );
     }
 
     #[test]
@@ -550,11 +646,18 @@ mod tests {
             {"type": "metering", "name": "ceilometer", "endpoints": [{"id": "2", "interface": "internal", "region": "r1", "url": "https://x"}]}
         ]))
         .unwrap();
-        let types = |v: Vec<crate::model::ApiEndpoint>| v.into_iter().map(|e| (e.service_type, e.url)).collect::<Vec<_>>();
-        assert_eq!(types(catalog_entries(svc.clone(), "public", Some("r1"), false)), [("compute".into(), "https://nova".into())]);
+        let types =
+            |v: Vec<crate::model::ApiEndpoint>| v.into_iter().map(|e| (e.service_type, e.url)).collect::<Vec<_>>();
+        assert_eq!(
+            types(catalog_entries(svc.clone(), "public", Some("r1"), false)),
+            [("compute".into(), "https://nova".into())]
+        );
         assert_eq!(
             types(catalog_entries(svc, "public", Some("r1"), true)),
-            [("compute".to_string(), "https://nova".to_string()), ("metering".into(), String::new())],
+            [
+                ("compute".to_string(), "https://nova".to_string()),
+                ("metering".into(), String::new())
+            ],
             "listed with an empty URL (shown as -), never used for detection"
         );
     }
@@ -573,7 +676,9 @@ mod tests {
     #[tokio::test]
     async fn a_hanging_call_becomes_a_timeout_error() {
         let start = std::time::Instant::now();
-        let e = within(Duration::from_millis(50), "GET servers", std::future::pending::<()>()).await.unwrap_err();
+        let e = within(Duration::from_millis(50), "GET servers", std::future::pending::<()>())
+            .await
+            .unwrap_err();
         assert!(start.elapsed() < Duration::from_secs(1));
         assert_eq!(e.kind, ErrorKind::Timeout);
         assert!(e.retryable());
@@ -601,19 +706,31 @@ mod tests {
 
     fn settings(extra: &str) -> super::super::config::Config {
         let text = format!("[keystone]\nurl = \"https://k\"\n{extra}");
-        toml::from_str::<crate::server::settings::Settings>(&text).unwrap().config().unwrap()
+        toml::from_str::<crate::server::settings::Settings>(&text)
+            .unwrap()
+            .config()
+            .unwrap()
     }
 
     #[test]
     fn sdk_config_never_caches_auth_to_disk() {
         let cfg = config_for(&settings(""), "v3token", Auth::default(), Some("r".into()));
         assert_eq!(cfg.auth_cache, Some(false));
-        assert_eq!((cfg.interface.as_deref(), cfg.cacert.as_deref(), cfg.verify), (Some("public"), None, Some(true)), "defaults");
+        assert_eq!(
+            (cfg.interface.as_deref(), cfg.cacert.as_deref(), cfg.verify),
+            (Some("public"), None, Some(true)),
+            "defaults"
+        );
     }
 
     #[test]
     fn sdk_config_follows_interface_and_tls_settings() {
-        let cfg = config_for(&settings("interface = \"internal\"\n[tls]\nverify = false\n"), "v3token", Auth::default(), None);
+        let cfg = config_for(
+            &settings("interface = \"internal\"\n[tls]\nverify = false\n"),
+            "v3token",
+            Auth::default(),
+            None,
+        );
         assert_eq!((cfg.interface.as_deref(), cfg.verify), (Some("internal"), Some(false)));
     }
 }

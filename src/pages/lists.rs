@@ -8,16 +8,19 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 
 use crate::api::*;
-use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, Dialog, RowActions};
+use crate::components::dialog::{BulkButton, CreateButton, Dialog, RowActions, caps, data_version};
 use crate::components::ops;
-use crate::components::pager::{late_label, late_text, load_late, paged_table, use_list_query, LateNames, PagerState};
-use crate::components::table::{available, col, Col, DataTable, Select};
+use crate::components::pager::{LateNames, PagerState, late_label, late_text, load_late, paged_table, use_list_query};
+use crate::components::table::{Col, DataTable, Select, available, col};
 use crate::components::widgets::{
-    dash, data_url, image_busy, poll_while_busy, render, short_time, snapshot_busy, volume_busy, AzPill, AzPills, Busy, Copyable, PageHeader, Pill, Skeleton, Tone,
+    AzPill, AzPills, Busy, Copyable, PageHeader, Pill, Skeleton, Tone, dash, data_url, image_busy, poll_while_busy,
+    render, short_time, snapshot_busy, volume_busy,
 };
-use crate::pages::details::{Card, Kv};
-use crate::i18n::{bytes, image_visibility, key_manager_term, resource_status, server_group_policy, t, use_i18n, Lang, K};
+use crate::i18n::{
+    K, Lang, bytes, image_visibility, key_manager_term, resource_status, server_group_policy, t, use_i18n,
+};
 use crate::model::*;
+use crate::pages::details::{Card, Kv};
 use crate::pages::firewall as fw;
 
 type Opener = &'static [(K, fn(Lang) -> Dialog)];
@@ -181,9 +184,20 @@ paged_page!(
     PagedList::Images,
     Image,
     |_: LateNames| vec![
-        col(K::Name, |i: &Image, _| link(format!("/project/images/{}", i.id), i.name.clone())).sort_text(|i| i.name.clone()),
-        col(K::Type, |i: &Image, l| t(l, if i.is_snapshot { K::ImageTypeSnapshot } else { K::ImageTypeImage }))
-            .sort_num(|i| i.is_snapshot as i64),
+        col(K::Name, |i: &Image, _| link(
+            format!("/project/images/{}", i.id),
+            i.name.clone()
+        ))
+        .sort_text(|i| i.name.clone()),
+        col(K::Type, |i: &Image, l| t(
+            l,
+            if i.is_snapshot {
+                K::ImageTypeSnapshot
+            } else {
+                K::ImageTypeImage
+            }
+        ))
+        .sort_num(|i| i.is_snapshot as i64),
         col(K::Status, |i: &Image, l| image_status(i, l)).sort_text(|i| i.status.clone()),
         col(K::Visibility, |i: &Image, l| image_visibility(l, &i.visibility)).sort_text(|i| i.visibility.clone()),
         col(K::Protected, |i: &Image, l| yes_no(l, i.protected)),
@@ -195,11 +209,19 @@ paged_page!(
     ],
     // The owner left the columns (roadmap 56) but can still be filtered on.
     |i: &Image| {
-        let owner = [i.owner_name.as_deref(), i.owner_id.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(" ");
+        let owner = [i.owner_name.as_deref(), i.owner_id.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ");
         format!("{} {} {} {} {owner}", i.name, i.id, i.status, i.visibility)
     },
     &[(K::CreateImage, ops::create_image_dialog)],
-    (K::DeleteImages, |i: &Image| (i.owned_by_project && !i.protected).then(|| (i.id.clone(), i.name.clone())), |id| OsAction::ImageDelete { id }),
+    (
+        K::DeleteImages,
+        |i: &Image| (i.owned_by_project && !i.protected).then(|| (i.id.clone(), i.name.clone())),
+        |id| OsAction::ImageDelete { id }
+    ),
     busy = |i: &Image| image_busy(&i.status),
     drawer = image_drawer
 );
@@ -235,14 +257,26 @@ list_page!(
     list_keypairs,
     KeyPair,
     vec![
-        col(K::Name, |k: &KeyPair, _| link(format!("/project/key_pairs/{}", k.name), k.name.clone())).sort_text(|k| k.name.clone()),
+        col(K::Name, |k: &KeyPair, _| link(
+            format!("/project/key_pairs/{}", k.name),
+            k.name.clone()
+        ))
+        .sort_text(|k| k.name.clone()),
         col(K::Type, |k: &KeyPair, _| dash(k.key_type.clone())),
-        col(K::Fingerprint, |k: &KeyPair, _| view! { <span class="mono">{k.fingerprint.clone()}</span> }),
+        col(
+            K::Fingerprint,
+            |k: &KeyPair, _| view! { <span class="mono">{k.fingerprint.clone()}</span> }
+        ),
         actions_col(|l, k: &KeyPair| ops::keypair_items(l, &k.name)),
     ],
     |k: &KeyPair| format!("{} {}", k.name, k.fingerprint),
-    &[(K::CreateKeyPair, ops::generate_keypair_dialog), (K::ImportPublicKey, ops::import_keypair_dialog)],
-    (K::DeleteKeyPairs, key!(name, name), |name| OsAction::KeyPairDelete { name })
+    &[
+        (K::CreateKeyPair, ops::generate_keypair_dialog),
+        (K::ImportPublicKey, ops::import_keypair_dialog)
+    ],
+    (K::DeleteKeyPairs, key!(name, name), |name| OsAction::KeyPairDelete {
+        name
+    })
 );
 
 list_page!(
@@ -250,15 +284,31 @@ list_page!(
     list_server_groups,
     ServerGroup,
     vec![
-        col(K::Name, |g: &ServerGroup, _| link(format!("/project/server_groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone()),
-        col(K::Id, |g: &ServerGroup, _| view! { <span class="mono">{g.id.clone()}</span> }),
-        col(K::Policies, |g: &ServerGroup, l| g.policies.iter().map(|p| server_group_policy(l, p)).collect::<Vec<_>>().join(", ")),
-        col(K::Members, |g: &ServerGroup, _| g.members.len().to_string()).sort_num(|g| g.members.len() as i64).class("num"),
+        col(K::Name, |g: &ServerGroup, _| link(
+            format!("/project/server_groups/{}", g.id),
+            g.name.clone()
+        ))
+        .sort_text(|g| g.name.clone()),
+        col(
+            K::Id,
+            |g: &ServerGroup, _| view! { <span class="mono">{g.id.clone()}</span> }
+        ),
+        col(K::Policies, |g: &ServerGroup, l| g
+            .policies
+            .iter()
+            .map(|p| server_group_policy(l, p))
+            .collect::<Vec<_>>()
+            .join(", ")),
+        col(K::Members, |g: &ServerGroup, _| g.members.len().to_string())
+            .sort_num(|g| g.members.len() as i64)
+            .class("num"),
         actions_col(|l, g: &ServerGroup| ops::server_group_items(l, g)),
     ],
     |g: &ServerGroup| format!("{} {} {}", g.name, g.id, g.policies.join(" ")),
     &[(K::CreateServerGroup, ops::create_server_group_dialog)],
-    (K::DeleteServerGroups, key!(id, name), |id| OsAction::ServerGroupDelete { id })
+    (K::DeleteServerGroups, key!(id, name), |id| {
+        OsAction::ServerGroupDelete { id }
+    })
 );
 
 // --- Volumes ------------------------------------------------------------------
@@ -312,7 +362,10 @@ pub fn late_attachments(v: &Volume, late: LateNames) -> AnyView {
 pub fn owner_cell(i: &Image) -> AnyView {
     match (&i.owner_name, &i.owner_id) {
         (Some(n), _) => view! { <span class:strong=i.owned_by_project>{n.clone()}</span> }.into_any(),
-        (None, Some(id)) => view! { <span class="mono muted" title=id.clone()>{id.chars().take(8).collect::<String>()}"…"</span> }.into_any(),
+        (None, Some(id)) => {
+            view! { <span class="mono muted" title=id.clone()>{id.chars().take(8).collect::<String>()}"…"</span> }
+                .into_any()
+        }
         (None, None) => "-".into_any(),
     }
 }
@@ -327,25 +380,57 @@ paged_page!(
     PagedList::Volumes,
     Volume,
     |late: LateNames| vec![
-        col(K::Name, |v: &Volume, _| link(format!("/project/volumes/{}", v.id), v.name.clone())).sort_text(|v| v.name.clone()),
+        col(K::Name, |v: &Volume, _| link(
+            format!("/project/volumes/{}", v.id),
+            v.name.clone()
+        ))
+        .sort_text(|v| v.name.clone()),
         col(K::Description, |v: &Volume, _| dash(v.description.clone())),
-        col(K::Size, |v: &Volume, _| format!("{} GiB", v.size_gb)).sort_num(|v| v.size_gb).class("num"),
-        col(K::Status, |v: &Volume, l| moving_status(&v.status, l, volume_busy(&v.status))).sort_text(|v| v.status.clone()),
-        col(K::Type, |v: &Volume, _| dash(v.volume_type.clone())).sort_text(|v| v.volume_type.clone().unwrap_or_default()),
+        col(K::Size, |v: &Volume, _| format!("{} GiB", v.size_gb))
+            .sort_num(|v| v.size_gb)
+            .class("num"),
+        col(K::Status, |v: &Volume, l| moving_status(
+            &v.status,
+            l,
+            volume_busy(&v.status)
+        ))
+        .sort_text(|v| v.status.clone()),
+        col(K::Type, |v: &Volume, _| dash(v.volume_type.clone()))
+            .sort_text(|v| v.volume_type.clone().unwrap_or_default()),
         col(K::AttachedTo, move |v: &Volume, _| late_attachments(v, late)),
-        col(K::AvailabilityZone, |v: &Volume, _| view! { <AzPill name=v.availability_zone.clone()/> }),
+        col(
+            K::AvailabilityZone,
+            |v: &Volume, _| view! { <AzPill name=v.availability_zone.clone()/> }
+        ),
         col(K::Bootable, |v: &Volume, l| yes_no(l, v.bootable)),
         col(K::Encrypted, |v: &Volume, l| yes_no(l, v.encrypted)),
         actions_col(|l, v: &Volume| ops::volume_items(l, v)),
     ],
     |v: &Volume| {
         let servers: Vec<_> = v.attachments.iter().filter_map(|a| a.server_name.clone()).collect();
-        format!("{} {} {} {} {}", v.name, v.id, v.status, v.volume_type.as_deref().unwrap_or(""), servers.join(" "))
+        format!(
+            "{} {} {} {} {}",
+            v.name,
+            v.id,
+            v.status,
+            v.volume_type.as_deref().unwrap_or(""),
+            servers.join(" ")
+        )
     },
-    &[(K::AcceptTransfer, ops::accept_transfer_dialog), (K::CreateVolume, create_volume)],
+    &[
+        (K::AcceptTransfer, ops::accept_transfer_dialog),
+        (K::CreateVolume, create_volume)
+    ],
     (K::DeleteVolumes, key!(id, name), |id| OsAction::VolumeDelete { id }),
     busy = |v: &Volume| volume_busy(&v.status),
-    late = (NameKind::Servers, |rows: &[Volume]| rows.iter().flat_map(|v| v.attachments.iter().filter(|a| a.server_name.is_none()).map(|a| a.server_id.clone())).collect())
+    late = (NameKind::Servers, |rows: &[Volume]| rows
+        .iter()
+        .flat_map(|v| v
+            .attachments
+            .iter()
+            .filter(|a| a.server_name.is_none())
+            .map(|a| a.server_id.clone()))
+        .collect())
 );
 
 paged_page!(
@@ -354,10 +439,21 @@ paged_page!(
     PagedList::Snapshots,
     Snapshot,
     |late: LateNames| vec![
-        col(K::Name, |s: &Snapshot, _| link(format!("/project/snapshots/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone()),
+        col(K::Name, |s: &Snapshot, _| link(
+            format!("/project/snapshots/{}", s.id),
+            s.name.clone()
+        ))
+        .sort_text(|s| s.name.clone()),
         col(K::Description, |s: &Snapshot, _| dash(s.description.clone())),
-        col(K::Size, |s: &Snapshot, _| format!("{} GiB", s.size_gb)).sort_num(|s| s.size_gb).class("num"),
-        col(K::Status, |s: &Snapshot, l| moving_status(&s.status, l, snapshot_busy(&s.status))).sort_text(|s| s.status.clone()),
+        col(K::Size, |s: &Snapshot, _| format!("{} GiB", s.size_gb))
+            .sort_num(|s| s.size_gb)
+            .class("num"),
+        col(K::Status, |s: &Snapshot, l| moving_status(
+            &s.status,
+            l,
+            snapshot_busy(&s.status)
+        ))
+        .sort_text(|s| s.status.clone()),
         col(K::VolumeName, move |s: &Snapshot, _| {
             let (href, id) = (format!("/project/volumes/{}", s.volume_id), s.volume_id.clone());
             let name = match s.volume_name.clone() {
@@ -366,14 +462,26 @@ paged_page!(
             };
             view! { <A href=href>{name}</A> }
         }),
-        col(K::Created, |s: &Snapshot, _| short_time(&s.created)).sort_text(|s| s.created.clone()).class("nowrap"),
+        col(K::Created, |s: &Snapshot, _| short_time(&s.created))
+            .sort_text(|s| s.created.clone())
+            .class("nowrap"),
         actions_col(|l, s: &Snapshot| ops::snapshot_items(l, s)),
     ],
-    |s: &Snapshot| format!("{} {} {} {}", s.name, s.id, s.status, s.volume_name.as_deref().unwrap_or("")),
+    |s: &Snapshot| format!(
+        "{} {} {} {}",
+        s.name,
+        s.id,
+        s.status,
+        s.volume_name.as_deref().unwrap_or("")
+    ),
     &[],
     (K::DeleteSnapshots, key!(id, name), |id| OsAction::SnapshotDelete { id }),
     busy = |s: &Snapshot| snapshot_busy(&s.status),
-    late = (NameKind::Volumes, |rows: &[Snapshot]| rows.iter().filter(|s| s.volume_name.is_none()).map(|s| s.volume_id.clone()).collect())
+    late = (NameKind::Volumes, |rows: &[Snapshot]| rows
+        .iter()
+        .filter(|s| s.volume_name.is_none())
+        .map(|s| s.volume_id.clone())
+        .collect())
 );
 
 // Volume backups (roadmap 5, `backup` plugin). `creating`, `restoring` and `deleting`
@@ -383,13 +491,29 @@ list_page!(
     list_backups,
     BackupRow,
     vec![
-        col(K::Name, |b: &BackupRow, _| link(format!("/project/backups/{}", b.id), b.name.clone())).sort_text(|b| b.name.clone()),
+        col(K::Name, |b: &BackupRow, _| link(
+            format!("/project/backups/{}", b.id),
+            b.name.clone()
+        ))
+        .sort_text(|b| b.name.clone()),
         col(K::Description, |b: &BackupRow, _| dash(b.description.clone())),
-        col(K::Size, |b: &BackupRow, _| format!("{} GiB", b.size_gb)).sort_num(|b| b.size_gb).class("num"),
-        col(K::Status, |b: &BackupRow, l| moving_status(&b.status, l, snapshot_busy(&b.status))).sort_text(|b| b.status.clone()),
-        col(K::VolumeName, |b: &BackupRow, _| link(format!("/project/volumes/{}", b.volume.id), b.volume.name.clone())),
+        col(K::Size, |b: &BackupRow, _| format!("{} GiB", b.size_gb))
+            .sort_num(|b| b.size_gb)
+            .class("num"),
+        col(K::Status, |b: &BackupRow, l| moving_status(
+            &b.status,
+            l,
+            snapshot_busy(&b.status)
+        ))
+        .sort_text(|b| b.status.clone()),
+        col(K::VolumeName, |b: &BackupRow, _| link(
+            format!("/project/volumes/{}", b.volume.id),
+            b.volume.name.clone()
+        )),
         col(K::IncrementalBackup, |b: &BackupRow, l| yes_no(l, b.incremental)),
-        col(K::Created, |b: &BackupRow, _| short_time(&b.created)).sort_text(|b| b.created.clone()).class("nowrap"),
+        col(K::Created, |b: &BackupRow, _| short_time(&b.created))
+            .sort_text(|b| b.created.clone())
+            .class("nowrap"),
         actions_col(|l, b: &BackupRow| ops::backup_items(l, b)),
     ],
     |b: &BackupRow| format!("{} {} {} {}", b.name, b.id, b.status, b.volume.name),
@@ -405,17 +529,37 @@ list_page!(
     list_volume_groups,
     VolumeGroupRow,
     vec![
-        col(K::Name, |g: &VolumeGroupRow, _| link(format!("/project/volume_groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone()),
+        col(K::Name, |g: &VolumeGroupRow, _| link(
+            format!("/project/volume_groups/{}", g.id),
+            g.name.clone()
+        ))
+        .sort_text(|g| g.name.clone()),
         col(K::Description, |g: &VolumeGroupRow, _| dash(g.description.clone())),
-        col(K::Status, |g: &VolumeGroupRow, l| moving_status(&g.status, l, snapshot_busy(&g.status))).sort_text(|g| g.status.clone()),
-        col(K::AvailabilityZone, |g: &VolumeGroupRow, _| view! { <AzPill name=g.availability_zone.clone()/> }),
-        col(K::VolumeTypes, |g: &VolumeGroupRow, _| g.volume_types.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", ")),
+        col(K::Status, |g: &VolumeGroupRow, l| moving_status(
+            &g.status,
+            l,
+            snapshot_busy(&g.status)
+        ))
+        .sort_text(|g| g.status.clone()),
+        col(
+            K::AvailabilityZone,
+            |g: &VolumeGroupRow, _| view! { <AzPill name=g.availability_zone.clone()/> }
+        ),
+        col(K::VolumeTypes, |g: &VolumeGroupRow, _| g
+            .volume_types
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")),
         col(K::HasSnapshots, |g: &VolumeGroupRow, l| yes_no(l, g.has_snapshots)),
         actions_col(|l, g: &VolumeGroupRow| ops::volume_group_items(l, g)),
     ],
     |g: &VolumeGroupRow| format!("{} {} {} {}", g.name, g.id, g.status, g.group_type.name),
     &[(K::CreateGroup, ops::create_volume_group)],
-    (K::DeleteGroups, key!(id, name), |id| OsAction::VolumeGroupDelete { id, delete_volumes: false }),
+    (K::DeleteGroups, key!(id, name), |id| OsAction::VolumeGroupDelete {
+        id,
+        delete_volumes: false
+    }),
     busy = |g: &VolumeGroupRow| snapshot_busy(&g.status)
 );
 
@@ -424,16 +568,33 @@ list_page!(
     list_group_snapshots,
     GroupSnapshotRow,
     vec![
-        col(K::Name, |s: &GroupSnapshotRow, _| link(format!("/project/vg_snapshots/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone()),
+        col(K::Name, |s: &GroupSnapshotRow, _| link(
+            format!("/project/vg_snapshots/{}", s.id),
+            s.name.clone()
+        ))
+        .sort_text(|s| s.name.clone()),
         col(K::Description, |s: &GroupSnapshotRow, _| dash(s.description.clone())),
-        col(K::Status, |s: &GroupSnapshotRow, l| moving_status(&s.status, l, snapshot_busy(&s.status))).sort_text(|s| s.status.clone()),
-        col(K::VolumeGroup, |s: &GroupSnapshotRow, _| link(format!("/project/volume_groups/{}", s.group.id), s.group.name.clone())).sort_text(|s| s.group.name.clone()),
-        col(K::Created, |s: &GroupSnapshotRow, _| short_time(&s.created)).sort_text(|s| s.created.clone()).class("nowrap"),
+        col(K::Status, |s: &GroupSnapshotRow, l| moving_status(
+            &s.status,
+            l,
+            snapshot_busy(&s.status)
+        ))
+        .sort_text(|s| s.status.clone()),
+        col(K::VolumeGroup, |s: &GroupSnapshotRow, _| link(
+            format!("/project/volume_groups/{}", s.group.id),
+            s.group.name.clone()
+        ))
+        .sort_text(|s| s.group.name.clone()),
+        col(K::Created, |s: &GroupSnapshotRow, _| short_time(&s.created))
+            .sort_text(|s| s.created.clone())
+            .class("nowrap"),
         actions_col(|l, s: &GroupSnapshotRow| ops::group_snapshot_items(l, s)),
     ],
     |s: &GroupSnapshotRow| format!("{} {} {} {}", s.name, s.id, s.status, s.group.name),
     &[],
-    (K::DeleteGroupSnapshots, key!(id, name), |id| OsAction::GroupSnapshotDelete { id }),
+    (K::DeleteGroupSnapshots, key!(id, name), |id| {
+        OsAction::GroupSnapshotDelete { id }
+    }),
     busy = |s: &GroupSnapshotRow| snapshot_busy(&s.status)
 );
 
@@ -457,7 +618,11 @@ list_page!(
     list_networks,
     NetworkRow,
     vec![
-        col(K::Name, |n: &NetworkRow, _| link(format!("/project/networks/{}", n.id), n.name.clone())).sort_text(|n| n.name.clone()),
+        col(K::Name, |n: &NetworkRow, _| link(
+            format!("/project/networks/{}", n.id),
+            n.name.clone()
+        ))
+        .sort_text(|n| n.name.clone()),
         col(K::Subnets, |n: &NetworkRow, _| view! {
             <ul class="plain">{n.subnets.iter().map(|s| view! { <li class="mono">{s.clone()}</li> }).collect_view()}</ul>
         }),
@@ -465,7 +630,10 @@ list_page!(
         col(K::External, |n: &NetworkRow, l| yes_no(l, n.external)).sort_num(|n| n.external as i64),
         col(K::Status, |n: &NetworkRow, l| status_pill(&n.status, l)),
         col(K::AdminState, |n: &NetworkRow, l| admin_state(l, n.admin_up)),
-        col(K::AvailabilityZone, |n: &NetworkRow, _| view! { <AzPills names=n.availability_zones.clone()/> }),
+        col(
+            K::AvailabilityZone,
+            |n: &NetworkRow, _| view! { <AzPills names=n.availability_zones.clone()/> }
+        ),
         actions_col(|l, n: &NetworkRow| ops::network_items(l, n)),
     ],
     |n: &NetworkRow| format!("{} {} {}", n.name, n.id, n.subnets.join(" ")),
@@ -479,11 +647,18 @@ paged_page!(
     PagedList::Routers,
     RouterRow,
     |_: LateNames| vec![
-        col(K::Name, |r: &RouterRow, _| link(format!("/project/routers/{}", r.id), r.name.clone())).sort_text(|r| r.name.clone()),
+        col(K::Name, |r: &RouterRow, _| link(
+            format!("/project/routers/{}", r.id),
+            r.name.clone()
+        ))
+        .sort_text(|r| r.name.clone()),
         col(K::Status, |r: &RouterRow, l| status_pill(&r.status, l)),
         col(K::ExternalNetwork, |r: &RouterRow, _| dash(r.external_network.clone())),
         col(K::AdminState, |r: &RouterRow, l| admin_state(l, r.admin_up)),
-        col(K::AvailabilityZone, |r: &RouterRow, _| view! { <AzPills names=r.availability_zones.clone()/> }),
+        col(
+            K::AvailabilityZone,
+            |r: &RouterRow, _| view! { <AzPills names=r.availability_zones.clone()/> }
+        ),
         actions_col(|l, r: &RouterRow| ops::router_items(l, r)),
     ],
     |r: &RouterRow| format!("{} {} {}", r.name, r.id, r.external_network.as_deref().unwrap_or("")),
@@ -496,17 +671,33 @@ list_page!(
     list_security_groups,
     SecurityGroupRow,
     vec![
-        col(K::Name, |g: &SecurityGroupRow, _| link(format!("/project/security_groups/{}", g.id), g.name.clone()))
-            .sort_text(|g| g.name.clone()),
-        col(K::Id, |g: &SecurityGroupRow, _| view! { <span class="mono">{g.id.clone()}</span> }),
+        col(K::Name, |g: &SecurityGroupRow, _| link(
+            format!("/project/security_groups/{}", g.id),
+            g.name.clone()
+        ))
+        .sort_text(|g| g.name.clone()),
+        col(
+            K::Id,
+            |g: &SecurityGroupRow, _| view! { <span class="mono">{g.id.clone()}</span> }
+        ),
         col(K::Description, |g: &SecurityGroupRow, _| dash(g.description.clone())),
         col(K::Shared, |g: &SecurityGroupRow, l| yes_no(l, g.shared)),
-        col(K::Rules, |g: &SecurityGroupRow, _| g.rules.len().to_string()).sort_num(|g| g.rules.len() as i64).class("num"),
-        actions_col(|l, g: &SecurityGroupRow| ops::security_group_items(l, &g.id, &g.name, g.description.as_deref(), true)),
+        col(K::Rules, |g: &SecurityGroupRow, _| g.rules.len().to_string())
+            .sort_num(|g| g.rules.len() as i64)
+            .class("num"),
+        actions_col(|l, g: &SecurityGroupRow| ops::security_group_items(
+            l,
+            &g.id,
+            &g.name,
+            g.description.as_deref(),
+            true
+        )),
     ],
     |g: &SecurityGroupRow| format!("{} {} {}", g.name, g.id, g.description.as_deref().unwrap_or("")),
     &[(K::CreateSecurityGroup, ops::create_security_group_dialog)],
-    (K::DeleteSecurityGroups, security_group_bulk_key, |id| OsAction::SecurityGroupDelete { id })
+    (K::DeleteSecurityGroups, security_group_bulk_key, |id| {
+        OsAction::SecurityGroupDelete { id }
+    })
 );
 
 paged_page!(
@@ -546,11 +737,23 @@ paged_page!(
     ],
     |f: &FloatingIpRow| {
         let o = |v: &Option<String>| v.clone().unwrap_or_default();
-        format!("{} {} {} {} {} {}", f.ip, o(&f.fixed_ip), o(&f.instance_name), f.pool, o(&f.description), o(&f.dns_name))
+        format!(
+            "{} {} {} {} {} {}",
+            f.ip,
+            o(&f.fixed_ip),
+            o(&f.instance_name),
+            f.pool,
+            o(&f.description),
+            o(&f.dns_name)
+        )
     },
     &[(K::AllocateIp, ops::allocate_ip_dialog)],
     (K::ReleaseIps, key!(id, ip), |id| OsAction::FloatingIpRelease { id }),
-    late = (NameKind::Servers, |rows: &[FloatingIpRow]| rows.iter().filter(|f| f.instance_name.is_none()).filter_map(|f| f.instance_id.clone()).collect())
+    late = (NameKind::Servers, |rows: &[FloatingIpRow]| rows
+        .iter()
+        .filter(|f| f.instance_name.is_none())
+        .filter_map(|f| f.instance_id.clone())
+        .collect())
 );
 
 list_page!(
@@ -558,20 +761,45 @@ list_page!(
     list_load_balancers,
     LoadBalancerRow,
     vec![
-        col(K::Name, |l: &LoadBalancerRow, _| link(format!("/project/load_balancers/{}", l.id), l.name.clone())).sort_text(|l| l.name.clone()),
+        col(K::Name, |l: &LoadBalancerRow, _| link(
+            format!("/project/load_balancers/{}", l.id),
+            l.name.clone()
+        ))
+        .sort_text(|l| l.name.clone()),
         col(K::Description, |l: &LoadBalancerRow, _| dash(l.description.clone())),
-        col(K::IpAddress, |l: &LoadBalancerRow, _| view! { <span class="mono">{dash(l.vip_address.clone())}</span> })
-            .sort_text(|l| l.vip_address.clone().unwrap_or_default()),
-        col(K::AvailabilityZone, |l: &LoadBalancerRow, _| view! { <AzPill name=l.availability_zone.clone()/> }),
-        col(K::OperatingStatus, |l: &LoadBalancerRow, lang| status_pill(&l.operating_status, lang)).sort_text(|l| l.operating_status.clone()),
-        col(K::ProvisioningStatus, |l: &LoadBalancerRow, lang| status_pill(&l.provisioning_status, lang))
-            .sort_text(|l| l.provisioning_status.clone()),
+        col(
+            K::IpAddress,
+            |l: &LoadBalancerRow, _| view! { <span class="mono">{dash(l.vip_address.clone())}</span> }
+        )
+        .sort_text(|l| l.vip_address.clone().unwrap_or_default()),
+        col(
+            K::AvailabilityZone,
+            |l: &LoadBalancerRow, _| view! { <AzPill name=l.availability_zone.clone()/> }
+        ),
+        col(K::OperatingStatus, |l: &LoadBalancerRow, lang| status_pill(
+            &l.operating_status,
+            lang
+        ))
+        .sort_text(|l| l.operating_status.clone()),
+        col(K::ProvisioningStatus, |l: &LoadBalancerRow, lang| status_pill(
+            &l.provisioning_status,
+            lang
+        ))
+        .sort_text(|l| l.provisioning_status.clone()),
         col(K::AdminState, |l: &LoadBalancerRow, lang| admin_state(lang, l.admin_up)),
         actions_col(|l, b: &LoadBalancerRow| ops::load_balancer_items(l, b)),
     ],
-    |l: &LoadBalancerRow| format!("{} {} {} {}", l.name, l.id, l.vip_address.as_deref().unwrap_or(""), l.description.as_deref().unwrap_or("")),
+    |l: &LoadBalancerRow| format!(
+        "{} {} {} {}",
+        l.name,
+        l.id,
+        l.vip_address.as_deref().unwrap_or(""),
+        l.description.as_deref().unwrap_or("")
+    ),
     &[(K::CreateLoadBalancer, ops::create_load_balancer_dialog)],
-    (K::DeleteLoadBalancers, key!(id, name), |id| OsAction::LoadBalancerDelete { id, cascade: true }),
+    (K::DeleteLoadBalancers, key!(id, name), |id| {
+        OsAction::LoadBalancerDelete { id, cascade: true }
+    }),
     busy = |l: &LoadBalancerRow| lb_pending(&l.provisioning_status)
 );
 
@@ -580,9 +808,18 @@ list_page!(
     list_trunks,
     TrunkRow,
     vec![
-        col(K::Name, |t: &TrunkRow, _| link(format!("/project/trunks/{}", t.id), t.name.clone())).sort_text(|t| t.name.clone()),
-        col(K::ParentPort, |t: &TrunkRow, _| link(format!("/project/networks/ports/{}", t.parent.id), t.parent.name.clone())),
-        col(K::Subports, |t: &TrunkRow, _| t.subports.len().to_string()).sort_num(|t| t.subports.len() as i64).class("num"),
+        col(K::Name, |t: &TrunkRow, _| link(
+            format!("/project/trunks/{}", t.id),
+            t.name.clone()
+        ))
+        .sort_text(|t| t.name.clone()),
+        col(K::ParentPort, |t: &TrunkRow, _| link(
+            format!("/project/networks/ports/{}", t.parent.id),
+            t.parent.name.clone()
+        )),
+        col(K::Subports, |t: &TrunkRow, _| t.subports.len().to_string())
+            .sort_num(|t| t.subports.len() as i64)
+            .class("num"),
         col(K::Status, |t: &TrunkRow, l| status_pill(&t.status, l)).sort_text(|t| t.status.clone()),
         col(K::AdminState, |t: &TrunkRow, l| admin_state(l, t.admin_up)),
         actions_col(|l, t: &TrunkRow| ops::trunk_items(l, t)),
@@ -600,18 +837,43 @@ list_page!(
     list_firewall_groups,
     FirewallGroupRow,
     vec![
-        col(K::Name, |g: &FirewallGroupRow, _| link(format!("/project/firewall/groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone()),
-        col(K::IngressPolicy, |g: &FirewallGroupRow, _| fw::policy_link(g.ingress.as_ref())),
-        col(K::EgressPolicy, |g: &FirewallGroupRow, _| fw::policy_link(g.egress.as_ref())),
-        col(K::Ports, |g: &FirewallGroupRow, _| g.ports.len().to_string()).sort_num(|g| g.ports.len() as i64).class("num"),
-        col(K::Status, |g: &FirewallGroupRow, l| moving_status(&g.status, l, g.busy())).sort_text(|g| g.status.clone()),
+        col(K::Name, |g: &FirewallGroupRow, _| link(
+            format!("/project/firewall/groups/{}", g.id),
+            g.name.clone()
+        ))
+        .sort_text(|g| g.name.clone()),
+        col(K::IngressPolicy, |g: &FirewallGroupRow, _| fw::policy_link(
+            g.ingress.as_ref()
+        )),
+        col(K::EgressPolicy, |g: &FirewallGroupRow, _| fw::policy_link(
+            g.egress.as_ref()
+        )),
+        col(K::Ports, |g: &FirewallGroupRow, _| g.ports.len().to_string())
+            .sort_num(|g| g.ports.len() as i64)
+            .class("num"),
+        col(K::Status, |g: &FirewallGroupRow, l| moving_status(
+            &g.status,
+            l,
+            g.busy()
+        ))
+        .sort_text(|g| g.status.clone()),
         col(K::AdminState, |g: &FirewallGroupRow, l| admin_state(l, g.admin_up)),
         col(K::Shared, |g: &FirewallGroupRow, l| yes_no(l, g.shared)),
         actions_col(|l, g: &FirewallGroupRow| ops::firewall_group_items(l, g)),
     ],
-    |g: &FirewallGroupRow| format!("{} {} {} {}", g.name, g.id, g.ingress.as_ref().map(|p| p.name.as_str()).unwrap_or(""), g.egress.as_ref().map(|p| p.name.as_str()).unwrap_or("")),
+    |g: &FirewallGroupRow| format!(
+        "{} {} {} {}",
+        g.name,
+        g.id,
+        g.ingress.as_ref().map(|p| p.name.as_str()).unwrap_or(""),
+        g.egress.as_ref().map(|p| p.name.as_str()).unwrap_or("")
+    ),
     &[(K::CreateFirewallGroup, ops::create_firewall_group_dialog)],
-    (K::DeleteFirewallGroups, |g: &FirewallGroupRow| g.deletable().then(|| (g.id.clone(), g.name.clone())), |id| OsAction::FirewallGroupDelete { id }),
+    (
+        K::DeleteFirewallGroups,
+        |g: &FirewallGroupRow| g.deletable().then(|| (g.id.clone(), g.name.clone())),
+        |id| OsAction::FirewallGroupDelete { id }
+    ),
     busy = FirewallGroupRow::busy,
     above = || view! { <fw::FirewallTabs active=0/> }.into_any()
 );
@@ -621,15 +883,28 @@ list_page!(
     list_firewall_policies,
     FirewallPolicyRow,
     vec![
-        col(K::Name, |p: &FirewallPolicyRow, _| link(format!("/project/firewall/policies/{}", p.id), p.name.clone())).sort_text(|p| p.name.clone()),
+        col(K::Name, |p: &FirewallPolicyRow, _| link(
+            format!("/project/firewall/policies/{}", p.id),
+            p.name.clone()
+        ))
+        .sort_text(|p| p.name.clone()),
         col(K::Rules, |p: &FirewallPolicyRow, _| fw::rule_links(&p.rules)),
         col(K::Audited, |p: &FirewallPolicyRow, l| yes_no(l, p.audited)),
         col(K::Shared, |p: &FirewallPolicyRow, l| yes_no(l, p.shared)),
         actions_col(|l, p: &FirewallPolicyRow| ops::firewall_policy_items(l, p)),
     ],
-    |p: &FirewallPolicyRow| format!("{} {} {}", p.name, p.id, p.rules.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(" ")),
+    |p: &FirewallPolicyRow| format!(
+        "{} {} {}",
+        p.name,
+        p.id,
+        p.rules.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(" ")
+    ),
     &[(K::AddPolicy, ops::create_firewall_policy_dialog)],
-    (K::DeletePolicies, |p: &FirewallPolicyRow| p.deletable().then(|| (p.id.clone(), p.name.clone())), |id| OsAction::FirewallPolicyDelete { id }),
+    (
+        K::DeletePolicies,
+        |p: &FirewallPolicyRow| p.deletable().then(|| (p.id.clone(), p.name.clone())),
+        |id| OsAction::FirewallPolicyDelete { id }
+    ),
     above = || view! { <fw::FirewallTabs active=1/> }.into_any()
 );
 
@@ -638,12 +913,20 @@ list_page!(
     list_firewall_rules,
     FirewallRuleRow,
     vec![
-        col(K::Name, |r: &FirewallRuleRow, _| link(format!("/project/firewall/rules/{}", r.id), r.name.clone())).sort_text(|r| r.name.clone()),
-        col(K::Protocol, |r: &FirewallRuleRow, l| fw::protocol(l, r)).sort_text(|r| r.protocol.clone().unwrap_or_default()),
+        col(K::Name, |r: &FirewallRuleRow, _| link(
+            format!("/project/firewall/rules/{}", r.id),
+            r.name.clone()
+        ))
+        .sort_text(|r| r.name.clone()),
+        col(K::Protocol, |r: &FirewallRuleRow, l| fw::protocol(l, r))
+            .sort_text(|r| r.protocol.clone().unwrap_or_default()),
         col(K::SourceIp, |r: &FirewallRuleRow, l| fw::any(l, &r.source_ip)),
         col(K::SourcePort, |r: &FirewallRuleRow, l| fw::any(l, &r.source_port)),
         col(K::DestinationIp, |r: &FirewallRuleRow, l| fw::any(l, &r.destination_ip)),
-        col(K::DestinationPort, |r: &FirewallRuleRow, l| fw::any(l, &r.destination_port)),
+        col(K::DestinationPort, |r: &FirewallRuleRow, l| fw::any(
+            l,
+            &r.destination_port
+        )),
         col(K::Action, |r: &FirewallRuleRow, l| fw::action_pill(l, &r.action)).sort_text(|r| r.action.clone()),
         col(K::IpVersion, |r: &FirewallRuleRow, _| format!("IPv{}", r.ip_version)),
         col(K::EnabledCol, |r: &FirewallRuleRow, l| yes_no(l, r.enabled)),
@@ -651,9 +934,21 @@ list_page!(
         col(K::Policies, |r: &FirewallRuleRow, _| fw::policy_links(&r.policies)),
         actions_col(|l, r: &FirewallRuleRow| ops::firewall_rule_items(l, r)),
     ],
-    |r: &FirewallRuleRow| format!("{} {} {} {} {} {}", r.name, r.id, r.protocol.as_deref().unwrap_or("any"), r.action, r.source_ip.as_deref().unwrap_or(""), r.destination_ip.as_deref().unwrap_or("")),
+    |r: &FirewallRuleRow| format!(
+        "{} {} {} {} {} {}",
+        r.name,
+        r.id,
+        r.protocol.as_deref().unwrap_or("any"),
+        r.action,
+        r.source_ip.as_deref().unwrap_or(""),
+        r.destination_ip.as_deref().unwrap_or("")
+    ),
     &[(K::AddRule, ops::create_firewall_rule_dialog)],
-    (K::DeleteRules, |r: &FirewallRuleRow| r.owned.then(|| (r.id.clone(), r.name.clone())), |id| OsAction::FirewallRuleDelete { id }),
+    (
+        K::DeleteRules,
+        |r: &FirewallRuleRow| r.owned.then(|| (r.id.clone(), r.name.clone())),
+        |id| OsAction::FirewallRuleDelete { id }
+    ),
     above = || view! { <fw::FirewallTabs active=2/> }.into_any()
 );
 
@@ -664,18 +959,33 @@ list_page!(
     list_secrets,
     SecretRow,
     vec![
-        col(K::Name, |x: &SecretRow, _| link(format!("/project/key_manager/secrets/{}", x.id), x.name.clone())).sort_text(|x| x.name.clone()),
+        col(K::Name, |x: &SecretRow, _| link(
+            format!("/project/key_manager/secrets/{}", x.id),
+            x.name.clone()
+        ))
+        .sort_text(|x| x.name.clone()),
         col(K::SecretType, |x: &SecretRow, l| key_manager_term(l, &x.secret_type)).sort_text(|x| x.secret_type.clone()),
         col(K::Algorithm, |x: &SecretRow, _| crate::pages::key_manager::cipher(x)),
         col(K::ContentType, |x: &SecretRow, _| dash(x.content_type.clone())),
         col(K::Status, |x: &SecretRow, l| status_pill(&x.status, l)).sort_text(|x| x.status.clone()),
-        col(K::Expiration, |x: &SecretRow, l| crate::pages::key_manager::expiry_cell(l, x.expiration.as_deref()))
-            .sort_text(|x| x.expiration.clone().unwrap_or_default())
+        col(
+            K::Expiration,
+            |x: &SecretRow, l| crate::pages::key_manager::expiry_cell(l, x.expiration.as_deref())
+        )
+        .sort_text(|x| x.expiration.clone().unwrap_or_default())
+        .class("nowrap"),
+        col(K::Created, |x: &SecretRow, _| short_time(&x.created))
+            .sort_text(|x| x.created.clone())
             .class("nowrap"),
-        col(K::Created, |x: &SecretRow, _| short_time(&x.created)).sort_text(|x| x.created.clone()).class("nowrap"),
         actions_col(|l, x: &SecretRow| ops::secret_items(l, x)),
     ],
-    |x: &SecretRow| format!("{} {} {} {}", x.name, x.id, x.secret_type, x.algorithm.as_deref().unwrap_or("")),
+    |x: &SecretRow| format!(
+        "{} {} {} {}",
+        x.name,
+        x.id,
+        x.secret_type,
+        x.algorithm.as_deref().unwrap_or("")
+    ),
     &[(K::StoreSecret, ops::store_secret_dialog)],
     (K::DeleteSecrets, key!(id, name), |id| OsAction::SecretDelete { id })
 );
@@ -685,20 +995,48 @@ list_page!(
     list_containers,
     ContainerRow,
     vec![
-        col(K::Name, |c: &ContainerRow, _| link(format!("/project/key_manager/containers/{}", c.id), c.name.clone())).sort_text(|c| c.name.clone()),
-        col(K::ContainerType, |c: &ContainerRow, l| key_manager_term(l, &c.container_type)).sort_text(|c| c.container_type.clone()),
+        col(K::Name, |c: &ContainerRow, _| link(
+            format!("/project/key_manager/containers/{}", c.id),
+            c.name.clone()
+        ))
+        .sort_text(|c| c.name.clone()),
+        col(K::ContainerType, |c: &ContainerRow, l| key_manager_term(
+            l,
+            &c.container_type
+        ))
+        .sort_text(|c| c.container_type.clone()),
         col(K::Secrets, |c: &ContainerRow, l| {
-            let roles: Vec<String> = c.secrets.iter().map(|s| format!("{}: {}", key_manager_term(l, &s.role), s.name)).collect();
-            if roles.is_empty() { "-".to_string() } else { roles.join(", ") }
+            let roles: Vec<String> = c
+                .secrets
+                .iter()
+                .map(|s| format!("{}: {}", key_manager_term(l, &s.role), s.name))
+                .collect();
+            if roles.is_empty() {
+                "-".to_string()
+            } else {
+                roles.join(", ")
+            }
         }),
-        col(K::Consumers, |c: &ContainerRow, _| c.consumers.len().to_string()).sort_num(|c| c.consumers.len() as i64).class("num"),
+        col(K::Consumers, |c: &ContainerRow, _| c.consumers.len().to_string())
+            .sort_num(|c| c.consumers.len() as i64)
+            .class("num"),
         col(K::Status, |c: &ContainerRow, l| status_pill(&c.status, l)).sort_text(|c| c.status.clone()),
-        col(K::Created, |c: &ContainerRow, _| short_time(&c.created)).sort_text(|c| c.created.clone()).class("nowrap"),
+        col(K::Created, |c: &ContainerRow, _| short_time(&c.created))
+            .sort_text(|c| c.created.clone())
+            .class("nowrap"),
         actions_col(|l, c: &ContainerRow| ops::container_items(l, c)),
     ],
-    |c: &ContainerRow| format!("{} {} {} {}", c.name, c.id, c.container_type, c.secrets.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(" ")),
+    |c: &ContainerRow| format!(
+        "{} {} {} {}",
+        c.name,
+        c.id,
+        c.container_type,
+        c.secrets.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(" ")
+    ),
     &[(K::CreateContainer, ops::create_container_dialog)],
-    (K::DeleteContainers, key!(id, name), |id| OsAction::ContainerDelete { id })
+    (K::DeleteContainers, key!(id, name), |id| OsAction::ContainerDelete {
+        id
+    })
 );
 
 list_page!(
@@ -706,20 +1044,32 @@ list_page!(
     list_qos_policies,
     QosPolicyRow,
     vec![
-        col(K::Name, |p: &QosPolicyRow, _| link(format!("/project/qos/{}", p.id), p.name.clone())).sort_text(|p| p.name.clone()),
+        col(K::Name, |p: &QosPolicyRow, _| link(
+            format!("/project/qos/{}", p.id),
+            p.name.clone()
+        ))
+        .sort_text(|p| p.name.clone()),
         col(K::Description, |p: &QosPolicyRow, _| dash(p.description.clone())),
         col(K::Shared, |p: &QosPolicyRow, l| yes_no(l, p.shared)),
         col(K::DefaultPolicy, |p: &QosPolicyRow, l| yes_no(l, p.is_default)),
         col(K::Rules, |p: &QosPolicyRow, l| {
             let kinds: Vec<String> = p.rules.iter().map(|r| ops::qos_kind(l, &r.kind)).collect();
-            if kinds.is_empty() { "-".to_string() } else { kinds.join(", ") }
+            if kinds.is_empty() {
+                "-".to_string()
+            } else {
+                kinds.join(", ")
+            }
         }),
         actions_col(|l, p: &QosPolicyRow| ops::qos_policy_items(l, p)),
     ],
     |p: &QosPolicyRow| format!("{} {} {}", p.name, p.id, p.description.as_deref().unwrap_or("")),
     &[(K::CreatePolicy, ops::create_qos_policy_dialog)],
     // Shared policies of other projects cannot be selected.
-    (K::DeletePolicies, |p: &QosPolicyRow| p.owned.then(|| (p.id.clone(), p.name.clone())), |id| OsAction::QosPolicyDelete { id })
+    (
+        K::DeletePolicies,
+        |p: &QosPolicyRow| p.owned.then(|| (p.id.clone(), p.name.clone())),
+        |id| OsAction::QosPolicyDelete { id }
+    )
 );
 
 // --- API access -----------------------------------------------------------------
@@ -736,7 +1086,10 @@ pub fn ApiAccessPage() -> impl IntoView {
             view! { <span class="strong">{label}</span> " " <span class="muted">{e.service_type.clone()}</span> }
         })
         .sort_text(|e| e.service_type.clone()),
-        col(K::ServiceEndpoint, |e: &ApiEndpoint, _| view! { <span class="mono">{dash(Some(e.url.clone()))}</span> }),
+        col(
+            K::ServiceEndpoint,
+            |e: &ApiEndpoint, _| view! { <span class="mono">{dash(Some(e.url.clone()))}</span> },
+        ),
     ]);
     view! {
         <PageHeader>
@@ -821,12 +1174,22 @@ mod tests {
     #[test]
     fn only_owned_networks_are_selectable_for_bulk_delete() {
         assert_eq!(network_bulk_key(&network(true)), Some(("n1".into(), "net".into())));
-        assert_eq!(network_bulk_key(&network(false)), None, "shared/external networks of other projects");
+        assert_eq!(
+            network_bulk_key(&network(false)),
+            None,
+            "shared/external networks of other projects"
+        );
     }
 
     #[test]
     fn default_security_group_is_not_selectable_for_bulk_delete() {
-        let g = |name: &str| SecurityGroupRow { id: "g1".into(), name: name.into(), description: None, rules: vec![], shared: false };
+        let g = |name: &str| SecurityGroupRow {
+            id: "g1".into(),
+            name: name.into(),
+            description: None,
+            rules: vec![],
+            shared: false,
+        };
         assert_eq!(security_group_bulk_key(&g("web")), Some(("g1".into(), "web".into())));
         assert_eq!(security_group_bulk_key(&g("default")), None);
     }

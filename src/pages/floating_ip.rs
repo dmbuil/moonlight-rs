@@ -8,14 +8,14 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_query_map;
 
-use super::details::{mono, param, Card, DetailHeader, Kv, Tabs};
+use super::details::{Card, DetailHeader, Kv, Tabs, mono, param};
 use super::lists::{link, status_pill};
 use crate::api::*;
-use crate::components::dialog::{caps, data_version, CreateButton, RowActions};
+use crate::components::dialog::{CreateButton, RowActions, caps, data_version};
 use crate::components::ops;
-use crate::components::table::{col, DataTable};
-use crate::components::widgets::{dash, render, short_time, Copyable, Skeleton};
-use crate::i18n::{use_i18n, K};
+use crate::components::table::{DataTable, col};
+use crate::components::widgets::{Copyable, Skeleton, dash, render, short_time};
+use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
 #[component]
@@ -26,7 +26,9 @@ pub fn FloatingIpDetailPage() -> impl IntoView {
     let forwarding = Signal::derive(move || needs::PORT_FORWARDING.met(&caps()));
     // `?tab=forwarding` (the row menu's *Port Forwarding Rules*) opens the rules.
     let query = use_query_map();
-    let tab = RwSignal::new(usize::from(query.read_untracked().get("tab").as_deref() == Some("forwarding")));
+    let tab = RwSignal::new(usize::from(
+        query.read_untracked().get("tab").as_deref() == Some("forwarding"),
+    ));
     view! {
         <Transition fallback=|| view! { <Skeleton rows=8/> }>
             {move || render(data.get(), move |td| {
@@ -62,8 +64,16 @@ fn overview(d: FloatingIpDetail) -> impl IntoView {
         }
         _ => "-".into_any(),
     };
-    let port = d.port_id.clone().map(|p| link(format!("/project/networks/ports/{p}"), p)).unwrap_or_else(|| "-".into_any());
-    let router = d.router_id.clone().map(|r| link(format!("/project/routers/{r}"), r)).unwrap_or_else(|| "-".into_any());
+    let port = d
+        .port_id
+        .clone()
+        .map(|p| link(format!("/project/networks/ports/{p}"), p))
+        .unwrap_or_else(|| "-".into_any());
+    let router = d
+        .router_id
+        .clone()
+        .map(|r| link(format!("/project/routers/{r}"), r))
+        .unwrap_or_else(|| "-".into_any());
     view! {
         <div class="cards">
             <Card title=K::Information>
@@ -94,14 +104,21 @@ fn rules(d: FloatingIpDetail) -> impl IntoView {
     let columns = vec![
         col(K::Protocol, |r: &PortForwardingRow, _| mono(r.protocol.to_uppercase())).sort_text(|r| r.protocol.clone()),
         col(K::ExternalPort, |r: &PortForwardingRow, _| mono(r.external.clone())).sort_text(|r| r.external.clone()),
-        col(K::InternalIpAddress, |r: &PortForwardingRow, _| mono(r.internal_ip.clone())).sort_text(|r| r.internal_ip.clone()),
+        col(K::InternalIpAddress, |r: &PortForwardingRow, _| {
+            mono(r.internal_ip.clone())
+        })
+        .sort_text(|r| r.internal_ip.clone()),
         col(K::InternalPort, |r: &PortForwardingRow, _| mono(r.internal.clone())),
         col(K::Instance, |r: &PortForwardingRow, _| match r.instance.clone() {
             Some(i) => view! { <A href=format!("/project/instances/{}", i.id)>{i.name}</A> }.into_any(),
             None => "-".into_any(),
         }),
         col(K::Description, |r: &PortForwardingRow, _| dash(r.description.clone())),
-        col(K::Actions, move |r: &PortForwardingRow, l| view! { <RowActions items=ops::port_forwarding_items(l, &fip2, r)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |r: &PortForwardingRow, l| view! { <RowActions items=ops::port_forwarding_items(l, &fip2, r)/> },
+        )
+        .class("actions"),
     ];
     view! {
         {if associated {

@@ -15,7 +15,7 @@
 
 use std::sync::OnceLock;
 
-use minijinja::{context, AutoEscape, Environment, Value};
+use minijinja::{AutoEscape, Environment, Value, context};
 
 use crate::model::Credentials;
 
@@ -50,9 +50,16 @@ fn yaml(v: &str) -> String {
 
 /// Horizon's `shellfilter`, for its templates (values inside double quotes).
 fn shellfilter(v: &str) -> String {
-    [("\\", "\\\\"), ("`", "\\`"), ("$", "\\$"), ("!", "\\!"), ("'", "\\'"), ("\"", "\\\"")]
-        .iter()
-        .fold(v.to_string(), |acc, (from, to)| acc.replace(from, to))
+    [
+        ("\\", "\\\\"),
+        ("`", "\\`"),
+        ("$", "\\$"),
+        ("!", "\\!"),
+        ("'", "\\'"),
+        ("\"", "\\\""),
+    ]
+    .iter()
+    .fold(v.to_string(), |acc, (from, to)| acc.replace(from, to))
 }
 
 /// Drops Django's `{% load … %}` tags, which Jinja doesn't know.
@@ -85,8 +92,13 @@ fn build(overrides: &[(&'static str, String)]) -> Result<Environment<'static>, S
     env.add_filter("yaml", |v: String| yaml(&v));
     env.add_filter("shellfilter", |v: String| shellfilter(&v));
     for (name, src) in DEFAULTS {
-        let src = overrides.iter().find(|(n, _)| *n == name).map(|(_, s)| without_django_loads(s)).unwrap_or_else(|| src.to_string());
-        env.add_template_owned(name, src).map_err(|e| format!("template {name}: {e}"))?;
+        let src = overrides
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, s)| without_django_loads(s))
+            .unwrap_or_else(|| src.to_string());
+        env.add_template_owned(name, src)
+            .map_err(|e| format!("template {name}: {e}"))?;
     }
     // Render each once with sample values, so a broken template stops start-up.
     let sample = sample_credentials();
@@ -176,13 +188,19 @@ fn render(name: &str, c: &Credentials, app: Option<(&str, &str, &str)>) -> Strin
 /// API Access: `(openrc, clouds.yaml)` for the session; a WebSSO session gets
 /// the `v3websso` `clouds.yaml`.
 pub fn api_access(c: &Credentials) -> (String, String) {
-    (render(OPENRC, c, None), render(if c.federated { WEBSSO_CLOUDS_YAML } else { CLOUDS_YAML }, c, None))
+    (
+        render(OPENRC, c, None),
+        render(if c.federated { WEBSSO_CLOUDS_YAML } else { CLOUDS_YAML }, c, None),
+    )
 }
 
 /// A new application credential's `[(file name, content)]`: `openrc` and `clouds.yaml`.
 pub fn app_credential(c: &Credentials, id: &str, name: &str, secret: &str) -> Vec<(String, String)> {
     let app = Some((id, name, secret));
-    vec![(format!("app-cred-{name}-openrc.sh"), render(APP_OPENRC, c, app)), ("clouds.yaml".into(), render(APP_CLOUDS_YAML, c, app))]
+    vec![
+        (format!("app-cred-{name}-openrc.sh"), render(APP_OPENRC, c, app)),
+        ("clouds.yaml".into(), render(APP_CLOUDS_YAML, c, app)),
+    ]
 }
 
 #[cfg(test)]
@@ -208,27 +226,64 @@ mod tests {
     #[test]
     fn downloads_use_the_configured_names_and_interface() {
         let (_, y) = api_access(&sample());
-        assert!(y.starts_with("clouds:\n  \"openstack\":\n    auth:\n") && y.contains("    interface: \"public\"\n"), "defaults:\n{y}");
-        let c = Credentials { interface: "internal".into(), cloud_name: "acme-prod".into(), profile: Some("acme".into()), ..sample() };
+        assert!(
+            y.starts_with("clouds:\n  \"openstack\":\n    auth:\n") && y.contains("    interface: \"public\"\n"),
+            "defaults:\n{y}"
+        );
+        let c = Credentials {
+            interface: "internal".into(),
+            cloud_name: "acme-prod".into(),
+            profile: Some("acme".into()),
+            ..sample()
+        };
         let (rc, y) = api_access(&c);
-        assert!(y.starts_with("clouds:\n  \"acme-prod\":\n    profile: \"acme\"\n    auth:\n"), "{y}");
+        assert!(
+            y.starts_with("clouds:\n  \"acme-prod\":\n    profile: \"acme\"\n    auth:\n"),
+            "{y}"
+        );
         assert!(y.contains("    interface: \"internal\"\n"));
         assert!(rc.contains("export OS_INTERFACE='internal'\n"));
     }
 
     #[test]
     fn websso_sessions_get_a_v3websso_clouds_yaml_without_a_user() {
-        let c = Credentials { federated: true, identity_provider: Some("tef-adfs".into()), protocol: Some("openid".into()), ..sample() };
+        let c = Credentials {
+            federated: true,
+            identity_provider: Some("tef-adfs".into()),
+            protocol: Some("openid".into()),
+            ..sample()
+        };
         let (rc, y) = api_access(&c);
-        assert!(y.contains("clouds:\n  \"openstack\":\n    auth_type: \"v3websso\"\n    auth:\n"), "{y}");
-        assert!(y.contains("      identity_provider: \"tef-adfs\"\n      protocol: \"openid\"\n      project_id: \"p1\"\n"), "{y}");
+        assert!(
+            y.contains("clouds:\n  \"openstack\":\n    auth_type: \"v3websso\"\n    auth:\n"),
+            "{y}"
+        );
+        assert!(
+            y.contains("      identity_provider: \"tef-adfs\"\n      protocol: \"openid\"\n      project_id: \"p1\"\n"),
+            "{y}"
+        );
         assert!(y.contains("keystoneauth-websso"), "says which plugin it needs");
-        assert!(!y.contains("username") && !y.contains("password"), "no Keystone user: the browser signs in");
-        assert!(rc.contains("read -sr OS_PASSWORD_INPUT"), "openrc stays the password one (the page says so)");
-        let unmapped = Credentials { identity_provider: None, ..c };
+        assert!(
+            !y.contains("username") && !y.contains("password"),
+            "no Keystone user: the browser signs in"
+        );
+        assert!(
+            rc.contains("read -sr OS_PASSWORD_INPUT"),
+            "openrc stays the password one (the page says so)"
+        );
+        let unmapped = Credentials {
+            identity_provider: None,
+            ..c
+        };
         let (_, y) = api_access(&unmapped);
-        assert!(!y.contains("identity_provider") && y.contains("      protocol: \"openid\"\n"), "no idp_mapping: Keystone picks the provider\n{y}");
-        assert!(!api_access(&sample()).1.contains("v3websso"), "password sessions keep the password clouds.yaml");
+        assert!(
+            !y.contains("identity_provider") && y.contains("      protocol: \"openid\"\n"),
+            "no idp_mapping: Keystone picks the provider\n{y}"
+        );
+        assert!(
+            !api_access(&sample()).1.contains("v3websso"),
+            "password sessions keep the password clouds.yaml"
+        );
     }
 
     #[test]
@@ -251,7 +306,10 @@ mod tests {
 
     #[test]
     fn empty_region_is_left_out() {
-        let (rc, y) = api_access(&Credentials { region: String::new(), ..sample() });
+        let (rc, y) = api_access(&Credentials {
+            region: String::new(),
+            ..sample()
+        });
         assert!(rc.contains("unset OS_REGION_NAME\n"));
         assert!(!y.contains("region_name"));
     }
@@ -259,22 +317,64 @@ mod tests {
     #[test]
     fn application_credential_files_follow_horizon() {
         let files = app_credential(&sample(), "a1", "ci", "s'3\"cret");
-        assert_eq!((files[0].0.as_str(), files[1].0.as_str()), ("app-cred-ci-openrc.sh", "clouds.yaml"));
+        assert_eq!(
+            (files[0].0.as_str(), files[1].0.as_str()),
+            ("app-cred-ci-openrc.sh", "clouds.yaml")
+        );
         assert!(files[0].1.contains("export OS_AUTH_TYPE=v3applicationcredential\n"));
-        assert!(files[0].1.contains("export OS_APPLICATION_CREDENTIAL_SECRET='s'\\''3\"cret'\n"), "{}", files[0].1);
+        assert!(
+            files[0]
+                .1
+                .contains("export OS_APPLICATION_CREDENTIAL_SECRET='s'\\''3\"cret'\n"),
+            "{}",
+            files[0].1
+        );
         assert!(files[1].1.contains("    auth_type: \"v3applicationcredential\"\n"));
-        assert!(files[1].1.contains("      application_credential_secret: \"s'3\\\"cret\"\n"), "{}", files[1].1);
-        let profiled = app_credential(&Credentials { profile: Some("acme".into()), ..sample() }, "a1", "ci", "s");
-        assert!(!profiled[1].1.contains("auth_url") && !profiled[1].1.contains("interface"), "a profile supplies them, as Horizon's");
+        assert!(
+            files[1]
+                .1
+                .contains("      application_credential_secret: \"s'3\\\"cret\"\n"),
+            "{}",
+            files[1].1
+        );
+        let profiled = app_credential(
+            &Credentials {
+                profile: Some("acme".into()),
+                ..sample()
+            },
+            "a1",
+            "ci",
+            "s",
+        );
+        assert!(
+            !profiled[1].1.contains("auth_url") && !profiled[1].1.contains("interface"),
+            "a profile supplies them, as Horizon's"
+        );
     }
 
     #[test]
     fn horizon_templates_work_unchanged_and_broken_ones_are_refused() {
         let horizon = "{% load shellfilter %}#!/usr/bin/env bash\nexport OS_PROJECT_NAME=\"{{ tenant_name|shellfilter }}\"\nexport OS_USERNAME=\"{{ user.username|shellfilter }}\"\n";
         let env = build(&[(OPENRC, horizon.to_string())]).unwrap();
-        let rc = env.get_template(OPENRC).unwrap().render(context(&sample(), None)).unwrap();
-        assert_eq!(rc, "#!/usr/bin/env bash\nexport OS_PROJECT_NAME=\"it\\'s \\\"demo\\\"\"\nexport OS_USERNAME=\"ana\"\n");
-        assert!(build(&[(CLOUDS_YAML, "{% if %}".into())]).unwrap_err().starts_with("template clouds.yaml"), "a syntax error stops start-up");
-        assert!(init(&[(OPENRC, Some("/nonexistent/openrc.j2".into()))]).unwrap_err().contains("/nonexistent/openrc.j2"));
+        let rc = env
+            .get_template(OPENRC)
+            .unwrap()
+            .render(context(&sample(), None))
+            .unwrap();
+        assert_eq!(
+            rc,
+            "#!/usr/bin/env bash\nexport OS_PROJECT_NAME=\"it\\'s \\\"demo\\\"\"\nexport OS_USERNAME=\"ana\"\n"
+        );
+        assert!(
+            build(&[(CLOUDS_YAML, "{% if %}".into())])
+                .unwrap_err()
+                .starts_with("template clouds.yaml"),
+            "a syntax error stops start-up"
+        );
+        assert!(
+            init(&[(OPENRC, Some("/nonexistent/openrc.j2".into()))])
+                .unwrap_err()
+                .contains("/nonexistent/openrc.j2")
+        );
     }
 }

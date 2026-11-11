@@ -13,13 +13,13 @@ use leptos_router::hooks::use_navigate;
 use super::details::Tabs;
 use super::lists::{link, status_pill};
 use crate::api::get_topology;
-use crate::components::dialog::{data_version, CreateButton};
+use crate::components::dialog::{CreateButton, data_version};
 use crate::components::ops;
 use crate::components::table::TimingChip;
 use crate::components::topo_canvas::{Canvas, KeptView};
 use crate::components::topo_layout::{self as geo, Size};
-use crate::components::widgets::{az_color, render, PageHeader, Skeleton, Tone};
-use crate::i18n::{t, topology_too_many, use_i18n, Lang, K};
+use crate::components::widgets::{PageHeader, Skeleton, Tone, az_color, render};
+use crate::i18n::{K, Lang, t, topology_too_many, use_i18n};
 use crate::model::*;
 
 /// Toolbar state.
@@ -53,9 +53,14 @@ impl Ctx {
             None => "",
             Some(h) if h == id => " hl",
             Some(h) => {
-                let near = self.topo.try_with_value(|t| {
-                    t.links.iter().any(|l| (l.device_id == h && l.network_id == id) || (l.network_id == h && l.device_id == id))
-                }).unwrap_or(false);
+                let near = self
+                    .topo
+                    .try_with_value(|t| {
+                        t.links.iter().any(|l| {
+                            (l.device_id == h && l.network_id == id) || (l.network_id == h && l.device_id == id)
+                        })
+                    })
+                    .unwrap_or(false);
                 if near { " hl" } else { " dim" }
             }
         }
@@ -171,8 +176,15 @@ fn net_kind_text(lang: Lang, n: &TopoNetwork) -> String {
 
 /// Accessible name of a network node: its name, and its kind when not the project's own.
 fn net_label(lang: Lang, n: &TopoNetwork) -> String {
-    let marks: Vec<&str> = NetKind::of(n).into_iter().filter(|k| *k != NetKind::Own).map(|k| t(lang, k.label())).collect();
-    std::iter::once(n.name.as_str()).chain(marks).collect::<Vec<_>>().join(", ")
+    let marks: Vec<&str> = NetKind::of(n)
+        .into_iter()
+        .filter(|k| *k != NetKind::Own)
+        .map(|k| t(lang, k.label()))
+        .collect();
+    std::iter::once(n.name.as_str())
+        .chain(marks)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// How many badges a network shows: none for the project's own.
@@ -286,7 +298,11 @@ fn link_ips(l: &TopoLink, lang: Lang) -> String {
 
 /// The addresses of every port a device has on one network (see [`geo::pairs`]).
 fn pair_ips(topo: &Topology, links: &[usize], lang: Lang) -> String {
-    let all: Vec<String> = links.iter().map(|&i| link_ips(&topo.links[i], lang)).filter(|s| !s.is_empty()).collect();
+    let all: Vec<String> = links
+        .iter()
+        .map(|&i| link_ips(&topo.links[i], lang))
+        .filter(|s| !s.is_empty())
+        .collect();
     all.join(", ")
 }
 
@@ -471,12 +487,14 @@ fn device_shape(d: &TopoDevice, s: Size, small: bool, labels: bool) -> AnyView {
         .into_any(),
     };
     let name = if small {
-        labels.then(|| {
-            view! { <text class="topo-label" x=w / 2.0 y=h + 13.0 text-anchor="middle">{clip(&d.name, 8)}</text> }
-        })
-        .into_any()
+        labels
+            .then(|| {
+                view! { <text class="topo-label" x=w / 2.0 y=h + 13.0 text-anchor="middle">{clip(&d.name, 8)}</text> }
+            })
+            .into_any()
     } else {
-        view! { <text class="topo-name" x="34" y=h / 2.0 dominant-baseline="central">{clip(&d.name, 15)}</text> }.into_any()
+        view! { <text class="topo-name" x="34" y=h / 2.0 dominant-baseline="central">{clip(&d.name, 15)}</text> }
+            .into_any()
     };
     view! {
         <rect class="topo-box" width=w height=h rx=rx></rect>
@@ -491,7 +509,10 @@ fn device_shape(d: &TopoDevice, s: Size, small: bool, labels: bool) -> AnyView {
 fn ColumnsView(opts: Opts) -> impl IntoView {
     let i18n = use_i18n();
     let ctx = expect_context::<Ctx>();
-    let layout = Memo::new(move |_| ctx.topo.with_value(|t| geo::columns(t, Size::of(opts.small.get()), opts.collapsed.get())));
+    let layout = Memo::new(move |_| {
+        ctx.topo
+            .with_value(|t| geo::columns(t, Size::of(opts.small.get()), opts.collapsed.get()))
+    });
     let keep: KeptView = StoredValue::new(None);
     move || {
         let c = layout.get();
@@ -513,9 +534,17 @@ fn ColumnsView(opts: Opts) -> impl IntoView {
                     0 => rx,
                     c => (s.bar_w - 2.0) * c as f64 + 4.0,
                 };
-                let text = if small { n.name.clone() } else { format!("{}   {}", n.name, n.cidrs.join("  ")) };
+                let text = if small {
+                    n.name.clone()
+                } else {
+                    format!("{}   {}", n.name, n.cidrs.join("  "))
+                };
                 let text = clip(&text, ((b.h - top - rx / 2.0) / 7.0).max(0.0) as usize);
-                let (style, h, label_at) = (net_style(&n.name), b.h, format!("translate({},{top}) rotate(90)", s.bar_w / 2.0));
+                let (style, h, label_at) = (
+                    net_style(&n.name),
+                    b.h,
+                    format!("translate({},{top}) rotate(90)", s.bar_w / 2.0),
+                );
                 Some(view! {
                     <Node id=n.id.clone() href=network_href(&n.id) label=net_label(lang, n)
                         transform=format!("translate({},{})", b.x, b.y) class="topo-net">
@@ -535,10 +564,14 @@ fn ColumnsView(opts: Opts) -> impl IntoView {
             .map(|w| {
                 let (dev, net) = (w.device_id.clone(), w.network_id.clone());
                 let style = nets.get(net.as_str()).map(|n| net_style(&n.name)).unwrap_or_default();
-                let ips = (labels && !small).then(|| pair_ips(&topo, &w.links, lang)).filter(|s| !s.is_empty());
+                let ips = (labels && !small)
+                    .then(|| pair_ips(&topo, &w.links, lang))
+                    .filter(|s| !s.is_empty());
                 let right = w.x2 > w.x1;
                 // Along the wire next to the bar, or under the box when the wire is too short.
-                let fits = ips.as_ref().is_some_and(|t| t.chars().count() as f64 * 6.5 + 14.0 < (w.x2 - w.x1).abs());
+                let fits = ips
+                    .as_ref()
+                    .is_some_and(|t| t.chars().count() as f64 * 6.5 + 14.0 < (w.x2 - w.x1).abs());
                 let (tx, ty, anchor) = match (fits, right) {
                     (true, true) => (w.x2 - 6.0, w.y - 5.0, "end"),
                     (true, false) => (w.x2 + 6.0, w.y - 5.0, "start"),
@@ -683,21 +716,45 @@ fn TopoTip() -> impl IntoView {
         let id = ctx.focus.try_get().flatten()?;
         let lang = i18n.lang();
         let (x, y) = ctx.at.try_get()?;
-        let (title, kind, status, lines) = ctx.topo.try_with_value(|topo| {
-            if let Some(n) = topo.networks.iter().find(|n| n.id == id) {
-                return Some((n.name.clone(), net_kind_text(lang, n), n.status.clone(), n.cidrs.clone()));
-            }
-            let d = topo.devices.iter().find(|d| d.id == id)?;
-            let names: HashMap<&str, &str> = topo.networks.iter().map(|n| (n.id.as_str(), n.name.as_str())).collect();
-            let lines = topo
-                .links_of(&d.id)
-                .map(|l| format!("{}: {}", names.get(l.network_id.as_str()).unwrap_or(&"-"), link_ips(l, lang)))
-                .collect();
-            Some((d.name.clone(), t(lang, kind_label(d.kind)).to_string(), d.status.clone(), lines))
-        }).flatten()?;
+        let (title, kind, status, lines) = ctx
+            .topo
+            .try_with_value(|topo| {
+                if let Some(n) = topo.networks.iter().find(|n| n.id == id) {
+                    return Some((
+                        n.name.clone(),
+                        net_kind_text(lang, n),
+                        n.status.clone(),
+                        n.cidrs.clone(),
+                    ));
+                }
+                let d = topo.devices.iter().find(|d| d.id == id)?;
+                let names: HashMap<&str, &str> =
+                    topo.networks.iter().map(|n| (n.id.as_str(), n.name.as_str())).collect();
+                let lines = topo
+                    .links_of(&d.id)
+                    .map(|l| {
+                        format!(
+                            "{}: {}",
+                            names.get(l.network_id.as_str()).unwrap_or(&"-"),
+                            link_ips(l, lang)
+                        )
+                    })
+                    .collect();
+                Some((
+                    d.name.clone(),
+                    t(lang, kind_label(d.kind)).to_string(),
+                    d.status.clone(),
+                    lines,
+                ))
+            })
+            .flatten()?;
         // Left of the pointer near the right edge, so it stays on screen (max-width 340px).
         let vw = window().inner_width().ok().and_then(|w| w.as_f64()).unwrap_or(f64::MAX);
-        let side = if x + 14.0 + 340.0 > vw { format!("right:{}px", vw - x + 14.0) } else { format!("left:{}px", x + 14.0) };
+        let side = if x + 14.0 + 340.0 > vw {
+            format!("right:{}px", vw - x + 14.0)
+        } else {
+            format!("left:{}px", x + 14.0)
+        };
         Some(view! {
             <div class="topo-tip" role="tooltip" style=format!("{side};top:{}px", y + 14.0)>
                 <strong>{title}</strong>
@@ -782,34 +839,73 @@ mod tests {
     use super::*;
 
     fn net(external: bool, shared: bool, owned: bool) -> TopoNetwork {
-        TopoNetwork { id: "n".into(), name: "n".into(), external, shared, owned, status: "ACTIVE".into(), cidrs: vec![] }
+        TopoNetwork {
+            id: "n".into(),
+            name: "n".into(),
+            external,
+            shared,
+            owned,
+            status: "ACTIVE".into(),
+            cidrs: vec![],
+        }
     }
 
     #[test]
     fn net_kind_marks_external_and_other_projects_networks() {
         use NetKind::*;
         assert_eq!(NetKind::of(&net(false, false, true)), [Own]);
-        assert_eq!(NetKind::of(&net(false, true, true)), [Own], "the project's own shared network is its own");
+        assert_eq!(
+            NetKind::of(&net(false, true, true)),
+            [Own],
+            "the project's own shared network is its own"
+        );
         assert_eq!(NetKind::of(&net(false, true, false)), [Shared]);
-        assert_eq!(NetKind::of(&net(false, false, false)), [Shared], "an RBAC grant without `shared`");
-        assert_eq!(NetKind::of(&net(true, false, false)), [External], "an external network's owner doesn't make it shared");
-        assert_eq!(NetKind::of(&net(true, true, false)), [External, Shared], "both badges when both");
+        assert_eq!(
+            NetKind::of(&net(false, false, false)),
+            [Shared],
+            "an RBAC grant without `shared`"
+        );
+        assert_eq!(
+            NetKind::of(&net(true, false, false)),
+            [External],
+            "an external network's owner doesn't make it shared"
+        );
+        assert_eq!(
+            NetKind::of(&net(true, true, false)),
+            [External, Shared],
+            "both badges when both"
+        );
         assert_eq!(badge_count(&NetKind::of(&net(true, true, false))), 2);
         assert_eq!(badge_count(&[Own]), 0);
     }
 
     #[test]
     fn legend_lists_only_the_kinds_on_screen() {
-        assert!(legend_kinds(&[net(false, false, true)]).is_empty(), "nothing to tell apart");
+        assert!(
+            legend_kinds(&[net(false, false, true)]).is_empty(),
+            "nothing to tell apart"
+        );
         assert!(legend_kinds(&[]).is_empty());
-        assert_eq!(legend_kinds(&[net(true, false, false), net(false, false, true)]), [NetKind::Own, NetKind::External]);
-        assert_eq!(legend_kinds(&[net(true, true, false)]), [NetKind::External, NetKind::Shared]);
-        assert_eq!(legend_kinds(&[net(false, true, false), net(true, false, false)]), [NetKind::External, NetKind::Shared]);
+        assert_eq!(
+            legend_kinds(&[net(true, false, false), net(false, false, true)]),
+            [NetKind::Own, NetKind::External]
+        );
+        assert_eq!(
+            legend_kinds(&[net(true, true, false)]),
+            [NetKind::External, NetKind::Shared]
+        );
+        assert_eq!(
+            legend_kinds(&[net(false, true, false), net(true, false, false)]),
+            [NetKind::External, NetKind::Shared]
+        );
     }
 
     #[test]
     fn net_kind_text_joins_both_flags() {
-        assert_eq!(net_kind_text(Lang::EnUs, &net(true, true, false)), "Network · External · Shared");
+        assert_eq!(
+            net_kind_text(Lang::EnUs, &net(true, true, false)),
+            "Network · External · Shared"
+        );
         assert_eq!(net_kind_text(Lang::EsEs, &net(false, false, true)), "Red");
         assert_eq!(net_label(Lang::EnUs, &net(true, false, false)), "n, External");
         assert_eq!(net_label(Lang::EnUs, &net(true, true, false)), "n, External, Shared");

@@ -64,7 +64,16 @@ pub enum Plugin {
 
 impl Plugin {
     /// Every plugin, in menu order; `[plugins] enabled` names are checked against it.
-    pub const ALL: [Plugin; 8] = [Plugin::LoadBalancer, Plugin::Orchestration, Plugin::Qos, Plugin::Trunk, Plugin::KeyManager, Plugin::Alarming, Plugin::Backup, Plugin::Firewall];
+    pub const ALL: [Plugin; 8] = [
+        Plugin::LoadBalancer,
+        Plugin::Orchestration,
+        Plugin::Qos,
+        Plugin::Trunk,
+        Plugin::KeyManager,
+        Plugin::Alarming,
+        Plugin::Backup,
+        Plugin::Firewall,
+    ];
 
     /// The name used in `moonlight.conf` (for services, also the catalog type).
     pub fn name(self) -> &'static str {
@@ -119,13 +128,20 @@ pub struct Capabilities {
 }
 
 /// Service types that name the same service across clouds and releases.
-const SERVICE_ALIASES: &[&[&str]] = &[&["block-storage", "volumev3", "volumev2", "volume"], &["load-balancer", "octavia"]];
+const SERVICE_ALIASES: &[&[&str]] = &[
+    &["block-storage", "volumev3", "volumev2", "volume"],
+    &["load-balancer", "octavia"],
+];
 
 impl Capabilities {
     /// Whether the catalog has `ty` (e.g. `load-balancer`). Unknown capabilities
     /// (`known: false`) count as having everything, so a failed detection hides nothing.
     pub fn has_service(&self, ty: &str) -> bool {
-        let names = SERVICE_ALIASES.iter().find(|a| a.contains(&ty)).copied().unwrap_or(std::slice::from_ref(&ty));
+        let names = SERVICE_ALIASES
+            .iter()
+            .find(|a| a.contains(&ty))
+            .copied()
+            .unwrap_or(std::slice::from_ref(&ty));
         self.services.iter().any(|s| names.contains(&s.as_str()))
     }
 }
@@ -235,23 +251,42 @@ pub mod needs {
     /// Network QoS panel, and QoS policies on router gateways and floating IPs.
     pub const QOS: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Qos), Requires::NetExt("qos")]);
     /// *QoS Policy* on a router's external gateway (`qos-gateway-ip`).
-    pub const QOS_GATEWAY: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Qos), Requires::NetExt("qos"), Requires::NetExt("qos-gateway-ip")]);
+    pub const QOS_GATEWAY: Requires = Requires::All(&[
+        Requires::Plugin(super::Plugin::Qos),
+        Requires::NetExt("qos"),
+        Requires::NetExt("qos-gateway-ip"),
+    ]);
     /// *QoS Policy* on a floating IP (`qos-fip`).
-    pub const QOS_FIP: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Qos), Requires::NetExt("qos"), Requires::NetExt("qos-fip")]);
+    pub const QOS_FIP: Requires = Requires::All(&[
+        Requires::Plugin(super::Plugin::Qos),
+        Requires::NetExt("qos"),
+        Requires::NetExt("qos-fip"),
+    ]);
     /// Key Manager panels (Barbican, roadmap 55).
-    pub const KEY_MANAGER: Requires = Requires::All(&[Requires::Plugin(super::Plugin::KeyManager), Requires::Service("key-manager")]);
+    pub const KEY_MANAGER: Requires = Requires::All(&[
+        Requires::Plugin(super::Plugin::KeyManager),
+        Requires::Service("key-manager"),
+    ]);
     /// Orchestration panels (Heat, roadmap 62).
-    pub const ORCHESTRATION: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Orchestration), Requires::Service("orchestration")]);
+    pub const ORCHESTRATION: Requires = Requires::All(&[
+        Requires::Plugin(super::Plugin::Orchestration),
+        Requires::Service("orchestration"),
+    ]);
     /// Monitoring › Alarms (Aodh, roadmap 79).
-    pub const ALARMING: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Alarming), Requires::Service("alarming")]);
+    pub const ALARMING: Requires =
+        Requires::All(&[Requires::Plugin(super::Plugin::Alarming), Requires::Service("alarming")]);
     /// Volumes › Backups (Cinder's backup service, roadmap 5). The catalog only says
     /// Cinder exists, not that `cinder-backup` runs: a missing service shows as
     /// an error on *Create Backup*, like in Horizon.
-    pub const BACKUP: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Backup), Requires::Service("block-storage")]);
+    pub const BACKUP: Requires = Requires::All(&[
+        Requires::Plugin(super::Plugin::Backup),
+        Requires::Service("block-storage"),
+    ]);
     /// Trunks panel.
     pub const TRUNK: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Trunk), Requires::NetExt("trunk")]);
     /// Network › Firewall (FWaaS v2, roadmap 93).
-    pub const FIREWALL: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Firewall), Requires::NetExt("fwaas_v2")]);
+    pub const FIREWALL: Requires =
+        Requires::All(&[Requires::Plugin(super::Plugin::Firewall), Requires::NetExt("fwaas_v2")]);
     /// `dns_name` / `dns_domain` on floating IPs and ports.
     pub const DNS: Requires = Requires::NetExt("dns-integration");
     /// Making an image `public`: Glance's default policy `publicize_image` is admin only.
@@ -344,7 +379,12 @@ pub struct AppError {
 impl AppError {
     /// An error of `kind` with its technical `detail` (shown under *Technical details*).
     pub fn new(kind: ErrorKind, detail: impl Into<String>) -> Self {
-        AppError { kind, detail: detail.into(), service: None, request_id: None }
+        AppError {
+            kind,
+            detail: detail.into(),
+            service: None,
+            request_id: None,
+        }
     }
 
     /// Rejected by Moonlight before reaching OpenStack (validation).
@@ -359,7 +399,8 @@ impl AppError {
 
     /// Worth trying again as is: the cloud was slow or failed on its side.
     pub fn retryable(&self) -> bool {
-        matches!(self.kind, ErrorKind::Timeout | ErrorKind::Internal) || matches!(self.kind, ErrorKind::OpenStack(s) if s >= 500)
+        matches!(self.kind, ErrorKind::Timeout | ErrorKind::Internal)
+            || matches!(self.kind, ErrorKind::OpenStack(s) if s >= 500)
     }
 }
 
@@ -488,7 +529,21 @@ pub enum SortStyle {
     Colon,
 }
 
-const SERVER_STATUSES: &[&str] = &["ACTIVE", "BUILD", "ERROR", "SHUTOFF", "PAUSED", "SUSPENDED", "SHELVED_OFFLOADED", "RESIZE", "VERIFY_RESIZE", "REBOOT", "HARD_REBOOT", "MIGRATING", "REBUILD"];
+const SERVER_STATUSES: &[&str] = &[
+    "ACTIVE",
+    "BUILD",
+    "ERROR",
+    "SHUTOFF",
+    "PAUSED",
+    "SUSPENDED",
+    "SHELVED_OFFLOADED",
+    "RESIZE",
+    "VERIFY_RESIZE",
+    "REBOOT",
+    "HARD_REBOOT",
+    "MIGRATING",
+    "REBUILD",
+];
 
 const fn filter(key: &'static str, param: &'static str, kind: FilterKind) -> FilterDef {
     FilterDef { key, param, kind }
@@ -509,9 +564,38 @@ const INSTANCE_FILTERS: &[FilterDef] = &[
 ];
 
 /// Every volume status, for the filter bar (the *Reset Status* choices are fewer).
-const FILTER_VOLUME_STATUSES: &[&str] = &["available", "in-use", "creating", "deleting", "error", "error_deleting", "attaching", "detaching", "extending", "error_extending", "maintenance", "reserved", "backing-up", "restoring-backup", "error_restoring", "downloading", "uploading", "retyping", "awaiting-transfer"];
+const FILTER_VOLUME_STATUSES: &[&str] = &[
+    "available",
+    "in-use",
+    "creating",
+    "deleting",
+    "error",
+    "error_deleting",
+    "attaching",
+    "detaching",
+    "extending",
+    "error_extending",
+    "maintenance",
+    "reserved",
+    "backing-up",
+    "restoring-backup",
+    "error_restoring",
+    "downloading",
+    "uploading",
+    "retyping",
+    "awaiting-transfer",
+];
 /// Every snapshot status, for the filter bar.
-const FILTER_SNAPSHOT_STATUSES: &[&str] = &["available", "creating", "deleting", "error", "error_deleting", "backing-up", "restoring", "unmanaging"];
+const FILTER_SNAPSHOT_STATUSES: &[&str] = &[
+    "available",
+    "creating",
+    "deleting",
+    "error",
+    "error_deleting",
+    "backing-up",
+    "restoring",
+    "unmanaging",
+];
 
 /// Cinder's `name~` is *like* (a substring) from volume 3.34; `paging::cinder` turns
 /// it into the exact `name` on an older Cinder.
@@ -546,7 +630,11 @@ const FLOATING_IP_FILTERS: &[FilterDef] = &[
 const NETWORK_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
-    filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "ERROR"])),
+    filter(
+        "status",
+        "status",
+        FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "ERROR"]),
+    ),
     filter("shared", "shared", FilterKind::Choice(&["true", "false"])),
     filter("external", "router:external", FilterKind::Choice(&["true", "false"])),
 ];
@@ -554,14 +642,22 @@ const NETWORK_FILTERS: &[FilterDef] = &[
 const ROUTER_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
-    filter("status", "status", FilterKind::Choice(&["ACTIVE", "ALLOCATING", "DOWN", "ERROR"])),
+    filter(
+        "status",
+        "status",
+        FilterKind::Choice(&["ACTIVE", "ALLOCATING", "DOWN", "ERROR"]),
+    ),
 ];
 
 /// `port` takes the parent port's ID.
 const TRUNK_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
-    filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "DEGRADED", "ERROR"])),
+    filter(
+        "status",
+        "status",
+        FilterKind::Choice(&["ACTIVE", "DOWN", "BUILD", "DEGRADED", "ERROR"]),
+    ),
     filter("port", "port_id", FilterKind::Exact),
 ];
 
@@ -569,26 +665,74 @@ const TRUNK_FILTERS: &[FilterDef] = &[
 const IMAGE_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "owner", FilterKind::Pick(ChoiceSet::AllProjects)),
-    filter("visibility", "visibility", FilterKind::Choice(&["public", "private", "shared", "community"])),
-    filter("status", "status", FilterKind::Choice(&["active", "queued", "saving", "uploading", "importing", "killed", "deactivated", "pending_delete", "deleted"])),
-    filter("disk_format", "disk_format", FilterKind::Choice(&["raw", "qcow2", "vmdk", "vdi", "vhd", "vhdx", "iso", "ploop", "ami", "ari", "aki"])),
+    filter(
+        "visibility",
+        "visibility",
+        FilterKind::Choice(&["public", "private", "shared", "community"]),
+    ),
+    filter(
+        "status",
+        "status",
+        FilterKind::Choice(&[
+            "active",
+            "queued",
+            "saving",
+            "uploading",
+            "importing",
+            "killed",
+            "deactivated",
+            "pending_delete",
+            "deleted",
+        ]),
+    ),
+    filter(
+        "disk_format",
+        "disk_format",
+        FilterKind::Choice(&[
+            "raw", "qcow2", "vmdk", "vdi", "vhd", "vhdx", "iso", "ploop", "ami", "ari", "aki",
+        ]),
+    ),
 ];
 
 /// Cinder lets an admin filter groups by any column, matched whole.
 const VOLUME_GROUP_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
-    filter("status", "status", FilterKind::Choice(&["available", "creating", "updating", "deleting", "error", "error_deleting"])),
+    filter(
+        "status",
+        "status",
+        FilterKind::Choice(&[
+            "available",
+            "creating",
+            "updating",
+            "deleting",
+            "error",
+            "error_deleting",
+        ]),
+    ),
 ];
 
 const GROUP_SNAPSHOT_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
-    filter("status", "status", FilterKind::Choice(&["available", "creating", "deleting", "error", "error_deleting"])),
+    filter(
+        "status",
+        "status",
+        FilterKind::Choice(&["available", "creating", "deleting", "error", "error_deleting"]),
+    ),
 ];
 
 /// Neutron's sorts for its lists (`allow_sorting`, on by default).
-const NEUTRON_SORTS: &[SortDef] = &[SortDef { key: "name", param: "name" }, SortDef { key: "status", param: "status" }];
+const NEUTRON_SORTS: &[SortDef] = &[
+    SortDef {
+        key: "name",
+        param: "name",
+    },
+    SortDef {
+        key: "status",
+        param: "status",
+    },
+];
 
 /// The big lists that load one page at a time (roadmap 88).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -648,7 +792,11 @@ impl PagedList {
     /// [`Self::filters`] offered in `scope`: a Project panel drops the
     /// [`ADMIN_ONLY_FILTERS`]. `paging::params` refuses the others there.
     pub fn filters_in(self, scope: ListScope) -> Vec<FilterDef> {
-        self.filters().iter().copied().filter(|d| scope == ListScope::Admin || !ADMIN_ONLY_FILTERS.contains(&d.key)).collect()
+        self.filters()
+            .iter()
+            .copied()
+            .filter(|d| scope == ListScope::Admin || !ADMIN_ONLY_FILTERS.contains(&d.key))
+            .collect()
     }
 
     /// The filters the server accepts, in the filter bar's order; the first is the default.
@@ -671,41 +819,98 @@ impl PagedList {
     pub fn sorts(self) -> &'static [SortDef] {
         match self {
             PagedList::Instances => &[
-                SortDef { key: "name", param: "display_name" },
-                SortDef { key: "created", param: "created_at" },
+                SortDef {
+                    key: "name",
+                    param: "display_name",
+                },
+                SortDef {
+                    key: "created",
+                    param: "created_at",
+                },
                 // Not `host`: the test cloud's Nova answers `sort_key=host` with HTTP 500
                 // (multi-cell listings merge the cells' rows in Python, and a server with no
                 // host can't be compared); its header sorts the page instead (roadmap 88).
-                SortDef { key: "status", param: "vm_state" },
+                SortDef {
+                    key: "status",
+                    param: "vm_state",
+                },
             ],
             PagedList::Volumes => &[
-                SortDef { key: "name", param: "name" },
-                SortDef { key: "size", param: "size" },
-                SortDef { key: "created", param: "created_at" },
-                SortDef { key: "status", param: "status" },
+                SortDef {
+                    key: "name",
+                    param: "name",
+                },
+                SortDef {
+                    key: "size",
+                    param: "size",
+                },
+                SortDef {
+                    key: "created",
+                    param: "created_at",
+                },
+                SortDef {
+                    key: "status",
+                    param: "status",
+                },
             ],
             // No `size`: a snapshot's column is `volume_size`, and Cinder refuses
             // `sort=size` on snapshots with HTTP 400 (seen on the test cloud, roadmap 88).
             PagedList::Snapshots => &[
-                SortDef { key: "name", param: "name" },
-                SortDef { key: "created", param: "created_at" },
-                SortDef { key: "status", param: "status" },
+                SortDef {
+                    key: "name",
+                    param: "name",
+                },
+                SortDef {
+                    key: "created",
+                    param: "created_at",
+                },
+                SortDef {
+                    key: "status",
+                    param: "status",
+                },
             ],
             PagedList::FloatingIps => &[
-                SortDef { key: "address", param: "floating_ip_address" },
-                SortDef { key: "status", param: "status" },
+                SortDef {
+                    key: "address",
+                    param: "floating_ip_address",
+                },
+                SortDef {
+                    key: "status",
+                    param: "status",
+                },
             ],
             PagedList::Networks | PagedList::Routers | PagedList::Trunks => NEUTRON_SORTS,
             PagedList::Images => &[
-                SortDef { key: "name", param: "name" },
-                SortDef { key: "created", param: "created_at" },
-                SortDef { key: "size", param: "size" },
-                SortDef { key: "status", param: "status" },
+                SortDef {
+                    key: "name",
+                    param: "name",
+                },
+                SortDef {
+                    key: "created",
+                    param: "created_at",
+                },
+                SortDef {
+                    key: "size",
+                    param: "size",
+                },
+                SortDef {
+                    key: "status",
+                    param: "status",
+                },
             ],
             PagedList::VolumeGroups | PagedList::GroupSnapshots => &[
-                SortDef { key: "name", param: "name" },
-                SortDef { key: "created", param: "created_at" },
-                SortDef { key: "status", param: "status" },
+                SortDef {
+                    key: "name",
+                    param: "name",
+                },
+                SortDef {
+                    key: "created",
+                    param: "created_at",
+                },
+                SortDef {
+                    key: "status",
+                    param: "status",
+                },
             ],
         }
     }
@@ -713,8 +918,15 @@ impl PagedList {
     /// How the list's API takes a sort.
     pub fn sort_style(self) -> SortStyle {
         match self {
-            PagedList::Instances | PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks | PagedList::Images => SortStyle::KeyDir,
-            PagedList::Volumes | PagedList::Snapshots | PagedList::VolumeGroups | PagedList::GroupSnapshots => SortStyle::Colon,
+            PagedList::Instances
+            | PagedList::FloatingIps
+            | PagedList::Networks
+            | PagedList::Routers
+            | PagedList::Trunks
+            | PagedList::Images => SortStyle::KeyDir,
+            PagedList::Volumes | PagedList::Snapshots | PagedList::VolumeGroups | PagedList::GroupSnapshots => {
+                SortStyle::Colon
+            }
         }
     }
 
@@ -722,8 +934,16 @@ impl PagedList {
     /// Neutron and Glance need none: an admin's list already holds every project's.
     pub fn fixed(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            PagedList::Instances | PagedList::Volumes | PagedList::Snapshots | PagedList::VolumeGroups | PagedList::GroupSnapshots => &[("all_tenants", "true")],
-            PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks | PagedList::Images => &[],
+            PagedList::Instances
+            | PagedList::Volumes
+            | PagedList::Snapshots
+            | PagedList::VolumeGroups
+            | PagedList::GroupSnapshots => &[("all_tenants", "true")],
+            PagedList::FloatingIps
+            | PagedList::Networks
+            | PagedList::Routers
+            | PagedList::Trunks
+            | PagedList::Images => &[],
         }
     }
 
@@ -736,7 +956,10 @@ impl PagedList {
 
     /// The list is Neutron's, which can return only the fields asked for (`fields=id`).
     pub fn is_neutron(self) -> bool {
-        matches!(self, PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks)
+        matches!(
+            self,
+            PagedList::FloatingIps | PagedList::Networks | PagedList::Routers | PagedList::Trunks
+        )
     }
 }
 
@@ -903,7 +1126,10 @@ impl PortSettings {
             (!self.security_group_ids.is_empty()).then(Vec::new)
         } else {
             let same = after.security_group_ids.len() == self.security_group_ids.len()
-                && after.security_group_ids.iter().all(|g| self.security_group_ids.contains(g));
+                && after
+                    .security_group_ids
+                    .iter()
+                    .all(|g| self.security_group_ids.contains(g));
             (!same).then(|| after.security_group_ids.clone())
         };
         let action = OsAction::PortUpdate {
@@ -915,7 +1141,14 @@ impl PortSettings {
             security_group_ids: groups,
         };
         match &action {
-            OsAction::PortUpdate { name: None, admin_up: None, vnic_type: None, port_security: None, security_group_ids: None, .. } => None,
+            OsAction::PortUpdate {
+                name: None,
+                admin_up: None,
+                vnic_type: None,
+                port_security: None,
+                security_group_ids: None,
+                ..
+            } => None,
             _ => Some(action),
         }
     }
@@ -1193,9 +1426,25 @@ pub struct AssignmentRow {
 
 /// The grants and revokes that turn `before` into `after` on `project_id`, as
 /// `(label, action)` for a batch; `group` says whether actors are groups.
-pub fn assignment_changes(project_id: &str, group: bool, before: &[AssignmentRow], after: &[AssignmentRow]) -> Vec<(String, OsAction)> {
-    let roles_of = |rows: &[AssignmentRow], id: &str| rows.iter().find(|r| r.actor_id == id).map(|r| r.role_ids.clone()).unwrap_or_default();
-    let actor = |id: &str| if group { (None, Some(id.to_string())) } else { (Some(id.to_string()), None) };
+pub fn assignment_changes(
+    project_id: &str,
+    group: bool,
+    before: &[AssignmentRow],
+    after: &[AssignmentRow],
+) -> Vec<(String, OsAction)> {
+    let roles_of = |rows: &[AssignmentRow], id: &str| {
+        rows.iter()
+            .find(|r| r.actor_id == id)
+            .map(|r| r.role_ids.clone())
+            .unwrap_or_default()
+    };
+    let actor = |id: &str| {
+        if group {
+            (None, Some(id.to_string()))
+        } else {
+            (Some(id.to_string()), None)
+        }
+    };
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for row in after.iter().chain(before) {
@@ -1205,11 +1454,27 @@ pub fn assignment_changes(project_id: &str, group: bool, before: &[AssignmentRow
         let (old, new) = (roles_of(before, &row.actor_id), roles_of(after, &row.actor_id));
         for r in new.iter().filter(|r| !old.contains(r)) {
             let (user_id, group_id) = actor(&row.actor_id);
-            out.push((format!("+ {} {r}", row.label), OsAction::ProjectRoleGrant { project_id: project_id.into(), user_id, group_id, role_id: r.clone() }));
+            out.push((
+                format!("+ {} {r}", row.label),
+                OsAction::ProjectRoleGrant {
+                    project_id: project_id.into(),
+                    user_id,
+                    group_id,
+                    role_id: r.clone(),
+                },
+            ));
         }
         for r in old.iter().filter(|r| !new.contains(r)) {
             let (user_id, group_id) = actor(&row.actor_id);
-            out.push((format!("- {} {r}", row.label), OsAction::ProjectRoleRevoke { project_id: project_id.into(), user_id, group_id, role_id: r.clone() }));
+            out.push((
+                format!("- {} {r}", row.label),
+                OsAction::ProjectRoleRevoke {
+                    project_id: project_id.into(),
+                    user_id,
+                    group_id,
+                    role_id: r.clone(),
+                },
+            ));
         }
     }
     out
@@ -1229,7 +1494,11 @@ impl AccessRule {
         if self.service.is_empty() || !self.service.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return Err(format!("access rule: not a service type: {:?}", self.service));
         }
-        one_of(&self.method, &["DELETE", "GET", "HEAD", "PATCH", "POST", "PUT"], "access rule method")?;
+        one_of(
+            &self.method,
+            &["DELETE", "GET", "HEAD", "PATCH", "POST", "PUT"],
+            "access rule method",
+        )?;
         if !self.path.starts_with('/') || self.path.len() > 225 {
             return Err(format!("access rule: the path must start with / (got {:?})", self.path));
         }
@@ -1582,7 +1851,7 @@ impl FirewallRuleSpec {
     /// addresses (an IP or a CIDR) of the rule's IP version. *Any* is `null`, so
     /// an update clears a field.
     pub fn body(&self) -> Result<serde_json::Value, String> {
-        use serde_json::{json, Value};
+        use serde_json::{Value, json};
         let protocol = match self.protocol.trim() {
             "" | "any" => None,
             p @ ("tcp" | "udp" | "icmp") => Some(p),
@@ -1652,7 +1921,10 @@ pub fn validate_ip_or_cidr(a: &str, version: u8) -> Result<(), String> {
     let ip: IpAddr = ip.parse().map_err(|_| format!("not an IP address or a CIDR: {a}"))?;
     let max = if ip.is_ipv4() { 32 } else { 128 };
     if let Some(len) = len {
-        len.parse::<u8>().ok().filter(|l| *l <= max).ok_or_else(|| format!("not an IP address or a CIDR: {a}"))?;
+        len.parse::<u8>()
+            .ok()
+            .filter(|l| *l <= max)
+            .ok_or_else(|| format!("not an IP address or a CIDR: {a}"))?;
     }
     if (version == 4) != ip.is_ipv4() {
         return Err(format!("{a} is not an IPv{version} address"));
@@ -1966,7 +2238,11 @@ pub enum AlarmRule {
         evaluation_periods: Option<i64>,
     },
     /// `prometheus`: a PromQL query compared with a threshold (RHOSO's telemetry).
-    Prometheus { query: String, comparison: Option<String>, threshold: Option<f64> },
+    Prometheus {
+        query: String,
+        comparison: Option<String>,
+        threshold: Option<f64>,
+    },
     /// `event`: fires on a notification of `event_type` matching `query`.
     Event { event_type: String, query: Vec<String> },
     /// Any other type (`composite`, `loadbalancer_member_health`…): the rule as
@@ -2045,9 +2321,29 @@ pub const ALARM_SEVERITIES: [&str; 3] = ["low", "moderate", "critical"];
 pub const ALARM_COMPARISONS: [&str; 6] = ["gt", "ge", "eq", "ne", "le", "lt"];
 /// Gnocchi's usual aggregation methods (`rate:` variants included); other
 /// values are accepted too, since archive policies can define more.
-pub const ALARM_AGGREGATIONS: [&str; 11] = ["mean", "max", "min", "sum", "last", "first", "median", "std", "count", "rate:mean", "rate:last"];
+pub const ALARM_AGGREGATIONS: [&str; 11] = [
+    "mean",
+    "max",
+    "min",
+    "sum",
+    "last",
+    "first",
+    "median",
+    "std",
+    "count",
+    "rate:mean",
+    "rate:last",
+];
 /// Notifier schemes Aodh can call (`test://` left out: it only exists for Aodh's own tests).
-pub const ALARM_ACTION_SCHEMES: [&str; 7] = ["http://", "https://", "trust+http://", "trust+https://", "log://", "zaqar://", "trust+zaqar://"];
+pub const ALARM_ACTION_SCHEMES: [&str; 7] = [
+    "http://",
+    "https://",
+    "trust+http://",
+    "trust+https://",
+    "log://",
+    "zaqar://",
+    "trust+zaqar://",
+];
 
 /// An alarm to create (`POST v2/alarms`) or replace (`PUT v2/alarms/{id}`):
 /// Aodh's PUT replaces the whole alarm, so an edit sends every field, including
@@ -2095,14 +2391,31 @@ pub struct AlarmSpec {
 impl AlarmSpec {
     /// Aodh's alarm body, or what is wrong with the spec.
     pub fn body(&self) -> Result<serde_json::Value, String> {
-        use serde_json::{json, Map, Value};
-        let req = |v: &str, what: &str| if v.trim().is_empty() { Err(format!("{what} is required")) } else { Ok(v.trim().to_string()) };
+        use serde_json::{Map, Value, json};
+        let req = |v: &str, what: &str| {
+            if v.trim().is_empty() {
+                Err(format!("{what} is required"))
+            } else {
+                Ok(v.trim().to_string())
+            }
+        };
         let name = req(&self.name, "name")?;
         one_of(&self.alarm_type, &ALARM_TYPES, "alarm type")?;
         one_of(&self.severity, &ALARM_SEVERITIES, "severity")?;
-        for url in self.alarm_actions.iter().chain(&self.ok_actions).chain(&self.insufficient_data_actions) {
-            if !ALARM_ACTION_SCHEMES.iter().any(|s| url.starts_with(s) && url.len() > s.len() || *s == "log://" && url == "log://") {
-                return Err(format!("action {url} must start with one of {}", ALARM_ACTION_SCHEMES.join(", ")));
+        for url in self
+            .alarm_actions
+            .iter()
+            .chain(&self.ok_actions)
+            .chain(&self.insufficient_data_actions)
+        {
+            if !ALARM_ACTION_SCHEMES
+                .iter()
+                .any(|s| url.starts_with(s) && url.len() > s.len() || *s == "log://" && url == "log://")
+            {
+                return Err(format!(
+                    "action {url} must start with one of {}",
+                    ALARM_ACTION_SCHEMES.join(", ")
+                ));
             }
         }
         let mut rule = Map::new();
@@ -2112,14 +2425,31 @@ impl AlarmSpec {
         let gnocchi = self.alarm_type.starts_with("gnocchi_");
         if gnocchi || self.alarm_type == "prometheus" {
             one_of(&self.comparison, &ALARM_COMPARISONS, "comparison")?;
-            let t = self.threshold.filter(|t| t.is_finite()).ok_or("threshold is required")?;
+            let t = self
+                .threshold
+                .filter(|t| t.is_finite())
+                .ok_or("threshold is required")?;
             put("comparison_operator", json!(self.comparison));
             put("threshold", json!(t));
         }
         if gnocchi {
             put("aggregation_method", json!(req(&self.aggregation, "aggregation")?));
-            put("granularity", json!(self.granularity.filter(|g| *g > 0).ok_or("granularity must be above 0")?));
-            put("evaluation_periods", json!(self.evaluation_periods.filter(|n| *n > 0).ok_or("evaluation periods must be above 0")?));
+            put(
+                "granularity",
+                json!(
+                    self.granularity
+                        .filter(|g| *g > 0)
+                        .ok_or("granularity must be above 0")?
+                ),
+            );
+            put(
+                "evaluation_periods",
+                json!(
+                    self.evaluation_periods
+                        .filter(|n| *n > 0)
+                        .ok_or("evaluation periods must be above 0")?
+                ),
+            );
         }
         match self.alarm_type.as_str() {
             "prometheus" => put("query", json!(req(&self.query, "query")?)),
@@ -2129,7 +2459,12 @@ impl AlarmSpec {
                 put("resource_id", json!(req(&self.resource_id, "resource ID")?));
             }
             "gnocchi_aggregation_by_metrics_threshold" => {
-                let metrics: Vec<&str> = self.metrics.iter().map(|m| m.trim()).filter(|m| !m.is_empty()).collect();
+                let metrics: Vec<&str> = self
+                    .metrics
+                    .iter()
+                    .map(|m| m.trim())
+                    .filter(|m| !m.is_empty())
+                    .collect();
                 if metrics.is_empty() {
                     return Err("at least one metric ID is required".into());
                 }
@@ -2144,7 +2479,11 @@ impl AlarmSpec {
             }
             _ => {
                 let event_type = Some(self.event_type.trim()).filter(|e| !e.is_empty()).unwrap_or("*");
-                let query = self.event_query.iter().map(|q| event_filter(q)).collect::<Result<Vec<_>, _>>()?;
+                let query = self
+                    .event_query
+                    .iter()
+                    .map(|q| event_filter(q))
+                    .collect::<Result<Vec<_>, _>>()?;
                 put("event_type", json!(event_type));
                 put("query", json!(query));
             }
@@ -2156,7 +2495,11 @@ impl AlarmSpec {
                 let mut m = Map::new();
                 m.insert("name".into(), json!(c.name));
                 m.insert("start".into(), json!(c.start));
-                for (k, v) in [("duration", c.duration.map(|d| json!(d))), ("timezone", c.timezone.as_ref().map(|z| json!(z))), ("description", c.description.as_ref().map(|d| json!(d)))] {
+                for (k, v) in [
+                    ("duration", c.duration.map(|d| json!(d))),
+                    ("timezone", c.timezone.as_ref().map(|z| json!(z))),
+                    ("description", c.description.as_ref().map(|d| json!(d))),
+                ] {
                     if let Some(v) = v {
                         m.insert(k.into(), v);
                     }
@@ -2353,7 +2696,10 @@ pub fn can_edit_secret_acl(creator_id: Option<&str>, user_id: &str, roles: &[Str
 /// deduplicated, in the order given.
 pub fn parse_user_ids(text: &str) -> Vec<String> {
     let mut out: Vec<String> = vec![];
-    for id in text.split(|c: char| c == ',' || c.is_whitespace()).filter(|x| !x.is_empty()) {
+    for id in text
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|x| !x.is_empty())
+    {
         if !out.iter().any(|o| o == id) {
             out.push(id.to_string());
         }
@@ -2450,7 +2796,9 @@ impl SubportSpec {
             return Err("a sub-port needs a port".into());
         }
         match (self.segmentation_type.as_str(), self.segmentation_id) {
-            ("vlan", Some(id)) if (1..=4094).contains(&id) => Ok(json!({"port_id": self.port_id.trim(), "segmentation_type": "vlan", "segmentation_id": id})),
+            ("vlan", Some(id)) if (1..=4094).contains(&id) => {
+                Ok(json!({"port_id": self.port_id.trim(), "segmentation_type": "vlan", "segmentation_id": id}))
+            }
             ("vlan", _) => Err("a VLAN sub-port needs a segmentation ID, 1-4094".into()),
             ("inherit", None) => Ok(json!({"port_id": self.port_id.trim(), "segmentation_type": "inherit"})),
             ("inherit", Some(_)) => Err("an inherit sub-port takes no segmentation ID".into()),
@@ -2460,9 +2808,16 @@ impl SubportSpec {
 }
 
 /// Neutron QoS rule types, as in the API paths (`…/bandwidth_limit_rules`).
-pub const QOS_RULE_TYPES: [&str; 4] = ["bandwidth_limit", "dscp_marking", "minimum_bandwidth", "minimum_packet_rate"];
+pub const QOS_RULE_TYPES: [&str; 4] = [
+    "bandwidth_limit",
+    "dscp_marking",
+    "minimum_bandwidth",
+    "minimum_packet_rate",
+];
 /// The DSCP marks Neutron accepts.
-pub const DSCP_MARKS: [u8; 21] = [0, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46, 48, 56];
+pub const DSCP_MARKS: [u8; 21] = [
+    0, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 46, 48, 56,
+];
 
 /// One rule of a QoS policy, its type-specific fields already formatted.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2515,7 +2870,7 @@ impl QosRuleSpec {
 
     /// `{"<type>_rule": {...}}` with the fields Neutron expects for the type.
     pub fn body(&self) -> Result<serde_json::Value, String> {
-        use serde_json::{json, Map};
+        use serde_json::{Map, json};
         one_of(&self.kind, &QOS_RULE_TYPES, "rule type")?;
         let mut r = Map::new();
         let dirs = Self::directions(&self.kind);
@@ -2525,7 +2880,10 @@ impl QosRuleSpec {
             }
             r.insert("direction".into(), json!(d));
         }
-        let need = |v: Option<u32>, what: &str| v.filter(|n| *n > 0).ok_or_else(|| format!("{what} is required and must be above 0"));
+        let need = |v: Option<u32>, what: &str| {
+            v.filter(|n| *n > 0)
+                .ok_or_else(|| format!("{what} is required and must be above 0"))
+        };
         match self.kind.as_str() {
             "bandwidth_limit" => {
                 r.insert("max_kbps".into(), json!(need(self.max_kbps, "max_kbps")?));
@@ -2596,7 +2954,11 @@ pub fn pool_protocol_for(listener: &str) -> &'static str {
 }
 
 fn one_of(v: &str, allowed: &[&str], what: &str) -> Result<(), String> {
-    if allowed.contains(&v) { Ok(()) } else { Err(format!("{what} must be one of {} (got {v})", allowed.join(", "))) }
+    if allowed.contains(&v) {
+        Ok(())
+    } else {
+        Err(format!("{what} must be one of {} (got {v})", allowed.join(", ")))
+    }
 }
 
 /// A listener to create (wizard step or *Create Listener*).
@@ -2656,7 +3018,12 @@ impl LbListenerOptions {
     /// Timeouts up to 7 days, headers known and for HTTP listeners only, CIDRs
     /// that parse.
     pub fn check(&self, protocol: &str) -> Result<(), String> {
-        let timeouts = [self.timeout_client_data, self.timeout_member_connect, self.timeout_member_data, self.timeout_tcp_inspect];
+        let timeouts = [
+            self.timeout_client_data,
+            self.timeout_member_connect,
+            self.timeout_member_data,
+            self.timeout_tcp_inspect,
+        ];
         if timeouts.iter().flatten().any(|&t| t > LB_TIMEOUT_MAX) {
             return Err(format!("timeouts are at most {LB_TIMEOUT_MAX} ms"));
         }
@@ -2666,7 +3033,9 @@ impl LbListenerOptions {
         if self.tls_ciphers.as_deref().is_some_and(|c| !c.trim().is_empty()) && protocol != LB_TLS_PROTOCOL {
             return Err("TLS ciphers are for TERMINATED_HTTPS listeners".into());
         }
-        self.insert_headers.iter().try_for_each(|h| one_of(h, &LB_INSERT_HEADERS, "header"))?;
+        self.insert_headers
+            .iter()
+            .try_for_each(|h| one_of(h, &LB_INSERT_HEADERS, "header"))?;
         for c in self.allowed_cidrs.iter().flatten() {
             crate::prefs::Cidr::parse(c)?;
         }
@@ -2680,7 +3049,10 @@ impl LbListenerOptions {
 
     /// `insert_headers` as Octavia wants it: `{"X-Forwarded-For": "true", …}`.
     pub fn headers_map(&self) -> serde_json::Map<String, serde_json::Value> {
-        self.insert_headers.iter().map(|h| (h.clone(), serde_json::Value::String("true".into()))).collect()
+        self.insert_headers
+            .iter()
+            .map(|h| (h.clone(), serde_json::Value::String("true".into())))
+            .collect()
     }
 }
 
@@ -2794,11 +3166,16 @@ impl MemberRow {
             if s.is_empty() {
                 return Ok(None);
             }
-            s.parse::<u16>().map(Some).map_err(|_| format!("{address}: the {what} must be 1-65535"))
+            s.parse::<u16>()
+                .map(Some)
+                .map_err(|_| format!("{address}: the {what} must be 1-65535"))
         };
         let weight = match self.weight.trim() {
             "" => None,
-            w => Some(w.parse::<u16>().map_err(|_| format!("{address}: the weight must be 0-256"))?),
+            w => Some(
+                w.parse::<u16>()
+                    .map_err(|_| format!("{address}: the weight must be 0-256"))?,
+            ),
         };
         let nonempty = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
         // Horizon requires a subnet for an external member; ours too.
@@ -2824,7 +3201,11 @@ impl MemberRow {
 /// The members editor's value as members to send: every row checked, and no
 /// address/port twice (Octavia's key for a member).
 pub fn member_specs(json: &str) -> Result<Vec<LbMemberSpec>, String> {
-    let rows: Vec<MemberRow> = if json.trim().is_empty() { vec![] } else { serde_json::from_str(json).map_err(|e| e.to_string())? };
+    let rows: Vec<MemberRow> = if json.trim().is_empty() {
+        vec![]
+    } else {
+        serde_json::from_str(json).map_err(|e| e.to_string())?
+    };
     let specs = rows.iter().map(MemberRow::spec).collect::<Result<Vec<_>, _>>()?;
     unique_members(&specs)?;
     Ok(specs)
@@ -2843,7 +3224,11 @@ fn unique_members(specs: &[LbMemberSpec]) -> Result<(), String> {
 pub fn removed_members<'a>(existing: &'a [LbMember], keep: &[LbMemberSpec]) -> Vec<&'a LbMember> {
     existing
         .iter()
-        .filter(|m| !keep.iter().any(|k| k.address == m.address && m.port == Some(i64::from(k.port))))
+        .filter(|m| {
+            !keep
+                .iter()
+                .any(|k| k.address == m.address && m.port == Some(i64::from(k.port)))
+        })
         .collect()
 }
 
@@ -2897,7 +3282,11 @@ impl LbListenerSpec {
             return Err("the listener port must be 1-65535".into());
         }
         self.options.check(&self.protocol)?;
-        check_listener_tls(&self.protocol, self.default_tls_container_ref.as_deref(), &self.sni_container_refs)
+        check_listener_tls(
+            &self.protocol,
+            self.default_tls_container_ref.as_deref(),
+            &self.sni_container_refs,
+        )
     }
 }
 
@@ -2927,7 +3316,11 @@ pub fn lb_inserts_headers(protocol: &str) -> bool {
 pub fn check_listener_tls(protocol: &str, default_ref: Option<&str>, sni: &[String]) -> Result<(), String> {
     let default_ref = default_ref.map(str::trim).filter(|r| !r.is_empty());
     if protocol != LB_TLS_PROTOCOL {
-        return if default_ref.is_some() || !sni.is_empty() { Err("certificates are for TERMINATED_HTTPS listeners".into()) } else { Ok(()) };
+        return if default_ref.is_some() || !sni.is_empty() {
+            Err("certificates are for TERMINATED_HTTPS listeners".into())
+        } else {
+            Ok(())
+        };
     }
     let Some(d) = default_ref else {
         return Err("a TERMINATED_HTTPS listener needs a certificate".into());
@@ -2948,7 +3341,9 @@ pub fn check_pool_tls(protocol: &str, enabled: bool, ciphers: Option<&str>) -> R
     }
     match ciphers.map(str::trim).filter(|c| !c.is_empty()) {
         Some(_) if !enabled => Err("TLS ciphers need TLS to the members".into()),
-        Some(c) if c.len() > 2048 || c.contains(char::is_whitespace) => Err("TLS ciphers are a colon-separated list, at most 2048 characters".into()),
+        Some(c) if c.len() > 2048 || c.contains(char::is_whitespace) => {
+            Err("TLS ciphers are a colon-separated list, at most 2048 characters".into())
+        }
         _ => Ok(()),
     }
 }
@@ -2957,7 +3352,10 @@ impl LbMemberSpec {
     /// A valid IP address, port 1-65535 and weight 0-256; the monitor address
     /// an IP and its port 1-65535 when given.
     pub fn check(&self) -> Result<(), String> {
-        self.address.trim().parse::<std::net::IpAddr>().map_err(|_| format!("not an IP address: {}", self.address))?;
+        self.address
+            .trim()
+            .parse::<std::net::IpAddr>()
+            .map_err(|_| format!("not an IP address: {}", self.address))?;
         if self.port == 0 {
             return Err("the member port must be 1-65535".into());
         }
@@ -2965,7 +3363,9 @@ impl LbMemberSpec {
             return Err("the weight must be 0-256".into());
         }
         if let Some(a) = self.monitor_address.as_deref() {
-            a.trim().parse::<std::net::IpAddr>().map_err(|_| format!("not an IP address: {a}"))?;
+            a.trim()
+                .parse::<std::net::IpAddr>()
+                .map_err(|_| format!("not an IP address: {a}"))?;
         }
         if self.monitor_port == Some(0) {
             return Err("the monitor port must be 1-65535".into());
@@ -3008,7 +3408,9 @@ impl LbCreateSpec {
             return Err("a subnet is required".into());
         }
         if let Some(a) = self.vip_address.as_deref() {
-            a.trim().parse::<std::net::IpAddr>().map_err(|_| format!("not an IP address: {a}"))?;
+            a.trim()
+                .parse::<std::net::IpAddr>()
+                .map_err(|_| format!("not an IP address: {a}"))?;
         }
         if let Some(l) = &self.listener {
             l.check()?;
@@ -3016,7 +3418,9 @@ impl LbCreateSpec {
         match (&self.listener, &self.pool) {
             (None, Some(_)) => return Err("a pool needs a listener".into()),
             // Octavia's single-call create rejects an unnamed default pool.
-            (_, Some(p)) if p.name.as_deref().is_none_or(|n| n.trim().is_empty()) => return Err("the pool needs a name".into()),
+            (_, Some(p)) if p.name.as_deref().is_none_or(|n| n.trim().is_empty()) => {
+                return Err("the pool needs a name".into());
+            }
             (_, Some(p)) => p.check()?,
             _ => {}
         }
@@ -3178,7 +3582,11 @@ impl LbL7PolicySpec {
     /// `http(s)://` URL for `REDIRECT_TO_URL`, neither for `REJECT`.
     pub fn check(&self) -> Result<(), String> {
         one_of(&self.action, &LB_L7_ACTIONS, "L7 action")?;
-        let pool = self.redirect_pool_id.as_deref().map(str::trim).filter(|p| !p.is_empty());
+        let pool = self
+            .redirect_pool_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty());
         let url = self.redirect_url.as_deref().map(str::trim).filter(|u| !u.is_empty());
         match self.action.as_str() {
             "REDIRECT_TO_POOL" if pool.is_none() => return Err("redirecting to a pool needs the pool".into()),
@@ -3230,7 +3638,11 @@ impl LbL7RuleSpec {
         let keyed = matches!(self.rule_type.as_str(), "HEADER" | "COOKIE");
         let key = self.key.as_deref().is_some_and(|k| !k.trim().is_empty());
         if keyed && !key {
-            return Err(format!("a {} rule needs a key (the {} name)", self.rule_type, self.rule_type.to_lowercase()));
+            return Err(format!(
+                "a {} rule needs a key (the {} name)",
+                self.rule_type,
+                self.rule_type.to_lowercase()
+            ));
         }
         if !keyed && key {
             return Err("only HEADER and COOKIE rules take a key".into());
@@ -3307,7 +3719,10 @@ impl LoadBalancerDetail {
             || self.pools.iter().any(|x| p(&x.provisioning_status))
             || self.members.iter().any(|x| p(&x.provisioning_status))
             || self.monitors.iter().any(|x| p(&x.provisioning_status))
-            || self.l7policies.iter().any(|x| p(&x.provisioning_status) || x.rules.iter().any(|r| p(&r.provisioning_status)))
+            || self
+                .l7policies
+                .iter()
+                .any(|x| p(&x.provisioning_status) || x.rules.iter().any(|r| p(&r.provisioning_status)))
     }
 }
 
@@ -3438,10 +3853,18 @@ impl PortForwardingSpec {
         if !matches!(self.protocol.as_str(), "tcp" | "udp") {
             return Err(format!("protocol must be tcp or udp (got {})", self.protocol));
         }
-        self.internal_ip.trim().parse::<std::net::Ipv4Addr>().map_err(|_| format!("not an IPv4 address: {}", self.internal_ip))?;
-        let (i, e) = (PortSpec::parse(&self.internal, self.ranges)?, PortSpec::parse(&self.external, self.ranges)?);
+        self.internal_ip
+            .trim()
+            .parse::<std::net::Ipv4Addr>()
+            .map_err(|_| format!("not an IPv4 address: {}", self.internal_ip))?;
+        let (i, e) = (
+            PortSpec::parse(&self.internal, self.ranges)?,
+            PortSpec::parse(&self.external, self.ranges)?,
+        );
         if i.count() != e.count() {
-            return Err(format!("internal ({i}) and external ({e}) ports must cover the same number of ports"));
+            return Err(format!(
+                "internal ({i}) and external ({e}) ports must cover the same number of ports"
+            ));
         }
         Ok((i, e))
     }
@@ -3532,7 +3955,15 @@ impl QuotaService {
                 "injected_file_content_bytes",
                 "injected_file_path_bytes",
             ],
-            QuotaService::Volume => &["volumes", "snapshots", "gigabytes", "backups", "backup_gigabytes", "groups", "per_volume_gigabytes"],
+            QuotaService::Volume => &[
+                "volumes",
+                "snapshots",
+                "gigabytes",
+                "backups",
+                "backup_gigabytes",
+                "groups",
+                "per_volume_gigabytes",
+            ],
             QuotaService::Network => &[
                 "network",
                 "subnet",
@@ -3545,7 +3976,15 @@ impl QuotaService {
                 "rbac_policy",
                 "trunk",
             ],
-            QuotaService::LoadBalancer => &["load_balancer", "listener", "pool", "member", "health_monitor", "l7policy", "l7rule"],
+            QuotaService::LoadBalancer => &[
+                "load_balancer",
+                "listener",
+                "pool",
+                "member",
+                "health_monitor",
+                "l7policy",
+                "l7rule",
+            ],
             // Barbican's `project_quotas` (Horizon has no form for them).
             QuotaService::KeyManager => &["secrets", "containers", "orders", "consumers", "cas"],
         }
@@ -3596,10 +4035,15 @@ pub struct ProjectQuotas {
 
 /// *Edit Quotas*: the limits that changed (`-1` = unlimited), refused when one
 /// is below what is used. Empty when nothing changed.
-pub fn quota_changes(rows: &[QuotaRow], wanted: &[(String, i64)]) -> Result<std::collections::BTreeMap<String, i64>, String> {
+pub fn quota_changes(
+    rows: &[QuotaRow],
+    wanted: &[(String, i64)],
+) -> Result<std::collections::BTreeMap<String, i64>, String> {
     let mut out = std::collections::BTreeMap::new();
     for (k, v) in wanted {
-        let Some(row) = rows.iter().find(|r| r.key == *k) else { continue };
+        let Some(row) = rows.iter().find(|r| r.key == *k) else {
+            continue;
+        };
         if *v < -1 {
             return Err(format!("{k}: -1 (unlimited) or more"));
         }
@@ -3645,7 +4089,10 @@ impl<T> From<Result<Vec<T>, AppError>> for Fallible<T> {
     fn from(r: Result<Vec<T>, AppError>) -> Self {
         match r {
             Ok(rows) => Fallible { rows, error: None },
-            Err(e) => Fallible { rows: vec![], error: Some(e.to_string()) },
+            Err(e) => Fallible {
+                rows: vec![],
+                error: Some(e.to_string()),
+            },
         }
     }
 }
@@ -3844,8 +4291,17 @@ impl Hypervisors {
     /// Horizon's *Hypervisor Summary*: VCPUs, RAM (MiB) and local disk (GiB),
     /// `(used, total)` summed over every hypervisor.
     pub fn totals(&self) -> [(i64, i64); 3] {
-        let sum = |f: fn(&HypervisorRow) -> (i64, i64)| self.hypervisors.iter().map(f).fold((0, 0), |(u, t), (a, b)| (u + a, t + b));
-        [sum(|h| (h.vcpus_used, h.vcpus)), sum(|h| (h.ram_used_mb, h.ram_mb)), sum(|h| (h.disk_used_gb, h.disk_gb))]
+        let sum = |f: fn(&HypervisorRow) -> (i64, i64)| {
+            self.hypervisors
+                .iter()
+                .map(f)
+                .fold((0, 0), |(u, t), (a, b)| (u + a, t + b))
+        };
+        [
+            sum(|h| (h.vcpus_used, h.vcpus)),
+            sum(|h| (h.ram_used_mb, h.ram_mb)),
+            sum(|h| (h.disk_used_gb, h.disk_gb)),
+        ]
     }
 }
 
@@ -3905,13 +4361,29 @@ pub struct ResourceProviderRow {
 /// at the top level.
 pub fn provider_tree(rows: Vec<ResourceProviderRow>) -> Vec<ResourceProviderRow> {
     let known: std::collections::HashSet<String> = rows.iter().map(|r| r.uuid.clone()).collect();
-    let (mut roots, children): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.parent.as_ref().is_none_or(|p| !known.contains(p)));
+    let (mut roots, children): (Vec<_>, Vec<_>) = rows
+        .into_iter()
+        .partition(|r| r.parent.as_ref().is_none_or(|p| !known.contains(p)));
     roots.sort_by_key(|r| r.name.to_lowercase());
     let mut out = Vec::new();
-    fn add(node: ResourceProviderRow, depth: u8, host: (&str, &str), children: &[ResourceProviderRow], out: &mut Vec<ResourceProviderRow>) {
-        let mut kids: Vec<ResourceProviderRow> = children.iter().filter(|c| c.parent.as_deref() == Some(node.uuid.as_str())).cloned().collect();
+    fn add(
+        node: ResourceProviderRow,
+        depth: u8,
+        host: (&str, &str),
+        children: &[ResourceProviderRow],
+        out: &mut Vec<ResourceProviderRow>,
+    ) {
+        let mut kids: Vec<ResourceProviderRow> = children
+            .iter()
+            .filter(|c| c.parent.as_deref() == Some(node.uuid.as_str()))
+            .cloned()
+            .collect();
         kids.sort_by_key(|c| c.name.to_lowercase());
-        let (host_uuid, host_name) = if depth == 0 { (node.uuid.clone(), node.name.clone()) } else { (host.0.to_string(), host.1.to_string()) };
+        let (host_uuid, host_name) = if depth == 0 {
+            (node.uuid.clone(), node.name.clone())
+        } else {
+            (host.0.to_string(), host.1.to_string())
+        };
         let mut node = node;
         node.depth = depth;
         node.host = host_uuid.clone();
@@ -3944,7 +4416,10 @@ pub fn provider_tree(rows: Vec<ResourceProviderRow>) -> Vec<ResourceProviderRow>
 /// `cmp-0_pci_0000_84_00_0` under `cmp-0` → `pci 0000:84:00.0`; other names
 /// lose only the host prefix.
 fn short_provider_name(host: &str, name: &str) -> String {
-    let rest = name.strip_prefix(host).and_then(|r| r.strip_prefix('_')).unwrap_or(name);
+    let rest = name
+        .strip_prefix(host)
+        .and_then(|r| r.strip_prefix('_'))
+        .unwrap_or(name);
     match rest.strip_prefix("pci_") {
         Some(addr) => {
             let p: Vec<&str> = addr.split('_').collect();
@@ -3962,7 +4437,12 @@ fn sum_resources<'a>(rs: impl Iterator<Item = &'a ProviderResource>) -> Option<P
     rs.fold(None, |acc: Option<ProviderResource>, r| {
         Some(match acc {
             None => r.clone(),
-            Some(a) => ProviderResource { used: a.used + r.used, reserved: a.reserved + r.reserved, total: a.total + r.total, allocation_ratio: a.allocation_ratio },
+            Some(a) => ProviderResource {
+                used: a.used + r.used,
+                reserved: a.reserved + r.reserved,
+                total: a.total + r.total,
+                allocation_ratio: a.allocation_ratio,
+            },
         })
     })
 }
@@ -3977,7 +4457,10 @@ pub fn vgpu_summary(rows: &[ResourceProviderRow]) -> (i64, i64, usize, usize) {
         if r.depth == 0 {
             hosts += 1;
         }
-        let summed = rows[i + 1..].iter().take_while(|c| c.depth > r.depth).any(|c| c.vgpus.is_some());
+        let summed = rows[i + 1..]
+            .iter()
+            .take_while(|c| c.depth > r.depth)
+            .any(|c| c.vgpus.is_some());
         if !summed {
             gpus += 1;
             used += v.used;
@@ -4207,7 +4690,10 @@ impl RemoteConsole {
         if !(self.kind == "novnc" || self.protocol == "vnc") {
             return self.url.clone();
         }
-        let (base, fragment) = self.url.split_once('#').map_or((self.url.as_str(), None), |(b, f)| (b, Some(f)));
+        let (base, fragment) = self
+            .url
+            .split_once('#')
+            .map_or((self.url.as_str(), None), |(b, f)| (b, Some(f)));
         let query = base.split_once('?').map(|(_, q)| q).unwrap_or("");
         let has = |key: &str| query.split('&').any(|p| p.split('=').next() == Some(key));
         let mut out = base.to_string();
@@ -4305,7 +4791,10 @@ pub enum SecretKind {
 
 impl std::fmt::Debug for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Secret").field("file_name", &self.file_name).field("content", &"<redacted>").finish()
+        f.debug_struct("Secret")
+            .field("file_name", &self.file_name)
+            .field("content", &"<redacted>")
+            .finish()
     }
 }
 
@@ -4381,7 +4870,11 @@ pub const RBAC_KINDS: &[(&str, &str, &str)] = &[
 
 /// A [`RBAC_KINDS`] form value → Neutron's `(object_type, action)`.
 pub fn rbac_kind(kind: &str) -> Result<(&'static str, &'static str), String> {
-    RBAC_KINDS.iter().find(|(k, _, _)| *k == kind).map(|(_, ty, action)| (*ty, *action)).ok_or_else(|| format!("unknown RBAC policy kind {kind:?}"))
+    RBAC_KINDS
+        .iter()
+        .find(|(k, _, _)| *k == kind)
+        .map(|(_, ty, action)| (*ty, *action))
+        .ok_or_else(|| format!("unknown RBAC policy kind {kind:?}"))
 }
 
 /// Provider network types Horizon offers (`OPENSTACK_NEUTRON_NETWORK`
@@ -4389,7 +4882,19 @@ pub fn rbac_kind(kind: &str) -> Result<(&'static str, &'static str), String> {
 /// (Horizon's `segmentation_id_range` defaults); `None` = no segmentation ID.
 /// Horizon's *Update Volume Status* choices (admin `VolumeStatusForm`):
 /// Cinder's `os-reset_status` accepts any string, Horizon offers these.
-pub const VOLUME_STATUSES: &[&str] = &["attaching", "available", "creating", "deleting", "detaching", "error", "error_deleting", "error_extending", "in-use", "maintenance", "reserved"];
+pub const VOLUME_STATUSES: &[&str] = &[
+    "attaching",
+    "available",
+    "creating",
+    "deleting",
+    "detaching",
+    "error",
+    "error_deleting",
+    "error_extending",
+    "in-use",
+    "maintenance",
+    "reserved",
+];
 
 /// A QoS spec's `consumer`, Horizon's choices.
 pub const QOS_CONSUMERS: &[&str] = &["back-end", "front-end", "both"];
@@ -4456,7 +4961,10 @@ impl ProviderNetwork {
         }
         match (self.segmentation_id, range) {
             (Some(_), None) => Err(format!("a {} network has no segmentation ID", self.network_type)),
-            (Some(id), Some((lo, hi))) if id < *lo || id > *hi => Err(format!("segmentation ID {id} is outside {lo}–{hi} for {}", self.network_type)),
+            (Some(id), Some((lo, hi))) if id < *lo || id > *hi => Err(format!(
+                "segmentation ID {id} is outside {lo}–{hi} for {}",
+                self.network_type
+            )),
             _ => Ok(()),
         }
     }
@@ -4551,7 +5059,13 @@ pub struct SubnetSpec {
 
 /// Horizon's *IPv6 Address Configuration Mode* choices: the form value
 /// `ra/address` (`none` = not sent) and what each one means.
-pub const IPV6_MODES: &[&str] = &["none/none", "slaac/slaac", "none/slaac", "dhcpv6-stateful/dhcpv6-stateful", "dhcpv6-stateless/dhcpv6-stateless"];
+pub const IPV6_MODES: &[&str] = &[
+    "none/none",
+    "slaac/slaac",
+    "none/slaac",
+    "dhcpv6-stateful/dhcpv6-stateful",
+    "dhcpv6-stateless/dhcpv6-stateless",
+];
 
 /// `ra/address` (an [`IPV6_MODES`] value) → `(ipv6_ra_mode, ipv6_address_mode)`.
 pub fn ipv6_modes(v: &str) -> Result<(Option<String>, Option<String>), String> {
@@ -4583,22 +5097,41 @@ pub struct RuleSpec {
 pub enum OsAction {
     /// Project › Quotas' *Edit Quotas* (roadmap 82): only the changed keys,
     /// each one of `service.keys()`.
-    QuotaUpdate { service: QuotaService, project_id: String, values: std::collections::BTreeMap<String, i64> },
+    QuotaUpdate {
+        service: QuotaService,
+        project_id: String,
+        values: std::collections::BTreeMap<String, i64>,
+    },
     /// Admin › Defaults' *Update Defaults* (roadmap 85): the `default` quota
     /// class of Compute or Volume (`PUT os-quota-class-sets/default`); Neutron's
     /// defaults live in its configuration, so it has none. Admins only.
-    DefaultQuotaUpdate { service: QuotaService, values: std::collections::BTreeMap<String, i64> },
+    DefaultQuotaUpdate {
+        service: QuotaService,
+        values: std::collections::BTreeMap<String, i64>,
+    },
     // Admin › Metadata Definitions (roadmap 85); `id` is the namespace
     // (`OS::Compute::Watchdog`). Every one `admin_only`.
     /// *Import Namespace*: `POST /v2/metadefs/namespaces` with `definition`
     /// (Glance's JSON: namespace, properties, objects…), its `visibility` and
     /// `protected` set from the form, as Horizon.
-    MetadefNamespaceImport { definition: String, public: bool, protected: bool },
+    MetadefNamespaceImport {
+        definition: String,
+        public: bool,
+        protected: bool,
+    },
     /// *Edit Namespace*: `PUT …/namespaces/{id}`. Glance replaces the
     /// namespace's fields, so the dialog sends them all.
-    MetadefNamespaceUpdate { id: String, display_name: Option<String>, description: Option<String>, public: bool, protected: bool },
+    MetadefNamespaceUpdate {
+        id: String,
+        display_name: Option<String>,
+        description: Option<String>,
+        public: bool,
+        protected: bool,
+    },
     /// `DELETE …/namespaces/{id}` (Glance refuses a protected one).
-    MetadefNamespaceDelete { id: String },
+    MetadefNamespaceDelete {
+        id: String,
+    },
     /// *Update Associations*: `DELETE …/{id}/resource_types/{name}` per removed
     /// resource type, then `POST …/{id}/resource_types` per added one (names
     /// such as `OS::Nova::Flavor`, in `*_type_ids` so `check_ids` vets them).
@@ -4613,56 +5146,146 @@ pub enum OsAction {
     },
     // Instances
     ServerLaunch(LaunchSpec),
-    ServerUpdate { id: String, name: String },
-    ServerStart { id: String },
-    ServerStop { id: String },
-    ServerReboot { id: String, kind: RebootKind },
-    ServerPause { id: String },
-    ServerUnpause { id: String },
-    ServerSuspend { id: String },
-    ServerResume { id: String },
-    ServerLock { id: String },
-    ServerUnlock { id: String },
-    ServerSnapshot { id: String, name: String },
-    ServerDelete { id: String },
+    ServerUpdate {
+        id: String,
+        name: String,
+    },
+    ServerStart {
+        id: String,
+    },
+    ServerStop {
+        id: String,
+    },
+    ServerReboot {
+        id: String,
+        kind: RebootKind,
+    },
+    ServerPause {
+        id: String,
+    },
+    ServerUnpause {
+        id: String,
+    },
+    ServerSuspend {
+        id: String,
+    },
+    ServerResume {
+        id: String,
+    },
+    ServerLock {
+        id: String,
+    },
+    ServerUnlock {
+        id: String,
+    },
+    ServerSnapshot {
+        id: String,
+        name: String,
+    },
+    ServerDelete {
+        id: String,
+    },
     /// Replaces all of the server's metadata (`PUT /servers/{id}/metadata`).
-    ServerSetMetadata { id: String, metadata: Vec<(String, String)> },
+    ServerSetMetadata {
+        id: String,
+        metadata: Vec<(String, String)>,
+    },
     /// *Edit Security Groups* (roadmap 42): Nova adds/removes each group **by name** on every
     /// port of the server, one `addSecurityGroup` / `removeSecurityGroup` action per group.
-    ServerSetSecurityGroups { id: String, add: Vec<String>, remove: Vec<String> },
-    ServerAttachVolume { server_id: String, volume_id: String },
-    ServerDetachVolume { server_id: String, volume_id: String },
-    ServerResize { id: String, flavor_id: String },
-    ServerConfirmResize { id: String },
-    ServerRevertResize { id: String },
+    ServerSetSecurityGroups {
+        id: String,
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
+    ServerAttachVolume {
+        server_id: String,
+        volume_id: String,
+    },
+    ServerDetachVolume {
+        server_id: String,
+        volume_id: String,
+    },
+    ServerResize {
+        id: String,
+        flavor_id: String,
+    },
+    ServerConfirmResize {
+        id: String,
+    },
+    ServerRevertResize {
+        id: String,
+    },
     /// Nova >= 2.94 (sent by the SDK), which also rebuilds volume-backed servers (>= 2.93).
-    ServerRebuild { id: String, image_id: String },
-    ServerShelve { id: String },
+    ServerRebuild {
+        id: String,
+        image_id: String,
+    },
+    ServerShelve {
+        id: String,
+    },
     /// With an availability zone, Nova >= 2.77.
-    ServerUnshelve { id: String, availability_zone: Option<String> },
+    ServerUnshelve {
+        id: String,
+        availability_zone: Option<String>,
+    },
     /// Nova returns the rescue `adminPass`: shown once, never logged.
-    ServerRescue { id: String, image_id: Option<String> },
-    ServerUnrescue { id: String },
+    ServerRescue {
+        id: String,
+        image_id: Option<String>,
+    },
+    ServerUnrescue {
+        id: String,
+    },
     /// Exactly one of `network_id` / `port_id`; `fixed_ip` only with a network.
-    ServerAttachInterface { id: String, network_id: Option<String>, port_id: Option<String>, fixed_ip: Option<String> },
-    ServerDetachInterface { id: String, port_id: String },
+    ServerAttachInterface {
+        id: String,
+        network_id: Option<String>,
+        port_id: Option<String>,
+        fixed_ip: Option<String>,
+    },
+    ServerDetachInterface {
+        id: String,
+        port_id: String,
+    },
     // Images
     /// *Edit Image*: only the fields that changed (roadmap 33).
-    ImageUpdate { id: String, changes: ImageChanges },
-    ImageDelete { id: String },
+    ImageUpdate {
+        id: String,
+        changes: ImageChanges,
+    },
+    ImageDelete {
+        id: String,
+    },
     /// *Create Image*: `POST /v2/images`, then the `web-download` import when it has a URL (roadmap 45).
     ImageCreate(ImageSpec),
     /// Custom properties, as JSON-Patch: `set` adds or replaces, `remove` deletes.
-    ImageSetProperties { id: String, set: Vec<(String, String)>, remove: Vec<String> },
+    ImageSetProperties {
+        id: String,
+        set: Vec<(String, String)>,
+        remove: Vec<String>,
+    },
     // Key pairs & server groups
     /// `key_type`: `ssh` or `x509` (`KEYPAIR_TYPES`).
-    KeyPairImport { name: String, public_key: String, key_type: String },
+    KeyPairImport {
+        name: String,
+        public_key: String,
+        key_type: String,
+    },
     /// Generated on the Moonlight server (Nova >= 2.92 no longer generates
     /// keys); only the public key is sent, the private key is returned once.
-    KeyPairGenerate { name: String },
-    KeyPairDelete { name: String },
-    ServerGroupCreate { name: String, policy: String },
-    ServerGroupDelete { id: String },
+    KeyPairGenerate {
+        name: String,
+    },
+    KeyPairDelete {
+        name: String,
+    },
+    ServerGroupCreate {
+        name: String,
+        policy: String,
+    },
+    ServerGroupDelete {
+        id: String,
+    },
     // Volumes & snapshots
     VolumeCreate {
         name: String,
@@ -4673,13 +5296,29 @@ pub enum OsAction {
         source: VolumeSource,
         source_id: Option<String>,
     },
-    VolumeUpdate { id: String, name: String, description: Option<String> },
-    VolumeExtend { id: String, new_size_gb: u32 },
-    VolumeDelete { id: String },
+    VolumeUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+    },
+    VolumeExtend {
+        id: String,
+        new_size_gb: u32,
+    },
+    VolumeDelete {
+        id: String,
+    },
     /// Replaces all of the volume's metadata (`PUT /volumes/{id}/metadata`).
-    VolumeSetMetadata { id: String, metadata: Vec<(String, String)> },
+    VolumeSetMetadata {
+        id: String,
+        metadata: Vec<(String, String)>,
+    },
     /// `migrate`: Cinder may move the data to another backend (`on-demand`).
-    VolumeRetype { id: String, new_type: String, migrate: bool },
+    VolumeRetype {
+        id: String,
+        new_type: String,
+        migrate: bool,
+    },
     /// Creates a Glance image from the volume; `force` uploads an in-use volume.
     VolumeUploadImage {
         id: String,
@@ -4691,18 +5330,41 @@ pub enum OsAction {
         visibility: Option<String>,
     },
     /// The answer carries the transfer ID and `auth_key`: shown once, never logged.
-    VolumeTransferCreate { volume_id: String, name: Option<String> },
+    VolumeTransferCreate {
+        volume_id: String,
+        name: Option<String>,
+    },
     /// `auth_key` is typed by the user; `Debug` would show it, so only `kind()`
     /// may be logged (as for every action).
-    VolumeTransferAccept { transfer_id: String, auth_key: String },
-    VolumeSnapshotCreate { volume_id: String, name: String, description: Option<String>, force: bool },
-    SnapshotUpdate { id: String, name: String, description: Option<String> },
-    SnapshotDelete { id: String },
+    VolumeTransferAccept {
+        transfer_id: String,
+        auth_key: String,
+    },
+    VolumeSnapshotCreate {
+        volume_id: String,
+        name: String,
+        description: Option<String>,
+        force: bool,
+    },
+    SnapshotUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+    },
+    SnapshotDelete {
+        id: String,
+    },
     /// Replaces all of the snapshot's metadata (`PUT /snapshots/{id}/metadata`).
-    SnapshotSetMetadata { id: String, metadata: Vec<(String, String)> },
+    SnapshotSetMetadata {
+        id: String,
+        metadata: Vec<(String, String)>,
+    },
     /// `POST /groups/{id}/action` `{"delete": {"delete-volumes": …}}` (volume 3.13).
     /// Without `delete_volumes` Cinder refuses a group that still has volumes.
-    VolumeGroupDelete { id: String, delete_volumes: bool },
+    VolumeGroupDelete {
+        id: String,
+        delete_volumes: bool,
+    },
     /// *Create Group*: `POST /groups` (volume 3.13). Cinder needs the group type
     /// and at least one volume type; `None` zone lets Cinder pick.
     VolumeGroupCreate {
@@ -4715,53 +5377,129 @@ pub enum OsAction {
     /// *Clone Group* (`source_group_id`) or *Create Group* from a group snapshot
     /// (`group_snapshot_id`): `POST /groups/action` `create-from-src` (volume
     /// 3.14). Exactly one source must be set.
-    VolumeGroupCreateFrom { name: String, description: Option<String>, source_group_id: Option<String>, group_snapshot_id: Option<String> },
+    VolumeGroupCreateFrom {
+        name: String,
+        description: Option<String>,
+        source_group_id: Option<String>,
+        group_snapshot_id: Option<String>,
+    },
     /// *Edit Group*: `PUT /groups/{id}` with the name and description.
-    VolumeGroupUpdate { id: String, name: String, description: Option<String> },
+    VolumeGroupUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+    },
     /// *Manage Volumes* / *Remove Volumes from Group*: `PUT /groups/{id}` with
     /// `add_volumes` / `remove_volumes` as comma-separated IDs (Cinder's format);
     /// an empty list is left out of the body.
-    VolumeGroupSetVolumes { id: String, add_volume_ids: Vec<String>, remove_volume_ids: Vec<String> },
+    VolumeGroupSetVolumes {
+        id: String,
+        add_volume_ids: Vec<String>,
+        remove_volume_ids: Vec<String>,
+    },
     /// *Create Snapshot* of a group: `POST /group_snapshots` (volume 3.14).
-    GroupSnapshotCreate { group_id: String, name: String, description: Option<String> },
+    GroupSnapshotCreate {
+        group_id: String,
+        name: String,
+        description: Option<String>,
+    },
     /// `DELETE /group_snapshots/{id}` (volume 3.14).
-    GroupSnapshotDelete { id: String },
+    GroupSnapshotDelete {
+        id: String,
+    },
     /// *Create Backup*: `POST /backups`. `force` backs up an attached volume,
     /// `incremental` needs an earlier full backup of the volume; `snapshot_id`
     /// backs up that snapshot instead of the volume's current data.
-    BackupCreate { volume_id: String, name: String, description: Option<String>, incremental: bool, force: bool, snapshot_id: Option<String> },
+    BackupCreate {
+        volume_id: String,
+        name: String,
+        description: Option<String>,
+        incremental: bool,
+        force: bool,
+        snapshot_id: Option<String>,
+    },
     /// *Edit Backup*: `PUT /backups/{id}` (name and description; volume 3.9).
-    BackupUpdate { id: String, name: String, description: Option<String> },
+    BackupUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+    },
     /// *Restore Backup*: `POST /backups/{id}/restore`. Without `volume_id` Cinder
     /// creates a new volume (named `name`); with it, that volume is overwritten.
-    BackupRestore { id: String, volume_id: Option<String>, name: Option<String> },
+    BackupRestore {
+        id: String,
+        volume_id: Option<String>,
+        name: Option<String>,
+    },
     /// `DELETE /backups/{id}`.
-    BackupDelete { id: String },
+    BackupDelete {
+        id: String,
+    },
     // Networks, subnets, ports
-    NetworkCreate { name: String, admin_up: bool, subnet: Option<SubnetSpec> },
+    NetworkCreate {
+        name: String,
+        admin_up: bool,
+        subnet: Option<SubnetSpec>,
+    },
     /// Admin › Networks' *Create Network* (roadmap 85): for any project, with
     /// Neutron's `provider` attributes, *Shared* and *External*. Admins only
     /// (`admin_only`), whatever Neutron's policy says.
     AdminNetworkCreate(Box<AdminNetworkSpec>),
-    NetworkUpdate { id: String, name: String, admin_up: bool },
+    NetworkUpdate {
+        id: String,
+        name: String,
+        admin_up: bool,
+    },
     /// Admin › Networks' *Edit Network*: Horizon's admin form, which adds
     /// *Shared* and *External Network* (`router:external`). Provider attributes
     /// are not editable: ML2 refuses to change them. Admins only.
-    AdminNetworkUpdate { id: String, name: String, admin_up: bool, shared: bool, external: bool },
+    AdminNetworkUpdate {
+        id: String,
+        name: String,
+        admin_up: bool,
+        shared: bool,
+        external: bool,
+    },
     /// Admin › RBAC Policies' *Create RBAC Policy*: `POST /rbac-policies`.
     /// `kind` is one of [`RBAC_KINDS`] (Horizon's *Action and Object Type*);
     /// `target_project` a project ID or `*` (every project). Admins only.
-    RbacPolicyCreate { kind: String, object_id: String, target_project: String },
+    RbacPolicyCreate {
+        kind: String,
+        object_id: String,
+        target_project: String,
+    },
     /// *Edit Policy* (Horizon's *Update RBAC Policy*): `PUT /rbac-policies/{id}`
     /// with a new `target_tenant`, a project ID or `*`. Admins only.
-    RbacPolicyUpdate { id: String, target_project: String },
+    RbacPolicyUpdate {
+        id: String,
+        target_project: String,
+    },
     /// `DELETE /rbac-policies/{id}`. Admins only.
-    RbacPolicyDelete { id: String },
-    NetworkDelete { id: String },
-    SubnetCreate { network_id: String, spec: SubnetSpec },
-    SubnetUpdate { id: String, name: String, enable_dhcp: bool, dns_nameservers: Vec<String> },
-    SubnetDelete { id: String },
-    PortCreate { network_id: String, name: String, admin_up: bool, fixed_ip: Option<String> },
+    RbacPolicyDelete {
+        id: String,
+    },
+    NetworkDelete {
+        id: String,
+    },
+    SubnetCreate {
+        network_id: String,
+        spec: SubnetSpec,
+    },
+    SubnetUpdate {
+        id: String,
+        name: String,
+        enable_dhcp: bool,
+        dns_nameservers: Vec<String>,
+    },
+    SubnetDelete {
+        id: String,
+    },
+    PortCreate {
+        network_id: String,
+        name: String,
+        admin_up: bool,
+        fixed_ip: Option<String>,
+    },
     /// *Edit Port*: only the `Some` fields are sent (see [`PortSettings::changes`]).
     PortUpdate {
         id: String,
@@ -4774,8 +5512,13 @@ pub enum OsAction {
         security_group_ids: Option<Vec<String>>,
     },
     /// Replaces the port's security groups (an empty list removes them all).
-    PortSetSecurityGroups { id: String, security_group_ids: Vec<String> },
-    PortDelete { id: String },
+    PortSetSecurityGroups {
+        id: String,
+        security_group_ids: Vec<String>,
+    },
+    PortDelete {
+        id: String,
+    },
     // Routers
     RouterCreate {
         name: String,
@@ -4804,22 +5547,57 @@ pub enum OsAction {
         #[serde(default)]
         ha: Option<bool>,
     },
-    RouterSetGateway { id: String, network_id: String },
-    RouterClearGateway { id: String },
-    RouterAddInterface { id: String, subnet_id: String },
-    RouterRemoveInterface { id: String, port_id: String },
+    RouterSetGateway {
+        id: String,
+        network_id: String,
+    },
+    RouterClearGateway {
+        id: String,
+    },
+    RouterAddInterface {
+        id: String,
+        subnet_id: String,
+    },
+    RouterRemoveInterface {
+        id: String,
+        port_id: String,
+    },
     /// Atomic (`extraroute-atomic`): only this route changes.
-    RouterAddRoute { id: String, destination: String, nexthop: String },
-    RouterRemoveRoute { id: String, destination: String, nexthop: String },
+    RouterAddRoute {
+        id: String,
+        destination: String,
+        nexthop: String,
+    },
+    RouterRemoveRoute {
+        id: String,
+        destination: String,
+        nexthop: String,
+    },
     /// Plain `extraroute` (no `-atomic`): replaces the router's whole route list.
-    RouterSetRoutes { id: String, routes: Vec<(String, String)> },
-    RouterDelete { id: String },
+    RouterSetRoutes {
+        id: String,
+        routes: Vec<(String, String)>,
+    },
+    RouterDelete {
+        id: String,
+    },
     // Security groups
-    SecurityGroupCreate { name: String, description: Option<String> },
-    SecurityGroupUpdate { id: String, name: String, description: Option<String> },
-    SecurityGroupDelete { id: String },
+    SecurityGroupCreate {
+        name: String,
+        description: Option<String>,
+    },
+    SecurityGroupUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+    },
+    SecurityGroupDelete {
+        id: String,
+    },
     RuleCreate(RuleSpec),
-    RuleDelete { id: String },
+    RuleDelete {
+        id: String,
+    },
     // Floating IPs
     /// With `port_id`, Neutron allocates and associates in one request.
     FloatingIpAllocate {
@@ -4833,106 +5611,243 @@ pub enum OsAction {
     },
     /// Admin › Floating IPs' *Allocate IP To Project* (roadmap 85): for any
     /// project, optionally a given address of the pool. Admins only.
-    AdminFloatingIpAllocate { network_id: String, project_id: String, address: Option<String>, description: Option<String> },
+    AdminFloatingIpAllocate {
+        network_id: String,
+        project_id: String,
+        address: Option<String>,
+        description: Option<String>,
+    },
     // Admin › Compute (roadmap 85); every one `admin_only`.
     /// *Create Flavor*: `POST /flavors`, then `addTenantAccess` per project.
     FlavorCreate(Box<FlavorSpec>),
     /// *Edit Flavor* (`[admin] flavor_edit`, roadmap 89), Horizon's: Nova can't
     /// change a flavor, so `DELETE /flavors/{id}`, `POST /flavors` with the same
     /// ID (`spec.flavor_id`), then its `extra_specs` and `addTenantAccess` back.
-    FlavorReplace { spec: Box<FlavorSpec>, extra_specs: Vec<(String, String)> },
+    FlavorReplace {
+        spec: Box<FlavorSpec>,
+        extra_specs: Vec<(String, String)>,
+    },
     /// `DELETE /flavors/{id}`.
-    FlavorDelete { id: String },
+    FlavorDelete {
+        id: String,
+    },
     /// *Update Metadata* of a flavor: `POST …/os-extra_specs` with `set`, then
     /// one `DELETE …/os-extra_specs/{key}` per key in `unset`.
-    FlavorSetExtraSpecs { id: String, set: Vec<(String, String)>, unset: Vec<String> },
+    FlavorSetExtraSpecs {
+        id: String,
+        set: Vec<(String, String)>,
+        unset: Vec<String>,
+    },
     /// *Modify Access* of a private flavor: `addTenantAccess` /
     /// `removeTenantAccess` per project ID.
-    FlavorSetAccess { id: String, add: Vec<String>, remove: Vec<String> },
+    FlavorSetAccess {
+        id: String,
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
     /// *Create Host Aggregate*: `POST /os-aggregates`, then `add_host` per host.
-    AggregateCreate { name: String, zone: Option<String>, hosts: Vec<String> },
+    AggregateCreate {
+        name: String,
+        zone: Option<String>,
+        hosts: Vec<String>,
+    },
     /// *Edit Host Aggregate*: `PUT /os-aggregates/{id}`; `zone: None` clears it.
-    AggregateUpdate { id: String, name: String, zone: Option<String> },
+    AggregateUpdate {
+        id: String,
+        name: String,
+        zone: Option<String>,
+    },
     /// *Manage Hosts*: `add_host` / `remove_host` actions, one per host.
-    AggregateSetHosts { id: String, add: Vec<String>, remove: Vec<String> },
+    AggregateSetHosts {
+        id: String,
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
     /// *Update Metadata* of an aggregate: one `set_metadata`, `unset` keys as `null`.
-    AggregateSetMetadata { id: String, set: Vec<(String, String)>, unset: Vec<String> },
+    AggregateSetMetadata {
+        id: String,
+        set: Vec<(String, String)>,
+        unset: Vec<String>,
+    },
     /// `DELETE /os-aggregates/{id}` (Nova refuses one that still has hosts).
-    AggregateDelete { id: String },
+    AggregateDelete {
+        id: String,
+    },
     /// *Enable* / *Disable Service* of a `nova-compute`: `PUT /os-services/{id}`
     /// (compute 2.53, UUID `id`); `reason` only when disabling.
-    ComputeServiceSet { id: String, enabled: bool, reason: Option<String> },
+    ComputeServiceSet {
+        id: String,
+        enabled: bool,
+        reason: Option<String>,
+    },
     /// *Migrate Instance* (cold): `migrate` action; `host` needs compute 2.56.
-    ServerMigrate { id: String, host: Option<String> },
+    ServerMigrate {
+        id: String,
+        host: Option<String>,
+    },
     /// *Live Migrate Instance*: `os-migrateLive` at compute 2.30. `host: None`
     /// lets the scheduler pick; `block_migration: None` sends `"auto"` (2.25).
-    ServerLiveMigrate { id: String, host: Option<String>, block_migration: Option<bool> },
+    ServerLiveMigrate {
+        id: String,
+        host: Option<String>,
+        block_migration: Option<bool>,
+    },
     // Admin › Volume (roadmap 85); every one `admin_only`.
     /// *Update Volume Status*: `os-reset_status` with `status` only (Cinder's
     /// record, not the back end), one of [`VOLUME_STATUSES`].
-    VolumeResetStatus { id: String, status: String },
+    VolumeResetStatus {
+        id: String,
+        status: String,
+    },
     /// *Migrate Volume*: `os-migrate_volume` to a back-end pool
     /// (`host@backend#pool`); `force_host_copy` skips the driver's own migration.
-    VolumeMigrate { id: String, host: String, force_host_copy: bool },
+    VolumeMigrate {
+        id: String,
+        host: String,
+        force_host_copy: bool,
+    },
     /// *Manage Volume*: `POST /os-volume-manage`, a back-end volume Cinder
     /// doesn't know yet becomes one, in the session's project.
     VolumeManage(Box<ManageVolumeSpec>),
     /// *Unmanage Volume*: `os-unmanage`; Cinder forgets it, the back end keeps it.
-    VolumeUnmanage { id: String },
+    VolumeUnmanage {
+        id: String,
+    },
     /// *Update Status* of a snapshot: `os-reset_status`, one of [`SNAPSHOT_STATUSES`].
-    SnapshotResetStatus { id: String, status: String },
+    SnapshotResetStatus {
+        id: String,
+        status: String,
+    },
     /// *Create Volume Type*: `POST /types` (raw: the SDK's `type::create` posts
     /// to `types/{id}/action`).
-    VolumeTypeCreate { name: String, description: Option<String>, public: bool },
+    VolumeTypeCreate {
+        name: String,
+        description: Option<String>,
+        public: bool,
+    },
     /// *Edit Volume Type*: `PUT /types/{id}`; an empty description clears it.
-    VolumeTypeUpdate { id: String, name: String, description: Option<String>, public: bool },
+    VolumeTypeUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+        public: bool,
+    },
     /// `DELETE /types/{id}` (Cinder refuses one still in use).
-    VolumeTypeDelete { id: String },
+    VolumeTypeDelete {
+        id: String,
+    },
     /// *View Extra Specs*: `POST …/extra_specs` with `set`, then one `DELETE
     /// …/extra_specs/{key}` per key in `unset`.
-    VolumeTypeSetExtraSpecs { id: String, set: Vec<(String, String)>, unset: Vec<String> },
+    VolumeTypeSetExtraSpecs {
+        id: String,
+        set: Vec<(String, String)>,
+        unset: Vec<String>,
+    },
     /// *Manage QoS Spec Association*: disassociate `current_qos_id`, then
     /// associate `qos_id` (`None`: leave it without). Cinder makes both GETs
     /// with `vol_type_id` (they change state: sent through `Exec`, as writes).
-    VolumeTypeSetQos { id: String, qos_id: Option<String>, current_qos_id: Option<String> },
+    VolumeTypeSetQos {
+        id: String,
+        qos_id: Option<String>,
+        current_qos_id: Option<String>,
+    },
     /// *Create Encryption* (`POST …/encryption`) or, with `update`, *Update
     /// Encryption* (`PUT …/encryption/provider`, as cinderclient: Cinder
     /// ignores the last segment).
-    VolumeTypeEncryptionSet { id: String, spec: EncryptionSpec, update: bool },
+    VolumeTypeEncryptionSet {
+        id: String,
+        spec: EncryptionSpec,
+        update: bool,
+    },
     /// *Delete Encryption*: `DELETE …/encryption/provider`.
-    VolumeTypeEncryptionDelete { id: String },
+    VolumeTypeEncryptionDelete {
+        id: String,
+    },
     /// *Create QoS Spec*: `POST /qos-specs` with the consumer and specs.
-    QosSpecCreate { name: String, consumer: String, specs: Vec<(String, String)> },
+    QosSpecCreate {
+        name: String,
+        consumer: String,
+        specs: Vec<(String, String)>,
+    },
     /// *Edit Consumer*: `PUT /qos-specs/{id}` with `consumer`.
-    QosSpecSetConsumer { id: String, consumer: String },
+    QosSpecSetConsumer {
+        id: String,
+        consumer: String,
+    },
     /// *Manage Specs*: `PUT /qos-specs/{id}` with `set`, then `PUT
     /// …/delete_keys` with `unset`.
-    QosSpecSetSpecs { id: String, set: Vec<(String, String)>, unset: Vec<String> },
+    QosSpecSetSpecs {
+        id: String,
+        set: Vec<(String, String)>,
+        unset: Vec<String>,
+    },
     /// `DELETE /qos-specs/{id}` (Cinder refuses one still associated).
-    QosSpecDelete { id: String },
+    QosSpecDelete {
+        id: String,
+    },
     /// *Create Group Type*: `POST /group_types` (volume 3.11).
-    GroupTypeCreate { name: String, description: Option<String>, public: bool },
+    GroupTypeCreate {
+        name: String,
+        description: Option<String>,
+        public: bool,
+    },
     /// *Edit Group Type*: `PUT /group_types/{id}`.
-    GroupTypeUpdate { id: String, name: String, description: Option<String>, public: bool },
+    GroupTypeUpdate {
+        id: String,
+        name: String,
+        description: Option<String>,
+        public: bool,
+    },
     /// `DELETE /group_types/{id}`.
-    GroupTypeDelete { id: String },
+    GroupTypeDelete {
+        id: String,
+    },
     /// *View Specs* of a group type: `POST …/group_specs` with `set`, then one
     /// `DELETE …/group_specs/{key}` per key in `unset`.
-    GroupTypeSetSpecs { id: String, set: Vec<(String, String)>, unset: Vec<String> },
-    FloatingIpAssociate { id: String, port_id: String },
-    FloatingIpDisassociate { id: String },
-    FloatingIpRelease { id: String },
+    GroupTypeSetSpecs {
+        id: String,
+        set: Vec<(String, String)>,
+        unset: Vec<String>,
+    },
+    FloatingIpAssociate {
+        id: String,
+        port_id: String,
+    },
+    FloatingIpDisassociate {
+        id: String,
+    },
+    FloatingIpRelease {
+        id: String,
+    },
     PortForwardingCreate(PortForwardingSpec),
-    PortForwardingUpdate { id: String, spec: PortForwardingSpec },
-    PortForwardingDelete { floating_ip_id: String, id: String },
+    PortForwardingUpdate {
+        id: String,
+        spec: PortForwardingSpec,
+    },
+    PortForwardingDelete {
+        floating_ip_id: String,
+        id: String,
+    },
     // Load balancers
     /// `cascade` also deletes listeners, pools, members and monitors (Octavia
     /// refuses to delete a load balancer that still has them otherwise).
-    LoadBalancerDelete { id: String, cascade: bool },
+    LoadBalancerDelete {
+        id: String,
+        cascade: bool,
+    },
     /// Boxed: by far the largest action.
     LoadBalancerCreate(Box<LbCreateSpec>),
-    LoadBalancerUpdate { id: String, name: String, description: String, admin_up: bool },
-    ListenerCreate { loadbalancer_id: String, spec: LbListenerSpec, default_pool_id: Option<String> },
+    LoadBalancerUpdate {
+        id: String,
+        name: String,
+        description: String,
+        admin_up: bool,
+    },
+    ListenerCreate {
+        loadbalancer_id: String,
+        spec: LbListenerSpec,
+        default_pool_id: Option<String>,
+    },
     ListenerUpdate {
         id: String,
         name: String,
@@ -4952,9 +5867,15 @@ pub enum OsAction {
         #[serde(default)]
         tls: Option<(String, Vec<String>)>,
     },
-    ListenerDelete { id: String },
+    ListenerDelete {
+        id: String,
+    },
     /// `listener_id`: also becomes that listener's default pool.
-    PoolCreate { loadbalancer_id: String, listener_id: Option<String>, spec: LbPoolSpec },
+    PoolCreate {
+        loadbalancer_id: String,
+        listener_id: Option<String>,
+        spec: LbPoolSpec,
+    },
     PoolUpdate {
         id: String,
         name: String,
@@ -4970,8 +5891,13 @@ pub enum OsAction {
         #[serde(default)]
         tls: Option<(bool, Option<String>)>,
     },
-    PoolDelete { id: String },
-    MemberCreate { pool_id: String, spec: LbMemberSpec },
+    PoolDelete {
+        id: String,
+    },
+    MemberCreate {
+        pool_id: String,
+        spec: LbMemberSpec,
+    },
     /// `None` monitor fields are sent as `null` (health-check the member itself).
     MemberUpdate {
         pool_id: String,
@@ -4988,7 +5914,10 @@ pub enum OsAction {
     /// Octavia's batch update (`PUT /lbaas/pools/{id}/members`): creates the new
     /// members, updates those matched by address and port, and **deletes the
     /// ones left out** (roadmap 54).
-    PoolSetMembers { pool_id: String, members: Vec<LbMemberSpec> },
+    PoolSetMembers {
+        pool_id: String,
+        members: Vec<LbMemberSpec>,
+    },
     /// `POST /v3/users/{user_id}/application_credentials`; the secret comes back
     /// once (`ActionOutcome.secret`, with `openrc` and `clouds.yaml`).
     AppCredentialCreate(Box<AppCredentialSpec>),
@@ -5002,24 +5931,55 @@ pub enum OsAction {
         domain_id: String,
     },
     /// `PATCH /v3/projects/{id}` (Horizon's *Edit Project*, including enabled).
-    ProjectUpdate { id: String, name: String, description: String, enabled: bool },
+    ProjectUpdate {
+        id: String,
+        name: String,
+        description: String,
+        enabled: bool,
+    },
     /// `DELETE /v3/projects/{id}`.
-    ProjectDelete { id: String },
+    ProjectDelete {
+        id: String,
+    },
     /// `PUT /v3/projects/{p}/users/{u}/roles/{r}` or `…/groups/{g}/…` (one of
     /// `user_id` / `group_id`): *Manage Members* / *Modify Groups*.
-    ProjectRoleGrant { project_id: String, user_id: Option<String>, group_id: Option<String>, role_id: String },
+    ProjectRoleGrant {
+        project_id: String,
+        user_id: Option<String>,
+        group_id: Option<String>,
+        role_id: String,
+    },
     /// The same with `DELETE`.
-    ProjectRoleRevoke { project_id: String, user_id: Option<String>, group_id: Option<String>, role_id: String },
+    ProjectRoleRevoke {
+        project_id: String,
+        user_id: Option<String>,
+        group_id: Option<String>,
+        role_id: String,
+    },
     /// Identity › Users: `POST /v3/users`, then the role on the primary project.
     UserCreate(Box<UserSpec>),
     /// `PATCH /v3/users/{id}` (name, email, description, primary project).
-    UserUpdate { id: String, name: String, email: String, description: String, project_id: Option<String> },
+    UserUpdate {
+        id: String,
+        name: String,
+        email: String,
+        description: String,
+        project_id: Option<String>,
+    },
     /// `PATCH /v3/users/{id}` with `enabled`.
-    UserSetEnabled { id: String, enabled: bool },
+    UserSetEnabled {
+        id: String,
+        enabled: bool,
+    },
     /// `PATCH /v3/users/{id}` with `password` (an admin setting it; masked).
-    UserSetPassword { id: String, password: String },
+    UserSetPassword {
+        id: String,
+        password: String,
+    },
     /// `DELETE /v3/users/{id}`.
-    UserDelete { id: String },
+    UserDelete {
+        id: String,
+    },
     /// Identity › Groups: `POST /v3/groups` in `domain_id` (set by `run_action`).
     GroupCreate {
         name: String,
@@ -5028,108 +5988,280 @@ pub enum OsAction {
         domain_id: String,
     },
     /// `PATCH /v3/groups/{id}`.
-    GroupUpdate { id: String, name: String, description: String },
+    GroupUpdate {
+        id: String,
+        name: String,
+        description: String,
+    },
     /// `DELETE /v3/groups/{id}`.
-    GroupDelete { id: String },
+    GroupDelete {
+        id: String,
+    },
     /// `PUT /v3/groups/{g}/users/{u}`.
-    GroupAddUser { group_id: String, user_id: String },
+    GroupAddUser {
+        group_id: String,
+        user_id: String,
+    },
     /// `DELETE /v3/groups/{g}/users/{u}`.
-    GroupRemoveUser { group_id: String, user_id: String },
+    GroupRemoveUser {
+        group_id: String,
+        user_id: String,
+    },
     /// Identity › Roles (admins, roadmap 57): `POST /v3/roles`.
-    RoleCreate { name: String },
+    RoleCreate {
+        name: String,
+    },
     /// `PATCH /v3/roles/{id}` (the name; Horizon's *Edit*).
-    RoleUpdate { id: String, name: String },
+    RoleUpdate {
+        id: String,
+        name: String,
+    },
     /// `DELETE /v3/roles/{id}`: also removes every assignment of the role.
-    RoleDelete { id: String },
+    RoleDelete {
+        id: String,
+    },
     /// `DELETE /v3/users/{user_id}/application_credentials/{id}`.
     AppCredentialDelete {
         #[serde(default)]
         user_id: String,
         id: String,
     },
-    MemberDelete { pool_id: String, id: String },
-    MonitorCreate { pool_id: String, spec: LbMonitorSpec },
+    MemberDelete {
+        pool_id: String,
+        id: String,
+    },
+    MonitorCreate {
+        pool_id: String,
+        spec: LbMonitorSpec,
+    },
     /// The type cannot change; every other field can.
-    MonitorUpdate { id: String, spec: LbMonitorSpec, admin_up: bool },
-    MonitorDelete { id: String },
+    MonitorUpdate {
+        id: String,
+        spec: LbMonitorSpec,
+        admin_up: bool,
+    },
+    MonitorDelete {
+        id: String,
+    },
     /// L7 policies and rules (roadmap 54).
-    L7PolicyCreate { listener_id: String, spec: LbL7PolicySpec },
+    L7PolicyCreate {
+        listener_id: String,
+        spec: LbL7PolicySpec,
+    },
     /// JSON: the unused redirect target is sent as `null`.
-    L7PolicyUpdate { id: String, spec: LbL7PolicySpec },
-    L7PolicyDelete { id: String },
-    L7RuleCreate { policy_id: String, spec: LbL7RuleSpec },
+    L7PolicyUpdate {
+        id: String,
+        spec: LbL7PolicySpec,
+    },
+    L7PolicyDelete {
+        id: String,
+    },
+    L7RuleCreate {
+        policy_id: String,
+        spec: LbL7RuleSpec,
+    },
     /// JSON: a removed key is sent as `null`.
-    L7RuleUpdate { policy_id: String, id: String, spec: LbL7RuleSpec },
-    L7RuleDelete { policy_id: String, id: String },
+    L7RuleUpdate {
+        policy_id: String,
+        id: String,
+        spec: LbL7RuleSpec,
+    },
+    L7RuleDelete {
+        policy_id: String,
+        id: String,
+    },
     // Trunks
-    TrunkCreate { name: String, description: Option<String>, port_id: String, admin_up: bool, subports: Vec<SubportSpec> },
-    TrunkUpdate { id: String, name: String, description: String, admin_up: bool },
-    TrunkDelete { id: String },
-    TrunkAddSubports { id: String, subports: Vec<SubportSpec> },
-    TrunkRemoveSubports { id: String, port_ids: Vec<String> },
+    TrunkCreate {
+        name: String,
+        description: Option<String>,
+        port_id: String,
+        admin_up: bool,
+        subports: Vec<SubportSpec>,
+    },
+    TrunkUpdate {
+        id: String,
+        name: String,
+        description: String,
+        admin_up: bool,
+    },
+    TrunkDelete {
+        id: String,
+    },
+    TrunkAddSubports {
+        id: String,
+        subports: Vec<SubportSpec>,
+    },
+    TrunkRemoveSubports {
+        id: String,
+        port_ids: Vec<String>,
+    },
     // Firewall (FWaaS v2, roadmap 93)
     FirewallRuleCreate(FirewallRuleSpec),
-    FirewallRuleUpdate { id: String, spec: FirewallRuleSpec },
-    FirewallRuleDelete { id: String },
+    FirewallRuleUpdate {
+        id: String,
+        spec: FirewallRuleSpec,
+    },
+    FirewallRuleDelete {
+        id: String,
+    },
     /// `rule_ids` in evaluation order.
-    FirewallPolicyCreate { name: String, description: String, rule_ids: Vec<String>, audited: bool },
-    FirewallPolicyUpdate { id: String, name: String, description: String, audited: bool },
-    FirewallPolicyDelete { id: String },
+    FirewallPolicyCreate {
+        name: String,
+        description: String,
+        rule_ids: Vec<String>,
+        audited: bool,
+    },
+    FirewallPolicyUpdate {
+        id: String,
+        name: String,
+        description: String,
+        audited: bool,
+    },
+    FirewallPolicyDelete {
+        id: String,
+    },
     /// Inserts a rule before or after one already in the policy (neither: first).
-    FirewallPolicyInsertRule { id: String, rule_id: String, before_id: Option<String>, after_id: Option<String> },
-    FirewallPolicyRemoveRule { id: String, rule_id: String },
+    FirewallPolicyInsertRule {
+        id: String,
+        rule_id: String,
+        before_id: Option<String>,
+        after_id: Option<String>,
+    },
+    FirewallPolicyRemoveRule {
+        id: String,
+        rule_id: String,
+    },
     /// `None` policies: no ingress / egress filtering.
-    FirewallGroupCreate { name: String, description: String, ingress_policy_id: Option<String>, egress_policy_id: Option<String>, port_ids: Vec<String>, admin_up: bool },
+    FirewallGroupCreate {
+        name: String,
+        description: String,
+        ingress_policy_id: Option<String>,
+        egress_policy_id: Option<String>,
+        port_ids: Vec<String>,
+        admin_up: bool,
+    },
     /// `None` policies are cleared (`null`).
-    FirewallGroupUpdate { id: String, name: String, description: String, ingress_policy_id: Option<String>, egress_policy_id: Option<String>, admin_up: bool },
+    FirewallGroupUpdate {
+        id: String,
+        name: String,
+        description: String,
+        ingress_policy_id: Option<String>,
+        egress_policy_id: Option<String>,
+        admin_up: bool,
+    },
     /// *Add Port* / *Remove Port*: Neutron takes the whole new list.
-    FirewallGroupSetPorts { id: String, port_ids: Vec<String> },
-    FirewallGroupDelete { id: String },
+    FirewallGroupSetPorts {
+        id: String,
+        port_ids: Vec<String>,
+    },
+    FirewallGroupDelete {
+        id: String,
+    },
     // Network QoS
-    QosPolicyCreate { name: String, description: Option<String>, shared: bool },
-    QosPolicyUpdate { id: String, name: String, description: String, shared: bool },
-    QosPolicyDelete { id: String },
-    QosRuleCreate { policy_id: String, spec: QosRuleSpec },
-    QosRuleUpdate { policy_id: String, id: String, spec: QosRuleSpec },
-    QosRuleDelete { policy_id: String, kind: String, id: String },
+    QosPolicyCreate {
+        name: String,
+        description: Option<String>,
+        shared: bool,
+    },
+    QosPolicyUpdate {
+        id: String,
+        name: String,
+        description: String,
+        shared: bool,
+    },
+    QosPolicyDelete {
+        id: String,
+    },
+    QosRuleCreate {
+        policy_id: String,
+        spec: QosRuleSpec,
+    },
+    QosRuleUpdate {
+        policy_id: String,
+        id: String,
+        spec: QosRuleSpec,
+    },
+    QosRuleDelete {
+        policy_id: String,
+        kind: String,
+        id: String,
+    },
     // Key Manager (roadmap 55)
     SecretCreate(SecretSpec),
-    SecretDelete { id: String },
+    SecretDelete {
+        id: String,
+    },
     /// `secrets`: (role, `secret_ref` URL) pairs; Barbican takes refs, not IDs.
-    ContainerCreate { name: Option<String>, container_type: String, secrets: Vec<(String, String)> },
+    ContainerCreate {
+        name: Option<String>,
+        container_type: String,
+        secrets: Vec<(String, String)>,
+    },
     /// Deletes the container only; its secrets stay.
-    ContainerDelete { id: String },
+    ContainerDelete {
+        id: String,
+    },
     /// *Edit Access* (roadmap 75): `PUT v1/secrets/{id}/acl`, which replaces the
     /// whole `read` ACL. `users` are Keystone user IDs (checked like IDs).
-    SecretAclSet { id: String, project_access: bool, users: Vec<String> },
+    SecretAclSet {
+        id: String,
+        project_access: bool,
+        users: Vec<String>,
+    },
     /// *Reset Access*: `DELETE v1/secrets/{id}/acl`, back to Barbican's default
     /// (every project member, no extra users).
-    SecretAclDelete { id: String },
+    SecretAclDelete {
+        id: String,
+    },
     /// *Edit Access* on a container: `PUT v1/containers/{id}/acl`. The secrets in
     /// it have their own ACLs (Octavia needs both).
-    ContainerAclSet { id: String, project_access: bool, users: Vec<String> },
+    ContainerAclSet {
+        id: String,
+        project_access: bool,
+        users: Vec<String>,
+    },
     /// *Reset Access* on a container: `DELETE v1/containers/{id}/acl`.
-    ContainerAclDelete { id: String },
+    ContainerAclDelete {
+        id: String,
+    },
     // Orchestration (Heat, roadmap 62). Heat paths take the stack's name and
     // ID (`stacks/{name}/{id}`), so both travel; `name` is checked like an ID.
     /// `POST …/actions {"check": null}`: Heat checks each resource still exists.
-    StackCheck { name: String, id: String },
+    StackCheck {
+        name: String,
+        id: String,
+    },
     /// `{"suspend": null}`: suspends the resources that can be (servers are paused…).
-    StackSuspend { name: String, id: String },
+    StackSuspend {
+        name: String,
+        id: String,
+    },
     /// `{"resume": null}`.
-    StackResume { name: String, id: String },
+    StackResume {
+        name: String,
+        id: String,
+    },
     /// Deletes the stack and every resource it created.
-    StackDelete { name: String, id: String },
+    StackDelete {
+        name: String,
+        id: String,
+    },
     /// `POST stacks`.
     StackCreate(StackSpec),
     /// *Change Stack Template*: `PATCH stacks/{name}/{id}`, so parameters left
     /// out (hidden ones the form can't show) and the environment keep their values.
-    StackUpdate { id: String, spec: StackSpec },
+    StackUpdate {
+        id: String,
+        spec: StackSpec,
+    },
     // Alarming (Aodh, roadmap 79)
     /// `POST v2/alarms`.
     AlarmCreate(AlarmSpec),
     /// `PUT v2/alarms/{id}`: Aodh replaces the alarm, so `spec` is all of it.
-    AlarmUpdate { id: String, spec: AlarmSpec },
+    AlarmUpdate {
+        id: String,
+        spec: AlarmSpec,
+    },
     // Bulk
     /// Runs every action in order, continuing after a failure (Horizon's bulk
     /// *Delete …*). Each item carries its display name for the results list.
@@ -5144,7 +6276,11 @@ impl OsAction {
     pub fn image_property_keys(&self) -> Vec<&str> {
         match self {
             OsAction::ImageCreate(spec) => spec.properties.iter().map(|(k, _)| k.as_str()).collect(),
-            OsAction::ImageSetProperties { set, remove, .. } => set.iter().map(|(k, _)| k.as_str()).chain(remove.iter().map(String::as_str)).collect(),
+            OsAction::ImageSetProperties { set, remove, .. } => set
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .chain(remove.iter().map(String::as_str))
+                .collect(),
             OsAction::Batch(items) => items.iter().flat_map(|(_, a)| a.image_property_keys()).collect(),
             _ => vec![],
         }
@@ -5188,7 +6324,9 @@ impl OsAction {
     /// (roadmap 57: a project created from *ttcp-spain* landed in `Default`).
     pub fn set_domain(&mut self, domain: &str) {
         match self {
-            OsAction::ProjectCreate { domain_id, .. } | OsAction::GroupCreate { domain_id, .. } => *domain_id = domain.to_string(),
+            OsAction::ProjectCreate { domain_id, .. } | OsAction::GroupCreate { domain_id, .. } => {
+                *domain_id = domain.to_string()
+            }
             OsAction::UserCreate(spec) => spec.domain_id = domain.to_string(),
             OsAction::Batch(items) => items.iter_mut().for_each(|(_, a)| a.set_domain(domain)),
             _ => {}
@@ -5203,10 +6341,20 @@ impl OsAction {
     pub fn identity_safety(&self, me: &str, project: &str) -> Result<(), String> {
         match self {
             OsAction::UserDelete { id } if id == me => Err("you cannot delete your own user".into()),
-            OsAction::UserSetEnabled { id, enabled: false } if id == me => Err("you cannot disable your own user".into()),
-            OsAction::ProjectDelete { id } if id == project => Err("you cannot delete the project you are signed in to".into()),
-            OsAction::ProjectUpdate { id, enabled: false, .. } if id == project => Err("you cannot disable the project you are signed in to".into()),
-            OsAction::ProjectRoleRevoke { project_id, user_id: Some(u), .. } if project_id == project && u == me => {
+            OsAction::UserSetEnabled { id, enabled: false } if id == me => {
+                Err("you cannot disable your own user".into())
+            }
+            OsAction::ProjectDelete { id } if id == project => {
+                Err("you cannot delete the project you are signed in to".into())
+            }
+            OsAction::ProjectUpdate { id, enabled: false, .. } if id == project => {
+                Err("you cannot disable the project you are signed in to".into())
+            }
+            OsAction::ProjectRoleRevoke {
+                project_id,
+                user_id: Some(u),
+                ..
+            } if project_id == project && u == me => {
                 Err("you cannot remove your own roles on the project you are signed in to".into())
             }
             OsAction::Batch(items) => items.iter().try_for_each(|(_, a)| a.identity_safety(me, project)),
@@ -5222,7 +6370,11 @@ impl OsAction {
     pub fn check_ids(&self) -> Result<(), AppError> {
         fn walk(v: &serde_json::Value, key: &str, keypair: bool) -> Result<(), AppError> {
             use serde_json::Value;
-            let path_key = key == "id" || key.ends_with("_id") || key.ends_with("_ids") || key == "kind" || (keypair && key == "name");
+            let path_key = key == "id"
+                || key.ends_with("_id")
+                || key.ends_with("_ids")
+                || key == "kind"
+                || (keypair && key == "name");
             match v {
                 Value::String(s) if path_key && !s.is_empty() => check_id(s),
                 Value::Array(items) => items.iter().try_for_each(|x| walk(x, key, keypair)),
@@ -5254,7 +6406,9 @@ impl OsAction {
         match self {
             // Certificates come from Barbican (roadmap 54).
             OsAction::ListenerCreate { spec, .. } if tls(spec) => vec![Plugin::LoadBalancer, Plugin::KeyManager],
-            OsAction::LoadBalancerCreate(s) if s.listener.as_ref().is_some_and(tls) => vec![Plugin::LoadBalancer, Plugin::KeyManager],
+            OsAction::LoadBalancerCreate(s) if s.listener.as_ref().is_some_and(tls) => {
+                vec![Plugin::LoadBalancer, Plugin::KeyManager]
+            }
             OsAction::ListenerUpdate { tls: Some(_), .. } => vec![Plugin::LoadBalancer, Plugin::KeyManager],
             OsAction::LoadBalancerDelete { .. }
             | OsAction::LoadBalancerCreate(_)
@@ -5318,10 +6472,24 @@ impl OsAction {
             | OsAction::StackCreate(_)
             | OsAction::StackUpdate { .. } => vec![Plugin::Orchestration],
             OsAction::AlarmCreate(_) | OsAction::AlarmUpdate { .. } => vec![Plugin::Alarming],
-            OsAction::BackupCreate { .. } | OsAction::BackupUpdate { .. } | OsAction::BackupRestore { .. } | OsAction::BackupDelete { .. } => vec![Plugin::Backup],
-            OsAction::QuotaUpdate { service: QuotaService::LoadBalancer, .. } => vec![Plugin::LoadBalancer],
-            OsAction::QuotaUpdate { service: QuotaService::KeyManager, .. } => vec![Plugin::KeyManager],
-            OsAction::RouterCreate { qos_policy_id: Some(_), .. } | OsAction::FloatingIpAllocate { qos_policy_id: Some(_), .. } => vec![Plugin::Qos],
+            OsAction::BackupCreate { .. }
+            | OsAction::BackupUpdate { .. }
+            | OsAction::BackupRestore { .. }
+            | OsAction::BackupDelete { .. } => vec![Plugin::Backup],
+            OsAction::QuotaUpdate {
+                service: QuotaService::LoadBalancer,
+                ..
+            } => vec![Plugin::LoadBalancer],
+            OsAction::QuotaUpdate {
+                service: QuotaService::KeyManager,
+                ..
+            } => vec![Plugin::KeyManager],
+            OsAction::RouterCreate {
+                qos_policy_id: Some(_), ..
+            }
+            | OsAction::FloatingIpAllocate {
+                qos_policy_id: Some(_), ..
+            } => vec![Plugin::Qos],
             OsAction::Batch(items) => items.iter().flat_map(|(_, a)| a.plugins()).collect(),
             _ => vec![],
         }
@@ -5343,7 +6511,9 @@ impl OsAction {
     /// without the `admin` role on the token, before any request.
     pub fn admin_only(&self) -> bool {
         match self {
-            OsAction::AdminNetworkCreate(_) | OsAction::AdminNetworkUpdate { .. } | OsAction::RbacPolicyCreate { .. }
+            OsAction::AdminNetworkCreate(_)
+            | OsAction::AdminNetworkUpdate { .. }
+            | OsAction::RbacPolicyCreate { .. }
             | OsAction::RbacPolicyUpdate { .. }
             | OsAction::RbacPolicyDelete { .. }
             | OsAction::AdminFloatingIpAllocate { .. }
@@ -5535,7 +6705,11 @@ pub struct Choice {
 impl Choice {
     /// A choice with only a value and a label (no table cells).
     pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
-        Choice { value: value.into(), label: label.into(), ..Default::default() }
+        Choice {
+            value: value.into(),
+            label: label.into(),
+            ..Default::default()
+        }
     }
 }
 
@@ -5663,7 +6837,9 @@ impl Topology {
 
     /// The links that touch `id`, a device or a network.
     pub fn links_of<'a>(&'a self, id: &'a str) -> impl Iterator<Item = &'a TopoLink> + 'a {
-        self.links.iter().filter(move |l| l.device_id == id || l.network_id == id)
+        self.links
+            .iter()
+            .filter(move |l| l.device_id == id || l.network_id == id)
     }
 }
 
@@ -5920,15 +7096,19 @@ fn openstack() -> String {
     "openstack".into()
 }
 
-
-
 impl Credentials {
     /// Base file name for downloads, e.g. `demo-openrc.sh`.
     pub fn file_stem(&self) -> String {
         let stem: String = self
             .project_name
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         if stem.is_empty() { "openstack".into() } else { stem }
     }
@@ -5939,8 +7119,20 @@ mod topology_tests {
     use super::*;
 
     fn with(n: usize, max: usize) -> Topology {
-        let net = |i: usize| TopoNetwork { id: i.to_string(), name: String::new(), external: false, shared: false, owned: true, status: "ACTIVE".into(), cidrs: vec![] };
-        Topology { networks: (0..n).map(net).collect(), max_networks: max, ..Default::default() }
+        let net = |i: usize| TopoNetwork {
+            id: i.to_string(),
+            name: String::new(),
+            external: false,
+            shared: false,
+            owned: true,
+            status: "ACTIVE".into(),
+            cidrs: vec![],
+        };
+        Topology {
+            networks: (0..n).map(net).collect(),
+            max_networks: max,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -5975,7 +7167,14 @@ mod credentials_tests {
     #[test]
     fn file_stem_is_safe() {
         assert_eq!(sample().file_stem(), "it_s__demo_");
-        assert_eq!(Credentials { project_name: String::new(), ..sample() }.file_stem(), "openstack");
+        assert_eq!(
+            Credentials {
+                project_name: String::new(),
+                ..sample()
+            }
+            .file_stem(),
+            "openstack"
+        );
     }
 }
 
@@ -6040,7 +7239,11 @@ impl UsageSummary {
     pub fn csv(&self) -> String {
         let n = |v: f64| fixed(v, 2);
         fn field(v: &str) -> String {
-            if v.contains([',', '"', '\n', '\r']) { format!("\"{}\"", v.replace('"', "\"\"")) } else { v.to_string() }
+            if v.contains([',', '"', '\n', '\r']) {
+                format!("\"{}\"", v.replace('"', "\"\""))
+            } else {
+                v.to_string()
+            }
         }
         let mut out = format!("Usage Report For Period:,{},{}\n", self.start, self.end);
         out += &format!("Active Instances:,{}\n", self.active_instances());
@@ -6051,7 +7254,13 @@ impl UsageSummary {
         for s in self.servers.iter().filter(|s| s.active()) {
             out += &format!(
                 "{},{},{},{},{},{},{}\n",
-                field(&s.name), s.vcpus, s.memory_mb, s.local_gb, n(s.hours), s.uptime, field(&s.state)
+                field(&s.name),
+                s.vcpus,
+                s.memory_mb,
+                s.local_gb,
+                n(s.hours),
+                s.uptime,
+                field(&s.state)
             );
         }
         out
@@ -6075,7 +7284,11 @@ pub struct ProjectUsage {
 
 impl ProjectUsage {
     fn summary(&self) -> UsageSummary {
-        UsageSummary { start: String::new(), end: String::new(), servers: self.servers.clone() }
+        UsageSummary {
+            start: String::new(),
+            end: String::new(),
+            servers: self.servers.clone(),
+        }
     }
     /// VCPUs of the servers that still exist.
     pub fn vcpus(&self) -> i64 {
@@ -6112,14 +7325,24 @@ pub struct GlobalUsage {
 impl GlobalUsage {
     /// Every server of every project, for the totals above the table.
     pub fn summary(&self) -> UsageSummary {
-        UsageSummary { start: self.start.clone(), end: self.end.clone(), servers: self.projects.iter().flat_map(|p| p.servers.clone()).collect() }
+        UsageSummary {
+            start: self.start.clone(),
+            end: self.end.clone(),
+            servers: self.projects.iter().flat_map(|p| p.servers.clone()).collect(),
+        }
     }
 
     /// CSV like Horizon's Admin *Download CSV Summary* (`GlobalUsageCsvRenderer`):
     /// the totals, then one line per project; *Usage (Hours)* is VCPU-hours.
     pub fn csv(&self) -> String {
         let n = |v: f64| fixed(v, 2);
-        let field = |v: &str| if v.contains([',', '"', '\n', '\r']) { format!("\"{}\"", v.replace('"', "\"\"")) } else { v.to_string() };
+        let field = |v: &str| {
+            if v.contains([',', '"', '\n', '\r']) {
+                format!("\"{}\"", v.replace('"', "\"\""))
+            } else {
+                v.to_string()
+            }
+        };
         let all = self.summary();
         let mut out = format!("Usage Report For Period:,{},{}\n", self.start, self.end);
         out += &format!("Active Instances:,{}\n", all.active_instances());
@@ -6128,8 +7351,19 @@ impl GlobalUsage {
         out += &format!("This Period's RAM-Hours:,{}\n\n", n(all.ram_mb_hours()));
         out += "Project Name,VCPUs,RAM (MB),Disk (GB),Usage (Hours)\n";
         for p in &self.projects {
-            let name = if p.deleted { format!("{} (Deleted)", p.project) } else { p.project.clone() };
-            out += &format!("{},{},{},{},{}\n", field(&name), p.vcpus(), p.memory_mb(), p.local_gb(), n(p.vcpu_hours()));
+            let name = if p.deleted {
+                format!("{} (Deleted)", p.project)
+            } else {
+                p.project.clone()
+            };
+            out += &format!(
+                "{},{},{},{},{}\n",
+                field(&name),
+                p.vcpus(),
+                p.memory_mb(),
+                p.local_gb(),
+                n(p.vcpu_hours())
+            );
         }
         out
     }
@@ -6182,14 +7416,26 @@ mod usage_tests {
     }
 
     fn u(name: &str, vcpus: i64, hours: f64, state: &str) -> ServerUsage {
-        ServerUsage { id: name.into(), name: name.into(), vcpus, memory_mb: 2048, local_gb: 10, hours, uptime: 3600, state: state.into() }
+        ServerUsage {
+            id: name.into(),
+            name: name.into(),
+            vcpus,
+            memory_mb: 2048,
+            local_gb: 10,
+            hours,
+            uptime: 3600,
+            state: state.into(),
+        }
     }
 
     #[test]
     fn range_defaults_to_this_month_and_validates() {
         let today = d("2026-10-24");
         assert_eq!(usage_range("", "", today), Ok((d("2026-10-01"), today)));
-        assert_eq!(usage_range("2026-09-01", "2026-09-30", today), Ok((d("2026-09-01"), d("2026-09-30"))));
+        assert_eq!(
+            usage_range("2026-09-01", "2026-09-30", today),
+            Ok((d("2026-09-01"), d("2026-09-30")))
+        );
         assert!(usage_range("2026-10-05", "2026-10-01", today).is_err());
         assert!(usage_range("2024-01-01", "2026-01-01", today).is_err());
         assert!(usage_range("yesterday", "", today).is_err());
@@ -6197,18 +7443,30 @@ mod usage_tests {
 
     #[test]
     fn totals_count_only_active_servers_where_horizon_does() {
-        let s = UsageSummary { start: "a".into(), end: "b".into(), servers: vec![u("x", 2, 10.0, "active"), u("y", 4, 1.5, "terminated")] };
+        let s = UsageSummary {
+            start: "a".into(),
+            end: "b".into(),
+            servers: vec![u("x", 2, 10.0, "active"), u("y", 4, 1.5, "terminated")],
+        };
         assert_eq!(s.active_instances(), 1);
         assert_eq!(s.active_ram_mb(), 2048);
         assert!((s.vcpu_hours() - 26.0).abs() < 1e-9);
         assert!((s.gb_hours() - 115.0).abs() < 1e-9);
-        assert_eq!(s.listed().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["x"], "ended servers are not listed");
+        assert_eq!(
+            s.listed().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+            ["x"],
+            "ended servers are not listed"
+        );
         assert!(!s.csv().contains("\ny,"), "nor in the CSV");
     }
 
     #[test]
     fn csv_quotes_names() {
-        let s = UsageSummary { start: "2026-10-01".into(), end: "2026-10-24".into(), servers: vec![u("web, \"1\"", 1, 2.0, "active")] };
+        let s = UsageSummary {
+            start: "2026-10-01".into(),
+            end: "2026-10-24".into(),
+            servers: vec![u("web, \"1\"", 1, 2.0, "active")],
+        };
         let csv = s.csv();
         assert!(csv.starts_with("Usage Report For Period:,2026-10-01,2026-10-24\n"));
         assert!(csv.contains("\"web, \"\"1\"\"\",1,2048,10,2.00,3600,active\n"));
@@ -6216,10 +7474,27 @@ mod usage_tests {
 
     #[test]
     fn providers_form_a_tree_with_gpus_under_their_host() {
-        let res = |used, total| Some(ProviderResource { used, reserved: 0, total, allocation_ratio: 1.0 });
+        let res = |used, total| {
+            Some(ProviderResource {
+                used,
+                reserved: 0,
+                total,
+                allocation_ratio: 1.0,
+            })
+        };
         let rp = |uuid: &str, name: &str, parent: Option<&str>, vgpus| ResourceProviderRow {
-            uuid: uuid.into(), name: name.into(), vcpus: None, memory_mb: None, disk_gb: None, parent: parent.map(Into::into),
-            depth: 0, host: String::new(), descendants: 0, vgpus, others: vec![], custom_traits: vec![],
+            uuid: uuid.into(),
+            name: name.into(),
+            vcpus: None,
+            memory_mb: None,
+            disk_gb: None,
+            parent: parent.map(Into::into),
+            depth: 0,
+            host: String::new(),
+            descendants: 0,
+            vgpus,
+            others: vec![],
+            custom_traits: vec![],
         };
         let rows = provider_tree(vec![
             rp("g2", "cmp-1_pci_0000_85_00_0", Some("h1"), res(1, 4)),
@@ -6229,49 +7504,144 @@ mod usage_tests {
             rp("old", "cmp-2", None, res(3, 8)),
         ]);
         let shape: Vec<_> = rows.iter().map(|r| (r.name.as_str(), r.depth)).collect();
-        assert_eq!(shape, [("cmp-0", 0), ("cmp-1", 0), ("pci 0000:84:00.0", 1), ("pci 0000:85:00.0", 1), ("cmp-2", 0)], "hosts by name, GPUs under theirs, short names");
-        assert_eq!(rows[1].vgpus.as_ref().map(|v| (v.used, v.total)), Some((3, 8)), "a host shows its GPUs' sum");
-        assert_eq!(rows.iter().map(|r| (r.host.as_str(), r.descendants)).collect::<Vec<_>>(), [("h2", 0), ("h1", 2), ("h1", 0), ("h1", 0), ("old", 0)], "each row knows its host; a host counts what it can collapse");
-        let typed = |uuid: &str, parent: Option<&str>, tr: &[&str]| ResourceProviderRow { custom_traits: tr.iter().map(|t| t.to_string()).collect(), ..rp(uuid, uuid, parent, res(0, 1)) };
-        let host = provider_tree(vec![typed("h", None, &[]), typed("g1", Some("h"), &["CUSTOM_B"]), typed("g2", Some("h"), &["CUSTOM_A", "CUSTOM_B"])]);
-        assert_eq!(host[0].custom_traits, ["CUSTOM_A", "CUSTOM_B"], "a host lists its devices' types once each");
-        assert_eq!(vgpu_summary(&rows), (6, 16, 3, 2), "cmp-1's two GPUs and cmp-2's own VGPU (older Nova), not cmp-1's sum twice");
-        assert_eq!(short_provider_name("cmp-1", "cmp-1_NUMA0"), "NUMA0", "other children lose only the host prefix");
+        assert_eq!(
+            shape,
+            [
+                ("cmp-0", 0),
+                ("cmp-1", 0),
+                ("pci 0000:84:00.0", 1),
+                ("pci 0000:85:00.0", 1),
+                ("cmp-2", 0)
+            ],
+            "hosts by name, GPUs under theirs, short names"
+        );
+        assert_eq!(
+            rows[1].vgpus.as_ref().map(|v| (v.used, v.total)),
+            Some((3, 8)),
+            "a host shows its GPUs' sum"
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|r| (r.host.as_str(), r.descendants))
+                .collect::<Vec<_>>(),
+            [("h2", 0), ("h1", 2), ("h1", 0), ("h1", 0), ("old", 0)],
+            "each row knows its host; a host counts what it can collapse"
+        );
+        let typed = |uuid: &str, parent: Option<&str>, tr: &[&str]| ResourceProviderRow {
+            custom_traits: tr.iter().map(|t| t.to_string()).collect(),
+            ..rp(uuid, uuid, parent, res(0, 1))
+        };
+        let host = provider_tree(vec![
+            typed("h", None, &[]),
+            typed("g1", Some("h"), &["CUSTOM_B"]),
+            typed("g2", Some("h"), &["CUSTOM_A", "CUSTOM_B"]),
+        ]);
+        assert_eq!(
+            host[0].custom_traits,
+            ["CUSTOM_A", "CUSTOM_B"],
+            "a host lists its devices' types once each"
+        );
+        assert_eq!(
+            vgpu_summary(&rows),
+            (6, 16, 3, 2),
+            "cmp-1's two GPUs and cmp-2's own VGPU (older Nova), not cmp-1's sum twice"
+        );
+        assert_eq!(
+            short_provider_name("cmp-1", "cmp-1_NUMA0"),
+            "NUMA0",
+            "other children lose only the host prefix"
+        );
     }
 
     #[test]
     fn hypervisor_totals_sum_every_hypervisor() {
         let h = |used: i64, total: i64| HypervisorRow {
-            id: "h".into(), hostname: "h".into(), kind: "QEMU".into(), vcpus_used: used, vcpus: total, ram_used_mb: used * 1024,
-            ram_mb: total * 1024, disk_used_gb: used * 10, disk_gb: total * 10, instances: 0, up: true, enabled: true,
+            id: "h".into(),
+            hostname: "h".into(),
+            kind: "QEMU".into(),
+            vcpus_used: used,
+            vcpus: total,
+            ram_used_mb: used * 1024,
+            ram_mb: total * 1024,
+            disk_used_gb: used * 10,
+            disk_gb: total * 10,
+            instances: 0,
+            up: true,
+            enabled: true,
         };
-        let hv = Hypervisors { hypervisors: vec![h(2, 8), h(3, 16)], hosts: Fallible { rows: vec![], error: None }, placement: false };
+        let hv = Hypervisors {
+            hypervisors: vec![h(2, 8), h(3, 16)],
+            hosts: Fallible {
+                rows: vec![],
+                error: None,
+            },
+            placement: false,
+        };
         assert_eq!(hv.totals(), [(5, 24), (5120, 24576), (50, 240)]);
     }
 
     #[test]
     fn global_usage_totals_every_project_and_csv_has_a_line_each() {
-        let p = |name: &str, servers| ProjectUsage { project_id: name.into(), project: name.into(), servers, deleted: false };
+        let p = |name: &str, servers| ProjectUsage {
+            project_id: name.into(),
+            project: name.into(),
+            servers,
+            deleted: false,
+        };
         let g = GlobalUsage {
             start: "2026-10-01".into(),
             end: "2026-10-30".into(),
-            projects: vec![p("a, b", vec![u("x", 2, 10.0, "active")]), p("c", vec![u("y", 4, 1.5, "terminated"), u("z", 1, 1.0, "active")])],
+            projects: vec![
+                p("a, b", vec![u("x", 2, 10.0, "active")]),
+                p("c", vec![u("y", 4, 1.5, "terminated"), u("z", 1, 1.0, "active")]),
+            ],
         };
         let all = g.summary();
-        assert_eq!((all.active_instances(), all.vcpu_hours()), (2, 27.0), "every project's servers");
+        assert_eq!(
+            (all.active_instances(), all.vcpu_hours()),
+            (2, 27.0),
+            "every project's servers"
+        );
         let csv = g.csv();
-        assert!(csv.starts_with("Usage Report For Period:,2026-10-01,2026-10-30\nActive Instances:,2\n"), "{csv}");
-        assert!(csv.contains("Project Name,VCPUs,RAM (MB),Disk (GB),Usage (Hours)\n\"a, b\",2,2048,10,20.00\nc,1,2048,10,7.00\n"), "{csv}");
-        let gone = GlobalUsage { projects: vec![ProjectUsage { deleted: true, ..p("dc87", vec![u("x", 2, 1.0, "active")]) }], ..g };
-        assert!(gone.csv().ends_with("dc87 (Deleted),2,2048,10,2.00\n"), "Horizon's label (roadmap 89)");
+        assert!(
+            csv.starts_with("Usage Report For Period:,2026-10-01,2026-10-30\nActive Instances:,2\n"),
+            "{csv}"
+        );
+        assert!(
+            csv.contains(
+                "Project Name,VCPUs,RAM (MB),Disk (GB),Usage (Hours)\n\"a, b\",2,2048,10,20.00\nc,1,2048,10,7.00\n"
+            ),
+            "{csv}"
+        );
+        let gone = GlobalUsage {
+            projects: vec![ProjectUsage {
+                deleted: true,
+                ..p("dc87", vec![u("x", 2, 1.0, "active")])
+            }],
+            ..g
+        };
+        assert!(
+            gone.csv().ends_with("dc87 (Deleted),2,2048,10,2.00\n"),
+            "Horizon's label (roadmap 89)"
+        );
     }
 
     #[test]
     fn an_empty_period_totals_zero_not_minus_zero() {
-        let s = UsageSummary { start: "2026-10-01".into(), end: "2026-10-24".into(), servers: vec![] };
-        assert!(s.vcpu_hours().is_sign_negative(), "an empty f64 sum is -0.0: the cause of roadmap 60");
+        let s = UsageSummary {
+            start: "2026-10-01".into(),
+            end: "2026-10-24".into(),
+            servers: vec![],
+        };
+        assert!(
+            s.vcpu_hours().is_sign_negative(),
+            "an empty f64 sum is -0.0: the cause of roadmap 60"
+        );
         let csv = s.csv();
-        assert!(csv.contains("This Period's VCPU-Hours:,0.00\n") && !csv.contains("-0.00"), "{csv}");
+        assert!(
+            csv.contains("This Period's VCPU-Hours:,0.00\n") && !csv.contains("-0.00"),
+            "{csv}"
+        );
     }
 }
 
@@ -6383,7 +7753,9 @@ pub fn validate_metadata(pairs: &[(String, String)]) -> Result<Vec<(String, Stri
             return Err("every entry needs a key".into());
         }
         if k.chars().count() > METADATA_MAX_LEN || v.chars().count() > METADATA_MAX_LEN {
-            return Err(format!("{k}: keys and values are limited to {METADATA_MAX_LEN} characters"));
+            return Err(format!(
+                "{k}: keys and values are limited to {METADATA_MAX_LEN} characters"
+            ));
         }
         if out.iter().any(|(o, _)| o == k) {
             return Err(format!("{k}: repeated key"));
@@ -6397,7 +7769,11 @@ pub fn validate_metadata(pairs: &[(String, String)]) -> Result<Vec<(String, Stri
 /// What turns `old` into `new`: the pairs to add or change, and the keys to remove.
 pub fn metadata_changes(old: &[(String, String)], new: &[(String, String)]) -> (Vec<(String, String)>, Vec<String>) {
     let set = new.iter().filter(|p| !old.contains(p)).cloned().collect();
-    let remove = old.iter().filter(|(k, _)| !new.iter().any(|(n, _)| n == k)).map(|(k, _)| k.clone()).collect();
+    let remove = old
+        .iter()
+        .filter(|(k, _)| !new.iter().any(|(n, _)| n == k))
+        .map(|(k, _)| k.clone())
+        .collect();
     (set, remove)
 }
 
@@ -6421,22 +7797,54 @@ mod metadata_tests {
     #[test]
     fn ipv6_modes_split_like_horizon() {
         assert_eq!(ipv6_modes("none/none"), Ok((None, None)));
-        assert_eq!(ipv6_modes("none/slaac"), Ok((None, Some("slaac".into()))), "an external router announces");
-        assert_eq!(ipv6_modes("dhcpv6-stateful/dhcpv6-stateful"), Ok((Some("dhcpv6-stateful".into()), Some("dhcpv6-stateful".into()))));
-        assert!(ipv6_modes("slaac/dhcpv6-stateful").is_err(), "only Horizon's five pairs");
+        assert_eq!(
+            ipv6_modes("none/slaac"),
+            Ok((None, Some("slaac".into()))),
+            "an external router announces"
+        );
+        assert_eq!(
+            ipv6_modes("dhcpv6-stateful/dhcpv6-stateful"),
+            Ok((Some("dhcpv6-stateful".into()), Some("dhcpv6-stateful".into())))
+        );
+        assert!(
+            ipv6_modes("slaac/dhcpv6-stateful").is_err(),
+            "only Horizon's five pairs"
+        );
     }
 
     #[test]
     fn provider_networks_follow_horizons_rules() {
-        let p = |ty: &str, phys: Option<&str>, seg: Option<u32>| ProviderNetwork { network_type: ty.into(), physical_network: phys.map(Into::into), segmentation_id: seg };
+        let p = |ty: &str, phys: Option<&str>, seg: Option<u32>| ProviderNetwork {
+            network_type: ty.into(),
+            physical_network: phys.map(Into::into),
+            segmentation_id: seg,
+        };
         let builtin = crate::prefs::NetworkPrefs::default().provider_types();
         assert!(p("vlan", Some("physnet1"), Some(100)).validate(&builtin).is_ok());
-        assert!(p("vlan", Some("physnet1"), None).validate(&builtin).is_ok(), "Neutron picks the VLAN");
-        assert!(p("vlan", None, Some(100)).validate(&builtin).is_err(), "vlan needs a physical network");
-        assert!(p("vlan", Some("physnet1"), Some(4095)).validate(&builtin).is_err(), "VLAN IDs stop at 4094");
-        assert!(p("flat", Some("physnet1"), Some(1)).validate(&builtin).is_err(), "flat has no segmentation ID");
-        assert!(p("vxlan", Some("physnet1"), None).validate(&builtin).is_err(), "vxlan has no physical network");
-        assert!(p("vxlan", None, Some(1 << 24)).validate(&builtin).is_err(), "VNIs are 24 bits");
+        assert!(
+            p("vlan", Some("physnet1"), None).validate(&builtin).is_ok(),
+            "Neutron picks the VLAN"
+        );
+        assert!(
+            p("vlan", None, Some(100)).validate(&builtin).is_err(),
+            "vlan needs a physical network"
+        );
+        assert!(
+            p("vlan", Some("physnet1"), Some(4095)).validate(&builtin).is_err(),
+            "VLAN IDs stop at 4094"
+        );
+        assert!(
+            p("flat", Some("physnet1"), Some(1)).validate(&builtin).is_err(),
+            "flat has no segmentation ID"
+        );
+        assert!(
+            p("vxlan", Some("physnet1"), None).validate(&builtin).is_err(),
+            "vxlan has no physical network"
+        );
+        assert!(
+            p("vxlan", None, Some(1 << 24)).validate(&builtin).is_err(),
+            "VNIs are 24 bits"
+        );
         assert!(p("geneve", None, Some(5000)).validate(&builtin).is_ok());
         assert!(p("local", None, None).validate(&builtin).is_ok());
         assert!(p("opflex", None, None).validate(&builtin).is_err(), "unknown type");
@@ -6446,15 +7854,29 @@ mod metadata_tests {
             ..Default::default()
         }
         .provider_types();
-        assert!(p("vlan", Some("physnet1"), Some(300)).validate(&narrow).is_err(), "[network] segmentation_id_range narrows VLANs");
+        assert!(
+            p("vlan", Some("physnet1"), Some(300)).validate(&narrow).is_err(),
+            "[network] segmentation_id_range narrows VLANs"
+        );
         assert!(p("vlan", Some("physnet1"), Some(150)).validate(&narrow).is_ok());
-        assert!(p("geneve", None, None).validate(&narrow).is_err(), "not in supported_provider_types");
+        assert!(
+            p("geneve", None, None).validate(&narrow).is_err(),
+            "not in supported_provider_types"
+        );
     }
 
     #[test]
     fn admin_writes_are_marked_even_inside_a_batch() {
         let net = OsAction::AdminNetworkCreate(Box::new(AdminNetworkSpec {
-            name: "n".into(), project_id: "p1".into(), provider: None, admin_up: true, shared: false, external: false, mtu: None, az_hints: vec![], subnet: None,
+            name: "n".into(),
+            project_id: "p1".into(),
+            provider: None,
+            admin_up: true,
+            shared: false,
+            external: false,
+            mtu: None,
+            az_hints: vec![],
+            subnet: None,
         }));
         assert!(net.admin_only());
         assert!(OsAction::Batch(vec![("n".into(), net)]).admin_only());
@@ -6463,9 +7885,15 @@ mod metadata_tests {
 
     #[test]
     fn metadata_is_trimmed_sorted_and_checked() {
-        assert_eq!(validate_metadata(&kv(&[(" b ", " 2 "), ("a", "")])), Ok(kv(&[("a", ""), ("b", "2")])));
+        assert_eq!(
+            validate_metadata(&kv(&[(" b ", " 2 "), ("a", "")])),
+            Ok(kv(&[("a", ""), ("b", "2")]))
+        );
         assert!(validate_metadata(&kv(&[("", "x")])).is_err(), "empty key");
-        assert!(validate_metadata(&kv(&[("a", "1"), (" a", "2")])).is_err(), "repeated key");
+        assert!(
+            validate_metadata(&kv(&[("a", "1"), (" a", "2")])).is_err(),
+            "repeated key"
+        );
         assert!(validate_metadata(&kv(&[("k", &"x".repeat(256))])).is_err(), "too long");
         assert_eq!(validate_metadata(&[]), Ok(vec![]));
     }
@@ -6474,7 +7902,10 @@ mod metadata_tests {
     fn changes_list_what_was_added_changed_and_removed() {
         let old = kv(&[("a", "1"), ("b", "2"), ("c", "3")]);
         let new = kv(&[("a", "1"), ("b", "20"), ("d", "4")]);
-        assert_eq!(metadata_changes(&old, &new), (kv(&[("b", "20"), ("d", "4")]), vec!["c".to_string()]));
+        assert_eq!(
+            metadata_changes(&old, &new),
+            (kv(&[("b", "20"), ("d", "4")]), vec!["c".to_string()])
+        );
         assert_eq!(metadata_changes(&old, &old), (vec![], vec![]));
     }
 }
@@ -6485,7 +7916,10 @@ mod route_tests {
 
     #[test]
     fn routes_need_a_cidr_and_a_next_hop_of_the_same_version() {
-        assert_eq!(validate_route(" 10.9.0.0/16 ", "10.0.0.1"), Ok(("10.9.0.0/16".into(), "10.0.0.1".into())));
+        assert_eq!(
+            validate_route(" 10.9.0.0/16 ", "10.0.0.1"),
+            Ok(("10.9.0.0/16".into(), "10.0.0.1".into()))
+        );
         assert!(validate_route("2001:db8::/48", "2001:db8::1").is_ok());
         assert!(validate_route("10.9.0.0", "10.0.0.1").is_err());
         assert!(validate_route("10.9.0.0/33", "10.0.0.1").is_err());
@@ -6505,11 +7939,17 @@ mod secret_tests {
             content: "-----BEGIN OPENSSH PRIVATE KEY-----".into(),
             kind: super::SecretKind::PrivateKey,
             fields: vec![("secret".into(), "app-cred-secret".into())],
-            extra: vec![("clouds.yaml".into(), "application_credential_secret: app-cred-secret".into())],
+            extra: vec![(
+                "clouds.yaml".into(),
+                "application_credential_secret: app-cred-secret".into(),
+            )],
         };
         let dbg = format!("{s:?}");
         assert!(dbg.contains("k.pem") && dbg.contains("<redacted>"));
-        assert!(!dbg.contains("PRIVATE") && !dbg.contains("app-cred-secret"), "fields and extra downloads hold it too");
+        assert!(
+            !dbg.contains("PRIVATE") && !dbg.contains("app-cred-secret"),
+            "fields and extra downloads hold it too"
+        );
     }
 }
 
@@ -6518,10 +7958,20 @@ mod launch_rules_tests {
     use super::*;
 
     fn image(gb_bytes: u64, min_disk: i64, min_ram: Option<i64>) -> Facts {
-        Facts { size_bytes: Some(gb_bytes), min_disk_gb: Some(min_disk), min_ram_mb: min_ram, ..Default::default() }
+        Facts {
+            size_bytes: Some(gb_bytes),
+            min_disk_gb: Some(min_disk),
+            min_ram_mb: min_ram,
+            ..Default::default()
+        }
     }
     fn flavor(ram: i64, disk: i64) -> Facts {
-        Facts { ram_mb: Some(ram), disk_gb: Some(disk), vcpus: Some(1), ..Default::default() }
+        Facts {
+            ram_mb: Some(ram),
+            disk_gb: Some(disk),
+            vcpus: Some(1),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -6537,111 +7987,173 @@ mod launch_rules_tests {
     #[test]
     fn flavor_issues_follow_ram_and_local_disk() {
         let img = image(7_800_000_000, 20, Some(4096));
-        assert_eq!(flavor_issue(&flavor(2048, 50), Some(&img), true), Some(FlavorIssue::Ram(4096)));
-        assert_eq!(flavor_issue(&flavor(8192, 10), Some(&img), false), Some(FlavorIssue::Disk(20)));
-        assert_eq!(flavor_issue(&flavor(8192, 10), Some(&img), true), None, "volume boot ignores flavor disk");
-        assert_eq!(flavor_issue(&flavor(8192, 0), Some(&img), false), None, "disk 0 = sized from the image");
+        assert_eq!(
+            flavor_issue(&flavor(2048, 50), Some(&img), true),
+            Some(FlavorIssue::Ram(4096))
+        );
+        assert_eq!(
+            flavor_issue(&flavor(8192, 10), Some(&img), false),
+            Some(FlavorIssue::Disk(20))
+        );
+        assert_eq!(
+            flavor_issue(&flavor(8192, 10), Some(&img), true),
+            None,
+            "volume boot ignores flavor disk"
+        );
+        assert_eq!(
+            flavor_issue(&flavor(8192, 0), Some(&img), false),
+            None,
+            "disk 0 = sized from the image"
+        );
         assert_eq!(flavor_issue(&flavor(512, 1), None, false), None);
     }
 
-#[cfg(test)]
-mod capability_tests {
-    use super::*;
+    #[cfg(test)]
+    mod capability_tests {
+        use super::*;
 
-    fn caps() -> Capabilities {
-        Capabilities {
-            known: true,
-            services: vec!["compute".into(), "network".into(), "volumev3".into(), "image".into()],
-            network_extensions: vec!["router".into(), "security-group".into()],
-            lb_mv: Some((2, 27)),
-            compute_mv: Some((2, 79)),
-            volume_mv: Some((3, 70)),
-            plugins: vec![],
-            roles: vec!["member".into()],
-            multidomain: false,
-            image_import: None,
+        fn caps() -> Capabilities {
+            Capabilities {
+                known: true,
+                services: vec!["compute".into(), "network".into(), "volumev3".into(), "image".into()],
+                network_extensions: vec!["router".into(), "security-group".into()],
+                lb_mv: Some((2, 27)),
+                compute_mv: Some((2, 79)),
+                volume_mv: Some((3, 70)),
+                plugins: vec![],
+                roles: vec!["member".into()],
+                multidomain: false,
+                image_import: None,
+            }
+        }
+
+        #[test]
+        fn domains_need_the_setting_even_when_detection_failed() {
+            let admin = Capabilities {
+                roles: vec!["admin".into()],
+                ..caps()
+            };
+            assert!(!needs::DOMAINS.met(&admin), "[keystone] multidomain off");
+            assert!(needs::DOMAINS.met(&Capabilities {
+                multidomain: true,
+                ..admin.clone()
+            }));
+            assert!(
+                !needs::DOMAINS.met(&Capabilities {
+                    multidomain: true,
+                    ..caps()
+                }),
+                "members don't see it"
+            );
+            assert!(
+                !needs::DOMAINS.met(&Capabilities::default()),
+                "configuration doesn't fail open"
+            );
+        }
+
+        #[test]
+        fn requirements_check_services_extensions_and_versions() {
+            let c = caps();
+            assert!(
+                Requires::Service("block-storage").met(&c),
+                "volumev3 counts as block-storage"
+            );
+            assert!(!Requires::Service("orchestration").met(&c));
+            assert!(Requires::NetExt("router").met(&c));
+            assert!(!Requires::NetExt("extraroute-atomic").met(&c));
+            assert!(needs::UNSHELVE_TO_ZONE.met(&c));
+            assert!(!needs::REBUILD.met(&c), "2.79 < 2.94");
+            assert!(needs::VOLUME_MESSAGES.met(&c));
+            assert!(!Requires::All(&[Requires::Service("network"), Requires::NetExt("trunk")]).met(&c));
+        }
+
+        #[test]
+        fn snat_needs_the_extension_and_an_admin_role() {
+            let ext = |roles: &[&str]| Capabilities {
+                network_extensions: vec!["ext-gw-mode".into()],
+                roles: roles.iter().map(|r| r.to_string()).collect(),
+                ..caps()
+            };
+            assert!(!needs::SNAT.met(&caps()), "member, no extension");
+            assert!(!needs::SNAT.met(&ext(&["member", "reader"])));
+            assert!(needs::SNAT.met(&ext(&["member", "admin"])));
+            assert!(!needs::SNAT.met(&Capabilities {
+                network_extensions: vec![],
+                ..ext(&["admin"])
+            }));
+            assert!(needs::SNAT.met(&Capabilities::default()), "unknown: the server decides");
+        }
+
+        #[test]
+        fn unknown_capabilities_or_versions_fail_open() {
+            assert!(Requires::Service("orchestration").met(&Capabilities::default()));
+            let c = Capabilities {
+                compute_mv: None,
+                ..caps()
+            };
+            assert!(needs::REBUILD.met(&c), "no version range: don't hide");
+        }
+
+        #[test]
+        fn reserved_image_keys_are_glances_and_the_operators() {
+            let reserved = vec!["owner_specified.openstack.md5".to_string()];
+            assert!(is_reserved_image_key("os_glance_failed_import", &[]));
+            assert!(is_reserved_image_key("owner_specified.openstack.md5", &reserved));
+            assert!(!is_reserved_image_key("owner_specified.openstack.md5", &[]));
+            assert!(!is_reserved_image_key("hw_disk_bus", &reserved));
+            let set = OsAction::ImageSetProperties {
+                id: "i".into(),
+                set: vec![("a".into(), "1".into())],
+                remove: vec!["b".into()],
+            };
+            assert_eq!(set.image_property_keys(), ["a", "b"]);
+            let batch = OsAction::Batch(vec![("x".into(), set)]);
+            assert_eq!(batch.image_property_keys(), ["a", "b"], "inside a batch too");
+        }
+
+        #[test]
+        fn plugins_are_opt_in_even_when_detection_failed() {
+            let lb = Requires::All(&[
+                Requires::Plugin(Plugin::LoadBalancer),
+                Requires::Service("load-balancer"),
+            ]);
+            assert!(
+                !lb.met(&Capabilities::default()),
+                "not enabled: hidden although nothing is known"
+            );
+            let enabled = Capabilities {
+                plugins: vec![Plugin::LoadBalancer],
+                ..Default::default()
+            };
+            assert!(lb.met(&enabled), "enabled, detection failed: shown");
+            assert!(
+                !lb.met(&Capabilities {
+                    plugins: vec![Plugin::LoadBalancer],
+                    ..caps()
+                }),
+                "enabled but not in the catalog"
+            );
+            assert_eq!(Plugin::parse(" orchestration "), Some(Plugin::Orchestration));
+            assert_eq!(Plugin::parse("octavia"), None);
+            let batch = OsAction::Batch(vec![(
+                "a".into(),
+                OsAction::LoadBalancerDelete {
+                    id: "a".into(),
+                    cascade: true,
+                },
+            )]);
+            assert_eq!(batch.plugins(), [Plugin::LoadBalancer]);
+            assert!(OsAction::RouterDelete { id: "r".into() }.plugins().is_empty());
+        }
+
+        #[test]
+        fn parses_microversions() {
+            assert_eq!(parse_microversion("2.95"), Some((2, 95)));
+            assert_eq!(parse_microversion(" 3.70 "), Some((3, 70)));
+            assert_eq!(parse_microversion("v2"), None);
+            assert!((2, 100) > (2, 95), "compared numerically, not as text");
         }
     }
-
-    #[test]
-    fn domains_need_the_setting_even_when_detection_failed() {
-        let admin = Capabilities { roles: vec!["admin".into()], ..caps() };
-        assert!(!needs::DOMAINS.met(&admin), "[keystone] multidomain off");
-        assert!(needs::DOMAINS.met(&Capabilities { multidomain: true, ..admin.clone() }));
-        assert!(!needs::DOMAINS.met(&Capabilities { multidomain: true, ..caps() }), "members don't see it");
-        assert!(!needs::DOMAINS.met(&Capabilities::default()), "configuration doesn't fail open");
-    }
-
-    #[test]
-    fn requirements_check_services_extensions_and_versions() {
-        let c = caps();
-        assert!(Requires::Service("block-storage").met(&c), "volumev3 counts as block-storage");
-        assert!(!Requires::Service("orchestration").met(&c));
-        assert!(Requires::NetExt("router").met(&c));
-        assert!(!Requires::NetExt("extraroute-atomic").met(&c));
-        assert!(needs::UNSHELVE_TO_ZONE.met(&c));
-        assert!(!needs::REBUILD.met(&c), "2.79 < 2.94");
-        assert!(needs::VOLUME_MESSAGES.met(&c));
-        assert!(!Requires::All(&[Requires::Service("network"), Requires::NetExt("trunk")]).met(&c));
-    }
-
-    #[test]
-    fn snat_needs_the_extension_and_an_admin_role() {
-        let ext = |roles: &[&str]| Capabilities {
-            network_extensions: vec!["ext-gw-mode".into()],
-            roles: roles.iter().map(|r| r.to_string()).collect(),
-            ..caps()
-        };
-        assert!(!needs::SNAT.met(&caps()), "member, no extension");
-        assert!(!needs::SNAT.met(&ext(&["member", "reader"])));
-        assert!(needs::SNAT.met(&ext(&["member", "admin"])));
-        assert!(!needs::SNAT.met(&Capabilities { network_extensions: vec![], ..ext(&["admin"]) }));
-        assert!(needs::SNAT.met(&Capabilities::default()), "unknown: the server decides");
-    }
-
-    #[test]
-    fn unknown_capabilities_or_versions_fail_open() {
-        assert!(Requires::Service("orchestration").met(&Capabilities::default()));
-        let c = Capabilities { compute_mv: None, ..caps() };
-        assert!(needs::REBUILD.met(&c), "no version range: don't hide");
-    }
-
-    #[test]
-    fn reserved_image_keys_are_glances_and_the_operators() {
-        let reserved = vec!["owner_specified.openstack.md5".to_string()];
-        assert!(is_reserved_image_key("os_glance_failed_import", &[]));
-        assert!(is_reserved_image_key("owner_specified.openstack.md5", &reserved));
-        assert!(!is_reserved_image_key("owner_specified.openstack.md5", &[]));
-        assert!(!is_reserved_image_key("hw_disk_bus", &reserved));
-        let set = OsAction::ImageSetProperties { id: "i".into(), set: vec![("a".into(), "1".into())], remove: vec!["b".into()] };
-        assert_eq!(set.image_property_keys(), ["a", "b"]);
-        let batch = OsAction::Batch(vec![("x".into(), set)]);
-        assert_eq!(batch.image_property_keys(), ["a", "b"], "inside a batch too");
-    }
-
-    #[test]
-    fn plugins_are_opt_in_even_when_detection_failed() {
-        let lb = Requires::All(&[Requires::Plugin(Plugin::LoadBalancer), Requires::Service("load-balancer")]);
-        assert!(!lb.met(&Capabilities::default()), "not enabled: hidden although nothing is known");
-        let enabled = Capabilities { plugins: vec![Plugin::LoadBalancer], ..Default::default() };
-        assert!(lb.met(&enabled), "enabled, detection failed: shown");
-        assert!(!lb.met(&Capabilities { plugins: vec![Plugin::LoadBalancer], ..caps() }), "enabled but not in the catalog");
-        assert_eq!(Plugin::parse(" orchestration "), Some(Plugin::Orchestration));
-        assert_eq!(Plugin::parse("octavia"), None);
-        let batch = OsAction::Batch(vec![("a".into(), OsAction::LoadBalancerDelete { id: "a".into(), cascade: true })]);
-        assert_eq!(batch.plugins(), [Plugin::LoadBalancer]);
-        assert!(OsAction::RouterDelete { id: "r".into() }.plugins().is_empty());
-    }
-
-    #[test]
-    fn parses_microversions() {
-        assert_eq!(parse_microversion("2.95"), Some((2, 95)));
-        assert_eq!(parse_microversion(" 3.70 "), Some((3, 70)));
-        assert_eq!(parse_microversion("v2"), None);
-        assert!((2, 100) > (2, 95), "compared numerically, not as text");
-    }
-}
-
 }
 
 #[cfg(test)]
@@ -6667,13 +8179,40 @@ mod port_forwarding_tests {
         assert_eq!(PortSpec::parse("8080-8090", true), Ok(PortSpec::Range(8080, 8090)));
         assert_eq!(PortSpec::parse("80:80", true), Ok(PortSpec::One(80)));
         assert!(PortSpec::parse("80:90", false).unwrap_err().contains("ranges"));
-        assert!(PortSpec::parse("90:80", true).is_err() && PortSpec::parse("0", true).is_err() && PortSpec::parse("70000", true).is_err());
+        assert!(
+            PortSpec::parse("90:80", true).is_err()
+                && PortSpec::parse("0", true).is_err()
+                && PortSpec::parse("70000", true).is_err()
+        );
         assert_eq!(PortSpec::Range(8080, 8090).to_string(), "8080:8090");
-        assert_eq!(spec("22", "2222", false).ports(), Ok((PortSpec::One(22), PortSpec::One(2222))));
-        assert!(spec("8080:8081", "80:82", true).ports().unwrap_err().contains("same number"));
+        assert_eq!(
+            spec("22", "2222", false).ports(),
+            Ok((PortSpec::One(22), PortSpec::One(2222)))
+        );
+        assert!(
+            spec("8080:8081", "80:82", true)
+                .ports()
+                .unwrap_err()
+                .contains("same number")
+        );
         assert!(spec("22", "2222", false).ports().is_ok());
-        assert!(PortForwardingSpec { protocol: "icmp".into(), ..spec("22", "22", false) }.ports().is_err());
-        assert!(PortForwardingSpec { internal_ip: "fd00::5".into(), ..spec("22", "22", false) }.ports().is_err(), "IPv4 only");
+        assert!(
+            PortForwardingSpec {
+                protocol: "icmp".into(),
+                ..spec("22", "22", false)
+            }
+            .ports()
+            .is_err()
+        );
+        assert!(
+            PortForwardingSpec {
+                internal_ip: "fd00::5".into(),
+                ..spec("22", "22", false)
+            }
+            .ports()
+            .is_err(),
+            "IPv4 only"
+        );
     }
 }
 
@@ -6684,17 +8223,79 @@ mod qos_tests {
 
     #[test]
     fn rule_bodies_keep_the_fields_of_their_type() {
-        let bw = QosRuleSpec { kind: "bandwidth_limit".into(), direction: Some("ingress".into()), max_kbps: Some(10_000), max_burst_kbps: Some(1000), min_kbps: Some(5), ..Default::default() };
-        assert_eq!(bw.body().unwrap(), json!({"bandwidth_limit_rule": {"direction": "ingress", "max_kbps": 10000, "max_burst_kbps": 1000}}));
-        let dscp = QosRuleSpec { kind: "dscp_marking".into(), dscp_mark: Some(26), ..Default::default() };
+        let bw = QosRuleSpec {
+            kind: "bandwidth_limit".into(),
+            direction: Some("ingress".into()),
+            max_kbps: Some(10_000),
+            max_burst_kbps: Some(1000),
+            min_kbps: Some(5),
+            ..Default::default()
+        };
+        assert_eq!(
+            bw.body().unwrap(),
+            json!({"bandwidth_limit_rule": {"direction": "ingress", "max_kbps": 10000, "max_burst_kbps": 1000}})
+        );
+        let dscp = QosRuleSpec {
+            kind: "dscp_marking".into(),
+            dscp_mark: Some(26),
+            ..Default::default()
+        };
         assert_eq!(dscp.body().unwrap(), json!({"dscp_marking_rule": {"dscp_mark": 26}}));
-        assert!(QosRuleSpec { dscp_mark: Some(27), ..dscp.clone() }.body().is_err(), "not a DSCP mark");
-        assert!(QosRuleSpec { direction: Some("egress".into()), ..dscp }.body().is_err(), "no direction for DSCP");
-        let pps = QosRuleSpec { kind: "minimum_packet_rate".into(), direction: Some("any".into()), min_kpps: Some(1000), ..Default::default() };
-        assert_eq!(pps.body().unwrap(), json!({"minimum_packet_rate_rule": {"direction": "any", "min_kpps": 1000}}));
-        assert!(QosRuleSpec { kind: "minimum_bandwidth".into(), direction: Some("any".into()), min_kbps: Some(1), ..Default::default() }.body().is_err());
-        assert!(QosRuleSpec { kind: "bandwidth_limit".into(), ..Default::default() }.body().is_err(), "max_kbps required");
-        assert!(QosRuleSpec { kind: "packet_loss".into(), ..Default::default() }.body().is_err());
+        assert!(
+            QosRuleSpec {
+                dscp_mark: Some(27),
+                ..dscp.clone()
+            }
+            .body()
+            .is_err(),
+            "not a DSCP mark"
+        );
+        assert!(
+            QosRuleSpec {
+                direction: Some("egress".into()),
+                ..dscp
+            }
+            .body()
+            .is_err(),
+            "no direction for DSCP"
+        );
+        let pps = QosRuleSpec {
+            kind: "minimum_packet_rate".into(),
+            direction: Some("any".into()),
+            min_kpps: Some(1000),
+            ..Default::default()
+        };
+        assert_eq!(
+            pps.body().unwrap(),
+            json!({"minimum_packet_rate_rule": {"direction": "any", "min_kpps": 1000}})
+        );
+        assert!(
+            QosRuleSpec {
+                kind: "minimum_bandwidth".into(),
+                direction: Some("any".into()),
+                min_kbps: Some(1),
+                ..Default::default()
+            }
+            .body()
+            .is_err()
+        );
+        assert!(
+            QosRuleSpec {
+                kind: "bandwidth_limit".into(),
+                ..Default::default()
+            }
+            .body()
+            .is_err(),
+            "max_kbps required"
+        );
+        assert!(
+            QosRuleSpec {
+                kind: "packet_loss".into(),
+                ..Default::default()
+            }
+            .body()
+            .is_err()
+        );
     }
 }
 
@@ -6716,28 +8317,66 @@ mod port_settings_tests {
     fn port_changes_send_only_what_changed() {
         let b = before();
         assert_eq!(b.changes("p", &b), None, "nothing changed");
-        let renamed = PortSettings { name: " web ".into(), ..b.clone() };
+        let renamed = PortSettings {
+            name: " web ".into(),
+            ..b.clone()
+        };
         assert_eq!(
             b.changes("p", &renamed),
-            Some(OsAction::PortUpdate { id: "p".into(), name: Some("web".into()), admin_up: None, vnic_type: None, port_security: None, security_group_ids: None })
+            Some(OsAction::PortUpdate {
+                id: "p".into(),
+                name: Some("web".into()),
+                admin_up: None,
+                vnic_type: None,
+                port_security: None,
+                security_group_ids: None
+            })
         );
-        let reordered = PortSettings { security_group_ids: vec!["g2".into(), "g1".into()], ..b.clone() };
+        let reordered = PortSettings {
+            security_group_ids: vec!["g2".into(), "g1".into()],
+            ..b.clone()
+        };
         assert_eq!(b.changes("p", &reordered), None, "the same groups in another order");
-        let groups = PortSettings { security_group_ids: vec!["g3".into()], ..b.clone() };
-        assert!(matches!(b.changes("p", &groups), Some(OsAction::PortUpdate { security_group_ids: Some(g), name: None, .. }) if g == ["g3"]));
+        let groups = PortSettings {
+            security_group_ids: vec!["g3".into()],
+            ..b.clone()
+        };
+        assert!(
+            matches!(b.changes("p", &groups), Some(OsAction::PortUpdate { security_group_ids: Some(g), name: None, .. }) if g == ["g3"])
+        );
     }
 
     #[test]
     fn port_security_off_clears_the_groups_in_the_same_request() {
         let b = before();
-        let off = PortSettings { port_security: false, ..b.clone() };
+        let off = PortSettings {
+            port_security: false,
+            ..b.clone()
+        };
+        assert!(
+            matches!(
+                b.changes("p", &off),
+                Some(OsAction::PortUpdate { port_security: Some(false), security_group_ids: Some(g), .. }) if g.is_empty()
+            ),
+            "Neutron refuses port_security_enabled=false while the port has groups"
+        );
+        let bare = PortSettings {
+            security_group_ids: vec![],
+            port_security: false,
+            ..b.clone()
+        };
+        let rename = PortSettings {
+            name: "x".into(),
+            ..bare.clone()
+        };
         assert!(matches!(
-            b.changes("p", &off),
-            Some(OsAction::PortUpdate { port_security: Some(false), security_group_ids: Some(g), .. }) if g.is_empty()
-        ), "Neutron refuses port_security_enabled=false while the port has groups");
-        let bare = PortSettings { security_group_ids: vec![], port_security: false, ..b.clone() };
-        let rename = PortSettings { name: "x".into(), ..bare.clone() };
-        assert!(matches!(bare.changes("p", &rename), Some(OsAction::PortUpdate { security_group_ids: None, port_security: None, .. })));
+            bare.changes("p", &rename),
+            Some(OsAction::PortUpdate {
+                security_group_ids: None,
+                port_security: None,
+                ..
+            })
+        ));
     }
 }
 
@@ -6746,7 +8385,14 @@ mod member_rows_tests {
     use super::*;
 
     fn row(address: &str, port: &str) -> MemberRow {
-        MemberRow { address: address.into(), subnet_id: "sub-1".into(), port: port.into(), weight: "1".into(), admin_up: true, ..Default::default() }
+        MemberRow {
+            address: address.into(),
+            subnet_id: "sub-1".into(),
+            port: port.into(),
+            weight: "1".into(),
+            admin_up: true,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -6758,10 +8404,20 @@ mod member_rows_tests {
         ext.weight = String::new();
         let json = serde_json::to_string(&[row("10.0.0.5", "80"), ext]).unwrap();
         let m = member_specs(&json).unwrap();
-        assert_eq!((m[0].port, m[0].weight, m[0].monitor_address.clone()), (80, Some(1), None));
+        assert_eq!(
+            (m[0].port, m[0].weight, m[0].monitor_address.clone()),
+            (80, Some(1), None)
+        );
         assert_eq!(m[1].address, "192.0.2.10", "trimmed");
-        assert_eq!((m[1].port, m[1].weight, m[1].backup), (8443, None, true), "empty weight = Octavia's default");
-        assert_eq!((m[1].monitor_address.as_deref(), m[1].monitor_port), (Some("192.0.2.11"), Some(9000)));
+        assert_eq!(
+            (m[1].port, m[1].weight, m[1].backup),
+            (8443, None, true),
+            "empty weight = Octavia's default"
+        );
+        assert_eq!(
+            (m[1].monitor_address.as_deref(), m[1].monitor_port),
+            (Some("192.0.2.11"), Some(9000))
+        );
         assert!(member_specs("").unwrap().is_empty());
     }
 
@@ -6769,26 +8425,56 @@ mod member_rows_tests {
     fn bad_rows_are_refused_with_the_address() {
         let bad = |r: MemberRow| member_specs(&serde_json::to_string(&[r]).unwrap()).unwrap_err();
         assert!(bad(row("10.0.0.5", "")).contains("10.0.0.5: the port is required"));
-        assert!(bad(MemberRow { typed: true, subnet_id: String::new(), ..row("192.0.2.10", "80") }).contains("subnet"), "an external member needs its subnet");
+        assert!(
+            bad(MemberRow {
+                typed: true,
+                subnet_id: String::new(),
+                ..row("192.0.2.10", "80")
+            })
+            .contains("subnet"),
+            "an external member needs its subnet"
+        );
         assert!(bad(row("10.0.0.5", "70000")).contains("port must be 1-65535"));
         assert!(bad(row("web", "80")).contains("not an IP address"));
-        assert!(bad(MemberRow { weight: "300".into(), ..row("10.0.0.5", "80") }).contains("weight"));
-        assert!(bad(MemberRow { monitor_address: "x".into(), ..row("10.0.0.5", "80") }).contains("not an IP address: x"));
+        assert!(
+            bad(MemberRow {
+                weight: "300".into(),
+                ..row("10.0.0.5", "80")
+            })
+            .contains("weight")
+        );
+        assert!(
+            bad(MemberRow {
+                monitor_address: "x".into(),
+                ..row("10.0.0.5", "80")
+            })
+            .contains("not an IP address: x")
+        );
         let twice = serde_json::to_string(&[row("10.0.0.5", "80"), row("10.0.0.5", "80")]).unwrap();
         assert_eq!(member_specs(&twice).unwrap_err(), "10.0.0.5:80 is listed twice");
         let other_port = serde_json::to_string(&[row("10.0.0.5", "80"), row("10.0.0.5", "81")]).unwrap();
-        assert_eq!(member_specs(&other_port).unwrap().len(), 2, "same address, another port: allowed");
+        assert_eq!(
+            member_specs(&other_port).unwrap().len(),
+            2,
+            "same address, another port: allowed"
+        );
     }
 
     fn member(id: &str, address: &str, port: i64) -> LbMember {
         LbMember {
             id: id.into(),
             name: id.into(),
-            pool: Ref { id: "p".into(), name: "p".into() },
+            pool: Ref {
+                id: "p".into(),
+                name: "p".into(),
+            },
             address: address.into(),
             port: Some(port),
             weight: Some(5),
-            subnet: Some(Ref { id: "sub-1".into(), name: "s".into() }),
+            subnet: Some(Ref {
+                id: "sub-1".into(),
+                name: "s".into(),
+            }),
             backup: false,
             operating_status: "ONLINE".into(),
             provisioning_status: "ACTIVE".into(),
@@ -6802,14 +8488,24 @@ mod member_rows_tests {
     fn existing_members_round_trip_and_removals_match_address_and_port() {
         let m = member("m1", "10.0.0.5", 80);
         let row = MemberRow::from_member(&m);
-        assert!(!row.typed, "an existing member's address isn't editable: changing it would replace the member");
+        assert!(
+            !row.typed,
+            "an existing member's address isn't editable: changing it would replace the member"
+        );
         assert_eq!(row.subnet_name, "s", "shown by name");
         let spec = row.spec().unwrap();
         assert_eq!(spec.name, None, "a name that is only the ID fallback isn't sent");
-        assert_eq!((spec.weight, spec.monitor_address.as_deref(), spec.monitor_port), (Some(5), Some("10.9.9.9"), Some(8080)), "kept as they are");
+        assert_eq!(
+            (spec.weight, spec.monitor_address.as_deref(), spec.monitor_port),
+            (Some(5), Some("10.9.9.9"), Some(8080)),
+            "kept as they are"
+        );
         let existing = [m, member("m2", "10.0.0.6", 80)];
         let keep = [spec.clone(), LbMemberSpec { port: 81, ..spec }];
-        let gone: Vec<_> = removed_members(&existing, &keep).iter().map(|m| m.id.as_str()).collect();
+        let gone: Vec<_> = removed_members(&existing, &keep)
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect();
         assert_eq!(gone, ["m2"]);
     }
 }
@@ -6823,7 +8519,8 @@ pub fn check_id(v: &str) -> Result<(), AppError> {
     let bad = v.is_empty()
         || v == "."
         || v == ".."
-        || v.chars().any(|c| matches!(c, '/' | '\\' | '?' | '#' | '%') || c.is_control());
+        || v.chars()
+            .any(|c| matches!(c, '/' | '\\' | '?' | '#' | '%') || c.is_control());
     if bad {
         return Err(AppError::invalid(format!("not a valid ID: {v:?}")));
     }
@@ -6836,17 +8533,39 @@ mod check_id_tests {
 
     #[test]
     fn ids_that_would_change_the_path_are_refused() {
-        for ok in ["3f2a9c1e-0000-0000-0000-000000000c91", "my key", "web-1.example", "a..b"] {
+        for ok in [
+            "3f2a9c1e-0000-0000-0000-000000000c91",
+            "my key",
+            "web-1.example",
+            "a..b",
+        ] {
             assert!(check_id(ok).is_ok(), "{ok}");
         }
-        for bad in ["", ".", "..", "a/b", "../servers", "x?all_tenants=1", "x#y", "a%2Fb", "a\\b", "a\nb"] {
+        for bad in [
+            "",
+            ".",
+            "..",
+            "a/b",
+            "../servers",
+            "x?all_tenants=1",
+            "x#y",
+            "a%2Fb",
+            "a\\b",
+            "a\nb",
+        ] {
             assert!(check_id(bad).is_err(), "{bad:?}");
         }
     }
 
     #[test]
     fn actions_are_checked_by_key_name_wherever_the_id_is() {
-        assert!(OsAction::ServerDelete { id: "../os-hypervisors".into() }.check_ids().is_err());
+        assert!(
+            OsAction::ServerDelete {
+                id: "../os-hypervisors".into()
+            }
+            .check_ids()
+            .is_err()
+        );
         let ok = OsAction::PoolSetMembers {
             pool_id: "pool-1".into(),
             members: vec![LbMemberSpec {
@@ -6861,10 +8580,18 @@ mod check_id_tests {
                 admin_up: true,
             }],
         };
-        assert!(ok.check_ids().is_ok(), "a member *name* isn't in any path, so it may hold a slash");
-        let OsAction::PoolSetMembers { pool_id, mut members } = ok else { unreachable!() };
+        assert!(
+            ok.check_ids().is_ok(),
+            "a member *name* isn't in any path, so it may hold a slash"
+        );
+        let OsAction::PoolSetMembers { pool_id, mut members } = ok else {
+            unreachable!()
+        };
         members[0].subnet_id = Some("sub?x".into());
-        assert!(OsAction::PoolSetMembers { pool_id, members }.check_ids().is_err(), "a nested `*_id`");
+        assert!(
+            OsAction::PoolSetMembers { pool_id, members }.check_ids().is_err(),
+            "a nested `*_id`"
+        );
         let groups = OsAction::PortUpdate {
             id: "p1".into(),
             name: None,
@@ -6874,8 +8601,19 @@ mod check_id_tests {
             security_group_ids: Some(vec!["g1".into(), "g2/../x".into()]),
         };
         assert!(groups.check_ids().is_err(), "a list under `*_ids`");
-        assert!(OsAction::KeyPairDelete { name: "a/b".into() }.check_ids().is_err(), "key pair names are in the path");
-        assert!(OsAction::QosRuleDelete { policy_id: "p".into(), kind: "x/../y".into(), id: "r".into() }.check_ids().is_err());
+        assert!(
+            OsAction::KeyPairDelete { name: "a/b".into() }.check_ids().is_err(),
+            "key pair names are in the path"
+        );
+        assert!(
+            OsAction::QosRuleDelete {
+                policy_id: "p".into(),
+                kind: "x/../y".into(),
+                id: "r".into()
+            }
+            .check_ids()
+            .is_err()
+        );
         let batch = OsAction::Batch(vec![("vol a".into(), OsAction::VolumeDelete { id: "v/1".into() })]);
         assert!(batch.check_ids().is_err(), "inside a batch");
         let empty = OsAction::ListenerUpdate {
@@ -6900,25 +8638,64 @@ mod app_credential_tests {
     #[test]
     fn expiry_follows_horizon() {
         // 20:20 UTC, the moment of the browser test (21:20 in Madrid).
-        let now = chrono::NaiveDate::from_ymd_opt(2026, 10, 26).unwrap().and_hms_opt(20, 20, 0).unwrap();
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 10, 26)
+            .unwrap()
+            .and_hms_opt(20, 20, 0)
+            .unwrap();
         assert_eq!(app_credential_expiry("", "", now), Ok(None), "never expires");
-        assert_eq!(app_credential_expiry("2026-12-31", "", now).unwrap().as_deref(), Some("2026-12-31T00:00:00"), "a date alone: midnight");
-        assert_eq!(app_credential_expiry(" 2026-10-27 ", "03:15", now).unwrap().as_deref(), Some("2026-10-27T03:15:00"), "the credential created in the test");
-        assert_eq!(app_credential_expiry("", "23:30:15", now).unwrap().as_deref(), Some("2026-10-26T23:30:15"), "a time alone: today (UTC)");
-        assert!(app_credential_expiry("31/12/2026", "", now).unwrap_err().contains("YYYY-MM-DD"));
-        assert!(app_credential_expiry("2026-12-31", "6pm", now).unwrap_err().contains("HH:MM"));
+        assert_eq!(
+            app_credential_expiry("2026-12-31", "", now).unwrap().as_deref(),
+            Some("2026-12-31T00:00:00"),
+            "a date alone: midnight"
+        );
+        assert_eq!(
+            app_credential_expiry(" 2026-10-27 ", "03:15", now).unwrap().as_deref(),
+            Some("2026-10-27T03:15:00"),
+            "the credential created in the test"
+        );
+        assert_eq!(
+            app_credential_expiry("", "23:30:15", now).unwrap().as_deref(),
+            Some("2026-10-26T23:30:15"),
+            "a time alone: today (UTC)"
+        );
+        assert!(
+            app_credential_expiry("31/12/2026", "", now)
+                .unwrap_err()
+                .contains("YYYY-MM-DD")
+        );
+        assert!(
+            app_credential_expiry("2026-12-31", "6pm", now)
+                .unwrap_err()
+                .contains("HH:MM")
+        );
         // Horizon's pitfalls, refused before sending:
         let today_alone = app_credential_expiry("2026-10-26", "", now).unwrap_err();
-        assert!(today_alone.contains("2026-10-26 00:00 UTC") && today_alone.contains("now (2026-10-26 20:20 UTC)"), "{today_alone}");
-        assert!(app_credential_expiry("", "19:00", now).is_err(), "a time alone that already passed today (UTC)");
-        assert!(app_credential_expiry("", "21:00", now).is_ok(), "21:00 UTC is later, though it is 21:20 in Madrid: the form is in UTC");
+        assert!(
+            today_alone.contains("2026-10-26 00:00 UTC") && today_alone.contains("now (2026-10-26 20:20 UTC)"),
+            "{today_alone}"
+        );
+        assert!(
+            app_credential_expiry("", "19:00", now).is_err(),
+            "a time alone that already passed today (UTC)"
+        );
+        assert!(
+            app_credential_expiry("", "21:00", now).is_ok(),
+            "21:00 UTC is later, though it is 21:20 in Madrid: the form is in UTC"
+        );
     }
 
     #[test]
     fn secret_expiry_is_flagged_30_days_ahead() {
-        let now = chrono::NaiveDate::from_ymd_opt(2026, 10, 27).unwrap().and_hms_opt(12, 0, 0).unwrap();
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 10, 27)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
         assert_eq!(expiry(None, now), Expiry::Never);
-        assert_eq!(expiry(Some("2026-10-27T11:59:00"), now), Expiry::Past, "Barbican's zoneless UTC");
+        assert_eq!(
+            expiry(Some("2026-10-27T11:59:00"), now),
+            Expiry::Past,
+            "Barbican's zoneless UTC"
+        );
         assert_eq!(expiry(Some("2026-11-20T00:00:00+00:00"), now), Expiry::Soon);
         assert_eq!(expiry(Some("2027-01-01T00:00:00Z"), now), Expiry::Later);
         assert_eq!(expiry(Some("soon"), now), Expiry::Later, "unreadable: nothing to flag");
@@ -6926,18 +8703,35 @@ mod app_credential_tests {
 
     #[test]
     fn identity_actions_are_pointed_at_the_signed_in_user() {
-        let spec = AppCredentialSpec { user_id: "someone-else".into(), name: "ci".into(), description: None, secret: None, expires_at: None, roles: vec![], unrestricted: false, access_rules: None };
+        let spec = AppCredentialSpec {
+            user_id: "someone-else".into(),
+            name: "ci".into(),
+            description: None,
+            secret: None,
+            expires_at: None,
+            roles: vec![],
+            unrestricted: false,
+            access_rules: None,
+        };
         let mut a = OsAction::Batch(vec![
-            ("a".into(), OsAction::AppCredentialDelete { user_id: "someone-else".into(), id: "x".into() }),
+            (
+                "a".into(),
+                OsAction::AppCredentialDelete {
+                    user_id: "someone-else".into(),
+                    id: "x".into(),
+                },
+            ),
             ("b".into(), OsAction::AppCredentialCreate(Box::new(spec))),
         ]);
         a.set_user("me");
         let OsAction::Batch(items) = a else { unreachable!() };
         assert!(matches!(&items[0].1, OsAction::AppCredentialDelete { user_id, .. } if user_id == "me"));
-        assert!(matches!(&items[1].1, OsAction::AppCredentialCreate(s) if s.user_id == "me"), "whatever the browser sent");
+        assert!(
+            matches!(&items[1].1, OsAction::AppCredentialCreate(s) if s.user_id == "me"),
+            "whatever the browser sent"
+        );
     }
 }
-
 
 #[cfg(test)]
 mod identity_admin_tests {
@@ -6948,53 +8742,140 @@ mod identity_admin_tests {
         let (me, here) = ("u-me", "p-here");
         let no = |a: OsAction| a.identity_safety(me, here).is_err();
         assert!(no(OsAction::UserDelete { id: me.into() }));
-        assert!(no(OsAction::UserSetEnabled { id: me.into(), enabled: false }));
-        assert!(!no(OsAction::UserSetEnabled { id: me.into(), enabled: true }), "enabling is fine");
+        assert!(no(OsAction::UserSetEnabled {
+            id: me.into(),
+            enabled: false
+        }));
+        assert!(
+            !no(OsAction::UserSetEnabled {
+                id: me.into(),
+                enabled: true
+            }),
+            "enabling is fine"
+        );
         assert!(!no(OsAction::UserDelete { id: "u-other".into() }));
         assert!(no(OsAction::ProjectDelete { id: here.into() }));
-        assert!(no(OsAction::ProjectUpdate { id: here.into(), name: "x".into(), description: String::new(), enabled: false }));
-        assert!(!no(OsAction::ProjectUpdate { id: here.into(), name: "renamed".into(), description: String::new(), enabled: true }), "renaming is fine");
-        let revoke_me = OsAction::ProjectRoleRevoke { project_id: here.into(), user_id: Some(me.into()), group_id: None, role_id: "r".into() };
+        assert!(no(OsAction::ProjectUpdate {
+            id: here.into(),
+            name: "x".into(),
+            description: String::new(),
+            enabled: false
+        }));
+        assert!(
+            !no(OsAction::ProjectUpdate {
+                id: here.into(),
+                name: "renamed".into(),
+                description: String::new(),
+                enabled: true
+            }),
+            "renaming is fine"
+        );
+        let revoke_me = OsAction::ProjectRoleRevoke {
+            project_id: here.into(),
+            user_id: Some(me.into()),
+            group_id: None,
+            role_id: "r".into(),
+        };
         assert!(no(revoke_me.clone()));
-        assert!(!no(OsAction::ProjectRoleRevoke { project_id: "p-elsewhere".into(), user_id: Some(me.into()), group_id: None, role_id: "r".into() }), "another project");
-        assert!(no(OsAction::Batch(vec![("ok".into(), OsAction::UserDelete { id: "u-other".into() }), ("bad".into(), revoke_me)])), "inside a batch");
+        assert!(
+            !no(OsAction::ProjectRoleRevoke {
+                project_id: "p-elsewhere".into(),
+                user_id: Some(me.into()),
+                group_id: None,
+                role_id: "r".into()
+            }),
+            "another project"
+        );
+        assert!(
+            no(OsAction::Batch(vec![
+                ("ok".into(), OsAction::UserDelete { id: "u-other".into() }),
+                ("bad".into(), revoke_me)
+            ])),
+            "inside a batch"
+        );
     }
 
     #[test]
     fn creations_are_put_in_the_users_domain() {
-        let spec = UserSpec { domain_id: "Default".into(), name: "ana".into(), description: None, email: None, password: "p".into(), project_id: None, role_id: None, enabled: true, lock_password: false };
+        let spec = UserSpec {
+            domain_id: "Default".into(),
+            name: "ana".into(),
+            description: None,
+            email: None,
+            password: "p".into(),
+            project_id: None,
+            role_id: None,
+            enabled: true,
+            lock_password: false,
+        };
         let mut a = OsAction::Batch(vec![
-            ("p".into(), OsAction::ProjectCreate { name: "MyTest".into(), description: None, enabled: true, domain_id: String::new() }),
+            (
+                "p".into(),
+                OsAction::ProjectCreate {
+                    name: "MyTest".into(),
+                    description: None,
+                    enabled: true,
+                    domain_id: String::new(),
+                },
+            ),
             ("u".into(), OsAction::UserCreate(Box::new(spec))),
-            ("g".into(), OsAction::GroupCreate { name: "ops".into(), description: None, domain_id: String::new() }),
+            (
+                "g".into(),
+                OsAction::GroupCreate {
+                    name: "ops".into(),
+                    description: None,
+                    domain_id: String::new(),
+                },
+            ),
         ]);
         assert!(a.needs_domain());
         a.set_domain("d-spain");
         let OsAction::Batch(items) = a else { unreachable!() };
         assert!(matches!(&items[0].1, OsAction::ProjectCreate { domain_id, .. } if domain_id == "d-spain"));
-        assert!(matches!(&items[1].1, OsAction::UserCreate(s) if s.domain_id == "d-spain"), "whatever the browser sent");
+        assert!(
+            matches!(&items[1].1, OsAction::UserCreate(s) if s.domain_id == "d-spain"),
+            "whatever the browser sent"
+        );
         assert!(matches!(&items[2].1, OsAction::GroupCreate { domain_id, .. } if domain_id == "d-spain"));
-        assert!(!OsAction::RoleCreate { name: "x".into() }.needs_domain(), "roles are global");
+        assert!(
+            !OsAction::RoleCreate { name: "x".into() }.needs_domain(),
+            "roles are global"
+        );
     }
 
     #[test]
     fn member_changes_are_only_what_changed() {
-        let row = |id: &str, roles: &[&str]| AssignmentRow { actor_id: id.into(), label: format!("user-{id}"), role_ids: roles.iter().map(|r| r.to_string()).collect() };
+        let row = |id: &str, roles: &[&str]| AssignmentRow {
+            actor_id: id.into(),
+            label: format!("user-{id}"),
+            role_ids: roles.iter().map(|r| r.to_string()).collect(),
+        };
         let before = [row("a", &["member"]), row("b", &["member", "reader"])];
         let after = [row("a", &["member", "admin"]), row("c", &["reader"])];
         let changes = assignment_changes("p", false, &before, &after);
         let kinds: Vec<_> = changes
             .iter()
             .map(|(_, a)| match a {
-                OsAction::ProjectRoleGrant { user_id, role_id, .. } => format!("+{}:{role_id}", user_id.clone().unwrap()),
-                OsAction::ProjectRoleRevoke { user_id, role_id, .. } => format!("-{}:{role_id}", user_id.clone().unwrap()),
+                OsAction::ProjectRoleGrant { user_id, role_id, .. } => {
+                    format!("+{}:{role_id}", user_id.clone().unwrap())
+                }
+                OsAction::ProjectRoleRevoke { user_id, role_id, .. } => {
+                    format!("-{}:{role_id}", user_id.clone().unwrap())
+                }
                 _ => unreachable!(),
             })
             .collect();
-        assert_eq!(kinds, ["+a:admin", "+c:reader", "-b:member", "-b:reader"], "a gains admin, c is added, b is removed");
+        assert_eq!(
+            kinds,
+            ["+a:admin", "+c:reader", "-b:member", "-b:reader"],
+            "a gains admin, c is added, b is removed"
+        );
         assert!(assignment_changes("p", false, &before, &before).is_empty());
         let g = assignment_changes("p", true, &[], &[row("g", &["member"])]);
-        assert!(matches!(&g[0].1, OsAction::ProjectRoleGrant { group_id: Some(gid), user_id: None, .. } if gid == "g"), "groups use the group path");
+        assert!(
+            matches!(&g[0].1, OsAction::ProjectRoleGrant { group_id: Some(gid), user_id: None, .. } if gid == "g"),
+            "groups use the group path"
+        );
     }
 }
 
@@ -7005,17 +8886,40 @@ mod lb_option_tests {
     /// Roadmap 54: what Octavia would refuse, refused before sending.
     #[test]
     fn listener_options_and_pool_tls_follow_octavia_rules() {
-        let ok = LbListenerOptions { timeout_client_data: Some(1000), insert_headers: vec!["X-Forwarded-For".into()], allowed_cidrs: Some(vec!["10.0.0.0/8".into(), "2001:db8::/32".into()]), ..Default::default() };
+        let ok = LbListenerOptions {
+            timeout_client_data: Some(1000),
+            insert_headers: vec!["X-Forwarded-For".into()],
+            allowed_cidrs: Some(vec!["10.0.0.0/8".into(), "2001:db8::/32".into()]),
+            ..Default::default()
+        };
         assert!(ok.check("HTTP").is_ok());
         assert!(ok.check("TCP").is_err(), "headers only on HTTP listeners");
         let bad = |o: LbListenerOptions| o.check("HTTP").is_err();
-        assert!(bad(LbListenerOptions { timeout_member_data: Some(LB_TIMEOUT_MAX + 1), ..Default::default() }));
-        assert!(bad(LbListenerOptions { insert_headers: vec!["X-Evil".into()], ..Default::default() }));
-        assert!(bad(LbListenerOptions { allowed_cidrs: Some(vec!["10.0.0.0".into()]), ..Default::default() }), "a CIDR needs its length");
+        assert!(bad(LbListenerOptions {
+            timeout_member_data: Some(LB_TIMEOUT_MAX + 1),
+            ..Default::default()
+        }));
+        assert!(bad(LbListenerOptions {
+            insert_headers: vec!["X-Evil".into()],
+            ..Default::default()
+        }));
+        assert!(
+            bad(LbListenerOptions {
+                allowed_cidrs: Some(vec!["10.0.0.0".into()]),
+                ..Default::default()
+            }),
+            "a CIDR needs its length"
+        );
         assert!(check_pool_tls("HTTP", true, Some("ECDHE-RSA-AES128-GCM-SHA256:AES256")).is_ok());
         assert!(check_pool_tls("UDP", true, None).is_err());
-        assert!(check_pool_tls("HTTP", false, Some("AES256")).is_err(), "ciphers need TLS");
-        assert!(check_pool_tls("HTTP", true, Some("AES256 AES128")).is_err(), "colon-separated");
+        assert!(
+            check_pool_tls("HTTP", false, Some("AES256")).is_err(),
+            "ciphers need TLS"
+        );
+        assert!(
+            check_pool_tls("HTTP", true, Some("AES256 AES128")).is_err(),
+            "colon-separated"
+        );
         assert!(check_pool_tls("HTTP", false, Some(" ")).is_ok(), "blank = none");
     }
 
@@ -7023,18 +8927,37 @@ mod lb_option_tests {
     fn listener_certificates_belong_to_terminated_https() {
         let r = "https://kms/v1/containers/c1".to_string();
         assert!(check_listener_tls(LB_TLS_PROTOCOL, Some(&r), &[]).is_ok());
-        assert!(check_listener_tls(LB_TLS_PROTOCOL, Some(" "), &[]).is_err(), "it needs one");
-        assert!(check_listener_tls(LB_TLS_PROTOCOL, Some("c1"), &[]).is_err(), "a Barbican URL");
+        assert!(
+            check_listener_tls(LB_TLS_PROTOCOL, Some(" "), &[]).is_err(),
+            "it needs one"
+        );
+        assert!(
+            check_listener_tls(LB_TLS_PROTOCOL, Some("c1"), &[]).is_err(),
+            "a Barbican URL"
+        );
         assert!(check_listener_tls("HTTP", None, std::slice::from_ref(&r)).is_err());
         assert!(check_listener_tls("HTTP", None, &[]).is_ok());
-        let o = LbListenerOptions { tls_ciphers: Some("AES256".into()), ..Default::default() };
-        assert!(o.check("HTTP").is_err() && o.check(LB_TLS_PROTOCOL).is_ok(), "listener ciphers only when TLS ends there");
-        assert!(lb_inserts_headers(LB_TLS_PROTOCOL) && !lb_inserts_headers("HTTPS"), "HTTPS passes through: no headers");
+        let o = LbListenerOptions {
+            tls_ciphers: Some("AES256".into()),
+            ..Default::default()
+        };
+        assert!(
+            o.check("HTTP").is_err() && o.check(LB_TLS_PROTOCOL).is_ok(),
+            "listener ciphers only when TLS ends there"
+        );
+        assert!(
+            lb_inserts_headers(LB_TLS_PROTOCOL) && !lb_inserts_headers("HTTPS"),
+            "HTTPS passes through: no headers"
+        );
     }
 
     #[test]
     fn octavia_version_gates_the_options() {
-        let c = |v| Capabilities { known: true, lb_mv: v, ..Default::default() };
+        let c = |v| Capabilities {
+            known: true,
+            lb_mv: v,
+            ..Default::default()
+        };
         assert!(needs::LB_TIMEOUTS.met(&c(Some((2, 1)))));
         assert!(!needs::LB_ALLOWED_CIDRS.met(&c(Some((2, 11)))));
         assert!(needs::LB_POOL_CIPHERS.met(&c(Some((2, 27)))));
@@ -7043,9 +8966,16 @@ mod lb_option_tests {
 
     #[test]
     fn url_import_needs_glance_web_download() {
-        let c = |m: Option<&[&str]>| Capabilities { known: true, image_import: m.map(|l| l.iter().map(|s| s.to_string()).collect()), ..Default::default() };
+        let c = |m: Option<&[&str]>| Capabilities {
+            known: true,
+            image_import: m.map(|l| l.iter().map(|s| s.to_string()).collect()),
+            ..Default::default()
+        };
         assert!(needs::IMAGE_URL_IMPORT.met(&c(Some(&["glance-direct", "web-download"]))));
-        assert!(!needs::IMAGE_URL_IMPORT.met(&c(Some(&["glance-direct"]))), "Glance would reject the import");
+        assert!(
+            !needs::IMAGE_URL_IMPORT.met(&c(Some(&["glance-direct"]))),
+            "Glance would reject the import"
+        );
         assert!(!needs::IMAGE_URL_IMPORT.met(&c(Some(&[]))), "import disabled");
         assert!(needs::IMAGE_URL_IMPORT.met(&c(None)), "list unreadable: fail open");
     }
@@ -7082,10 +9012,19 @@ mod secret_acl_tests {
     #[test]
     fn secret_acl_is_for_its_creator_and_admins() {
         let roles = |r: &[&str]| r.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-        assert!(can_edit_secret_acl(Some("u1"), "u1", &roles(&["member"])), "the creator");
-        assert!(can_edit_secret_acl(Some("u2"), "u1", &roles(&["admin"])), "a project admin");
+        assert!(
+            can_edit_secret_acl(Some("u1"), "u1", &roles(&["member"])),
+            "the creator"
+        );
+        assert!(
+            can_edit_secret_acl(Some("u2"), "u1", &roles(&["admin"])),
+            "a project admin"
+        );
         assert!(!can_edit_secret_acl(Some("u2"), "u1", &roles(&["member", "reader"])));
-        assert!(!can_edit_secret_acl(None, "u1", &roles(&[])), "creator unknown: not the creator");
+        assert!(
+            !can_edit_secret_acl(None, "u1", &roles(&[])),
+            "creator unknown: not the creator"
+        );
     }
 
     #[test]
@@ -7101,12 +9040,34 @@ mod request_tests {
 
     #[test]
     fn requests_reach_the_browser_only_when_shown() {
-        let req = RequestPreview { service: "compute".into(), method: "POST".into(), path: "/servers".into(), body: None };
-        let out = ActionOutcome { mode: WriteMode::DryRun, requests: vec![req.clone()], secret: None, results: vec![], created: None };
+        let req = RequestPreview {
+            service: "compute".into(),
+            method: "POST".into(),
+            path: "/servers".into(),
+            body: None,
+        };
+        let out = ActionOutcome {
+            mode: WriteMode::DryRun,
+            requests: vec![req.clone()],
+            secret: None,
+            results: vec![],
+            created: None,
+        };
         assert_eq!(out.clone().shown(true).requests.len(), 1);
         assert!(out.shown(false).requests.is_empty(), "dry-run too (roadmap 78)");
-        let reply = ConsoleReply { mode: WriteMode::On, requests: vec![req], data: Some(1) };
-        assert_eq!(reply.shown(false), ConsoleReply { mode: WriteMode::On, requests: vec![], data: Some(1) });
+        let reply = ConsoleReply {
+            mode: WriteMode::On,
+            requests: vec![req],
+            data: Some(1),
+        };
+        assert_eq!(
+            reply.shown(false),
+            ConsoleReply {
+                mode: WriteMode::On,
+                requests: vec![],
+                data: Some(1)
+            }
+        );
     }
 }
 
@@ -7115,18 +9076,51 @@ mod quota_tests {
     use super::*;
 
     fn row(key: &str, used: Option<i64>, limit: Option<i64>) -> QuotaRow {
-        QuotaRow { key: key.into(), used, reserved: None, limit }
+        QuotaRow {
+            key: key.into(),
+            used,
+            reserved: None,
+            limit,
+        }
     }
 
     #[test]
     fn quota_changes_keep_only_what_changed_and_refuse_below_usage() {
-        let rows = [row("instances", Some(4), Some(10)), row("cores", Some(8), None), row("member", None, Some(50))];
+        let rows = [
+            row("instances", Some(4), Some(10)),
+            row("cores", Some(8), None),
+            row("member", None, Some(50)),
+        ];
         let w = |v: &[(&str, i64)]| v.iter().map(|(k, n)| (k.to_string(), *n)).collect::<Vec<_>>();
-        assert!(quota_changes(&rows, &w(&[("instances", 10), ("cores", -1)])).unwrap().is_empty(), "unchanged, unlimited = -1");
-        let c = quota_changes(&rows, &w(&[("instances", 4), ("cores", 20), ("member", 0), ("unknown", 3)])).unwrap();
-        assert_eq!(c.into_iter().collect::<Vec<_>>(), [("cores".to_string(), 20), ("instances".to_string(), 4), ("member".to_string(), 0)], "no usage reported: any value");
-        assert!(quota_changes(&rows, &w(&[("instances", 3)])).unwrap_err().contains("below the 4 in use"));
-        assert!(quota_changes(&rows, &w(&[("instances", -1)])).is_ok(), "unlimited is never below usage");
+        assert!(
+            quota_changes(&rows, &w(&[("instances", 10), ("cores", -1)]))
+                .unwrap()
+                .is_empty(),
+            "unchanged, unlimited = -1"
+        );
+        let c = quota_changes(
+            &rows,
+            &w(&[("instances", 4), ("cores", 20), ("member", 0), ("unknown", 3)]),
+        )
+        .unwrap();
+        assert_eq!(
+            c.into_iter().collect::<Vec<_>>(),
+            [
+                ("cores".to_string(), 20),
+                ("instances".to_string(), 4),
+                ("member".to_string(), 0)
+            ],
+            "no usage reported: any value"
+        );
+        assert!(
+            quota_changes(&rows, &w(&[("instances", 3)]))
+                .unwrap_err()
+                .contains("below the 4 in use")
+        );
+        assert!(
+            quota_changes(&rows, &w(&[("instances", -1)])).is_ok(),
+            "unlimited is never below usage"
+        );
         assert!(quota_changes(&rows, &w(&[("instances", -2)])).is_err());
     }
 
@@ -7135,18 +9129,40 @@ mod quota_tests {
         assert_eq!(QuotaService::Compute.unit("ram"), QuotaUnit::Mib);
         assert_eq!(QuotaService::Volume.unit("gigabytes_ceph"), QuotaUnit::Gib);
         assert_eq!(QuotaService::Network.unit("port"), QuotaUnit::Count);
-        let lb = OsAction::QuotaUpdate { service: QuotaService::LoadBalancer, project_id: "p".into(), values: Default::default() };
+        let lb = OsAction::QuotaUpdate {
+            service: QuotaService::LoadBalancer,
+            project_id: "p".into(),
+            values: Default::default(),
+        };
         assert_eq!(lb.plugins(), [Plugin::LoadBalancer]);
-        let km = OsAction::QuotaUpdate { service: QuotaService::KeyManager, project_id: "p".into(), values: Default::default() };
-        assert_eq!(km.plugins(), [Plugin::KeyManager], "Barbican quotas need the key-manager plugin");
+        let km = OsAction::QuotaUpdate {
+            service: QuotaService::KeyManager,
+            project_id: "p".into(),
+            values: Default::default(),
+        };
+        assert_eq!(
+            km.plugins(),
+            [Plugin::KeyManager],
+            "Barbican quotas need the key-manager plugin"
+        );
     }
 
     #[test]
     fn another_projects_quotas_need_the_admin_role() {
-        let q = |p: &str| OsAction::QuotaUpdate { service: QuotaService::Compute, project_id: p.into(), values: Default::default() };
-        assert!(!q("mine").other_projects_quotas("mine"), "the session's project: the cloud's policy decides");
+        let q = |p: &str| OsAction::QuotaUpdate {
+            service: QuotaService::Compute,
+            project_id: p.into(),
+            values: Default::default(),
+        };
+        assert!(
+            !q("mine").other_projects_quotas("mine"),
+            "the session's project: the cloud's policy decides"
+        );
         assert!(q("other").other_projects_quotas("mine"));
-        assert!(OsAction::Batch(vec![("a".into(), q("mine")), ("b".into(), q("other"))]).other_projects_quotas("mine"), "inside a batch too");
+        assert!(
+            OsAction::Batch(vec![("a".into(), q("mine")), ("b".into(), q("other"))]).other_projects_quotas("mine"),
+            "inside a batch too"
+        );
         assert!(!OsAction::ServerStart { id: "x".into() }.other_projects_quotas("mine"));
     }
 }

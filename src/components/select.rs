@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use crate::i18n::{use_i18n, K};
+use crate::i18n::{K, use_i18n};
 use crate::model::Choice;
 
 /// Lists at least this long get a search box.
@@ -45,7 +45,9 @@ pub fn typeahead(list: &[Choice], prefix: &str, from: usize) -> Option<usize> {
     if p.is_empty() || list.is_empty() {
         return None;
     }
-    (1..=list.len()).map(|k| (from + k) % list.len()).find(|&i| list[i].label.to_lowercase().starts_with(&p))
+    (1..=list.len())
+        .map(|k| (from + k) % list.len())
+        .find(|&i| list[i].label.to_lowercase().starts_with(&p))
 }
 
 #[component]
@@ -89,7 +91,9 @@ pub fn Combo(
     let all = move || {
         options.get().map(|mut l| {
             if !required {
-                let label = empty_label.get_value().unwrap_or_else(|| i18n.t(K::NoneOption).to_string());
+                let label = empty_label
+                    .get_value()
+                    .unwrap_or_else(|| i18n.t(K::NoneOption).to_string());
                 l.insert(0, Choice::new("", label));
             }
             l
@@ -281,13 +285,20 @@ pub fn Combo(
 fn place(trigger: NodeRef<leptos::html::Button>) -> String {
     #[cfg(feature = "hydrate")]
     {
-        let Some(t) = trigger.get_untracked() else { return String::new() };
+        let Some(t) = trigger.get_untracked() else {
+            return String::new();
+        };
         let r = t.get_bounding_client_rect();
         let vh = window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0);
         let below = vh - r.bottom();
         // Room for ~8 rows + search; flip up when the bottom is tight.
         if below < 300.0 && r.top() > below {
-            format!("left:{}px;bottom:{}px;width:{}px", r.left(), vh - r.top() + 4.0, r.width())
+            format!(
+                "left:{}px;bottom:{}px;width:{}px",
+                r.left(),
+                vh - r.top() + 4.0,
+                r.width()
+            )
         } else {
             format!("left:{}px;top:{}px;width:{}px", r.left(), r.bottom() + 4.0, r.width())
         }

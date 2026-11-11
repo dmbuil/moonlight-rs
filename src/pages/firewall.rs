@@ -8,19 +8,23 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos_router::components::A;
 
-use super::details::{mono, param, yes_no, Card, DetailHeader, Kv};
+use super::details::{Card, DetailHeader, Kv, mono, param, yes_no};
 use super::lists::{admin_state, link, moving_status};
 use crate::api::*;
-use crate::components::dialog::{data_version, CreateButton, RowActions};
+use crate::components::dialog::{CreateButton, RowActions, data_version};
 use crate::components::ops;
-use crate::components::table::{col, Col, DataTable};
-use crate::components::widgets::{dash, poll_while_busy, render, Copyable, Pill, Skeleton, Tone};
-use crate::i18n::{t, use_i18n, Lang, K};
+use crate::components::table::{Col, DataTable, col};
+use crate::components::widgets::{Copyable, Pill, Skeleton, Tone, dash, poll_while_busy, render};
+use crate::i18n::{K, Lang, t, use_i18n};
 use crate::model::*;
 
 /// The panel's tabs, as neutron-fwaas-dashboard orders them; each is a URL so
 /// a detail page's breadcrumb returns to the right one.
-const TABS: [(K, &str); 3] = [(K::FirewallGroups, "/project/firewall"), (K::FirewallPolicies, "/project/firewall/policies"), (K::FirewallRules, "/project/firewall/rules")];
+const TABS: [(K, &str); 3] = [
+    (K::FirewallGroups, "/project/firewall"),
+    (K::FirewallPolicies, "/project/firewall/policies"),
+    (K::FirewallRules, "/project/firewall/rules"),
+];
 
 /// The tab bar above each list; `active` indexes [`TABS`].
 #[component]
@@ -69,7 +73,10 @@ fn joined(refs: &[Ref], base: &'static str) -> AnyView {
 
 /// `TCP`, `UDP`, `ICMP`, or *Any*.
 pub fn protocol(l: Lang, r: &FirewallRuleRow) -> String {
-    r.protocol.as_deref().map(str::to_uppercase).unwrap_or_else(|| t(l, K::AnyValue).to_string())
+    r.protocol
+        .as_deref()
+        .map(str::to_uppercase)
+        .unwrap_or_else(|| t(l, K::AnyValue).to_string())
 }
 
 /// An address or a port; *Any* when Neutron has `null`.
@@ -145,8 +152,12 @@ fn RuleCards(r: FirewallRuleRow) -> impl IntoView {
 fn policy_rule_columns(policy: Option<FirewallPolicyRow>) -> Vec<Col<(usize, FirewallRuleRow)>> {
     type Row = (usize, FirewallRuleRow);
     let mut cols = vec![
-        col(K::Position, |(i, _): &Row, _| (i + 1).to_string()).sort_num(|(i, _)| *i as i64).class("num"),
-        col(K::Name, |(_, r): &Row, _| link(format!("/project/firewall/rules/{}", r.id), r.name.clone())),
+        col(K::Position, |(i, _): &Row, _| (i + 1).to_string())
+            .sort_num(|(i, _)| *i as i64)
+            .class("num"),
+        col(K::Name, |(_, r): &Row, _| {
+            link(format!("/project/firewall/rules/{}", r.id), r.name.clone())
+        }),
         col(K::Protocol, |(_, r): &Row, l| protocol(l, r)),
         col(K::SourceIp, |(_, r): &Row, l| any(l, &r.source_ip)),
         col(K::SourcePort, |(_, r): &Row, l| any(l, &r.source_port)),
@@ -160,8 +171,16 @@ fn policy_rule_columns(policy: Option<FirewallPolicyRow>) -> Vec<Col<(usize, Fir
         let pid = p.id.clone();
         cols.push(
             col(K::Actions, move |(_, r): &Row, l| {
-                let (pid, rule) = (pid.clone(), Ref { id: r.id.clone(), name: r.name.clone() });
-                let item = crate::components::dialog::MenuItem::danger(t(l, K::RemoveRule), move || ops::remove_firewall_rule_dialog(l, &pid, &rule));
+                let (pid, rule) = (
+                    pid.clone(),
+                    Ref {
+                        id: r.id.clone(),
+                        name: r.name.clone(),
+                    },
+                );
+                let item = crate::components::dialog::MenuItem::danger(t(l, K::RemoveRule), move || {
+                    ops::remove_firewall_rule_dialog(l, &pid, &rule)
+                });
                 view! { <RowActions items=vec![item]/> }
             })
             .class("actions"),
@@ -223,8 +242,17 @@ pub fn FirewallPolicyDetailPage() -> impl IntoView {
 
 fn group_port_columns(group: FirewallGroupRow) -> Vec<Col<FirewallPort>> {
     let mut cols = vec![
-        col(K::Port, |p: &FirewallPort, _| link(format!("/project/networks/ports/{}", p.port.id), p.port.name.clone())).sort_text(|p| p.port.name.clone()),
-        col(K::FixedIps, |p: &FirewallPort, _| mono(if p.ips.is_empty() { "-".to_string() } else { p.ips.join(", ") })),
+        col(K::Port, |p: &FirewallPort, _| {
+            link(format!("/project/networks/ports/{}", p.port.id), p.port.name.clone())
+        })
+        .sort_text(|p| p.port.name.clone()),
+        col(K::FixedIps, |p: &FirewallPort, _| {
+            mono(if p.ips.is_empty() {
+                "-".to_string()
+            } else {
+                p.ips.join(", ")
+            })
+        }),
         col(K::Type, |p: &FirewallPort, l| match p.kind.as_deref() {
             Some("router") => t(l, K::Router).into_any(),
             Some("instance") => t(l, K::Instance).into_any(),
@@ -241,7 +269,9 @@ fn group_port_columns(group: FirewallGroupRow) -> Vec<Col<FirewallPort>> {
         cols.push(
             col(K::Actions, move |p: &FirewallPort, l| {
                 let p = p.clone();
-                let item = crate::components::dialog::MenuItem::danger(t(l, K::RemovePort), move || g.with_value(|g| ops::remove_firewall_port_dialog(l, g, &p)));
+                let item = crate::components::dialog::MenuItem::danger(t(l, K::RemovePort), move || {
+                    g.with_value(|g| ops::remove_firewall_port_dialog(l, g, &p))
+                });
                 view! { <RowActions items=vec![item]/> }
             })
             .class("actions"),

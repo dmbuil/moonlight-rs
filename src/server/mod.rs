@@ -9,11 +9,11 @@
 pub mod actions;
 pub mod config;
 pub mod console;
-pub mod heat;
-pub mod logging;
 pub mod downloads;
 pub mod errors;
 pub mod fetch;
+pub mod heat;
+pub mod logging;
 pub mod mapping;
 pub mod os;
 pub mod paging;
@@ -41,13 +41,21 @@ pub async fn security_headers(mut r: axum::response::Response) -> axum::response
 /// * `nosniff`, and no `Referer` to other origins (URLs carry resource IDs).
 /// * `https`: HSTS for a year, so the browser never tries plain HTTP again.
 pub fn add_security_headers(h: &mut http::HeaderMap, https: bool) {
-    use http::header::{HeaderValue, CONTENT_SECURITY_POLICY, REFERRER_POLICY, STRICT_TRANSPORT_SECURITY, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS};
+    use http::header::{
+        CONTENT_SECURITY_POLICY, HeaderValue, REFERRER_POLICY, STRICT_TRANSPORT_SECURITY, X_CONTENT_TYPE_OPTIONS,
+        X_FRAME_OPTIONS,
+    };
     h.entry(X_FRAME_OPTIONS).or_insert(HeaderValue::from_static("DENY"));
-    h.entry(CONTENT_SECURITY_POLICY).or_insert(HeaderValue::from_static("frame-ancestors 'none'; object-src 'none'; base-uri 'self'"));
-    h.entry(X_CONTENT_TYPE_OPTIONS).or_insert(HeaderValue::from_static("nosniff"));
-    h.entry(REFERRER_POLICY).or_insert(HeaderValue::from_static("same-origin"));
+    h.entry(CONTENT_SECURITY_POLICY).or_insert(HeaderValue::from_static(
+        "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+    ));
+    h.entry(X_CONTENT_TYPE_OPTIONS)
+        .or_insert(HeaderValue::from_static("nosniff"));
+    h.entry(REFERRER_POLICY)
+        .or_insert(HeaderValue::from_static("same-origin"));
     if https {
-        h.entry(STRICT_TRANSPORT_SECURITY).or_insert(HeaderValue::from_static("max-age=31536000"));
+        h.entry(STRICT_TRANSPORT_SECURITY)
+            .or_insert(HeaderValue::from_static("max-age=31536000"));
     }
 }
 
@@ -64,7 +72,11 @@ pub fn compression() -> tower_http::compression::CompressionLayer<CompressWhen> 
     fn when(_: http::StatusCode, _: http::Version, h: &http::HeaderMap, _: &http::Extensions) -> bool {
         compressible(h)
     }
-    CompressionLayer::new().no_br().no_deflate().no_zstd().compress_when(when as CompressWhen)
+    CompressionLayer::new()
+        .no_br()
+        .no_deflate()
+        .no_zstd()
+        .compress_when(when as CompressWhen)
 }
 
 /// The predicate type of [`compression`]: tower-http's signature, as a plain fn.
@@ -76,9 +88,15 @@ pub type CompressWhen = fn(http::StatusCode, http::Version, &http::HeaderMap, &h
 /// user typed, and compressing both together leaks the secret through the
 /// response size (BREACH). Small files don't gain enough to be worth it either.
 pub fn compressible(h: &http::HeaderMap) -> bool {
-    let ty = h.get(http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let ty = h
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     let ty = ty.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
-    matches!(ty.as_str(), "application/wasm" | "text/javascript" | "application/javascript" | "text/css")
+    matches!(
+        ty.as_str(),
+        "application/wasm" | "text/javascript" | "application/javascript" | "text/css"
+    )
 }
 
 /// Refuses state-changing requests from another origin (roadmap 48): server
@@ -94,7 +112,11 @@ pub async fn same_origin_only(req: axum::extract::Request, next: axum::middlewar
     {
         return next.run(req).await;
     }
-    let client = cfg.client_ip_header.as_ref().and_then(|n| session::client_ip_from(req.headers(), n, cfg.trusted_proxies)).unwrap_or_else(|| "-".into());
+    let client = cfg
+        .client_ip_header
+        .as_ref()
+        .and_then(|n| session::client_ip_from(req.headers(), n, cfg.trusted_proxies))
+        .unwrap_or_else(|| "-".into());
     tracing::warn!(method = %req.method(), uri = %req.uri(), %client, "cross-origin request refused");
     (http::StatusCode::FORBIDDEN, "cross-origin request refused").into_response()
 }
@@ -112,7 +134,9 @@ pub fn same_origin(method: &http::Method, h: &http::HeaderMap, public: Option<&s
     if let Some(site) = get("sec-fetch-site") {
         return site.eq_ignore_ascii_case("same-origin") || site.eq_ignore_ascii_case("none");
     }
-    let Some(origin) = get("origin").filter(|o| !o.eq_ignore_ascii_case("null")) else { return false };
+    let Some(origin) = get("origin").filter(|o| !o.eq_ignore_ascii_case("null")) else {
+        return false;
+    };
     let origin = origin.to_ascii_lowercase();
     match public {
         Some(p) => origin == p,
@@ -138,28 +162,71 @@ pub fn sfe<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> App
 #[cfg(test)]
 mod tests {
     fn headers(pairs: &[(&'static str, &str)]) -> http::HeaderMap {
-        pairs.iter().map(|(k, v)| (http::HeaderName::from_static(k), http::HeaderValue::from_str(v).unwrap())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| {
+                (
+                    http::HeaderName::from_static(k),
+                    http::HeaderValue::from_str(v).unwrap(),
+                )
+            })
+            .collect()
     }
 
     #[test]
     fn writes_must_come_from_the_same_origin() {
         use http::Method;
         let ok = |m: &Method, h: &[(&'static str, &str)], p: Option<&str>| super::same_origin(m, &headers(h), p);
-        assert!(ok(&Method::GET, &[("sec-fetch-site", "cross-site")], None), "reads pass");
+        assert!(
+            ok(&Method::GET, &[("sec-fetch-site", "cross-site")], None),
+            "reads pass"
+        );
         assert!(ok(&Method::POST, &[("sec-fetch-site", "same-origin")], None));
-        assert!(ok(&Method::POST, &[("sec-fetch-site", "none")], None), "typed by the user");
-        assert!(!ok(&Method::POST, &[("sec-fetch-site", "same-site"), ("origin", "https://evil.example.com"), ("host", "moonlight.example.com")], None), "a sibling subdomain");
+        assert!(
+            ok(&Method::POST, &[("sec-fetch-site", "none")], None),
+            "typed by the user"
+        );
+        assert!(
+            !ok(
+                &Method::POST,
+                &[
+                    ("sec-fetch-site", "same-site"),
+                    ("origin", "https://evil.example.com"),
+                    ("host", "moonlight.example.com")
+                ],
+                None
+            ),
+            "a sibling subdomain"
+        );
         assert!(!ok(&Method::POST, &[("sec-fetch-site", "cross-site")], None));
         // Browsers without Sec-Fetch-*: Origin against Host, or against the public URL.
         let host = ("host", "moonlight.example.com:8443");
-        assert!(ok(&Method::POST, &[("origin", "https://Moonlight.example.com:8443"), host], None));
-        assert!(!ok(&Method::POST, &[("origin", "https://other.example.com"), host], None));
-        assert!(!ok(&Method::POST, &[("origin", "null"), host], None), "sandboxed or opaque origins");
+        assert!(ok(
+            &Method::POST,
+            &[("origin", "https://Moonlight.example.com:8443"), host],
+            None
+        ));
+        assert!(!ok(
+            &Method::POST,
+            &[("origin", "https://other.example.com"), host],
+            None
+        ));
+        assert!(
+            !ok(&Method::POST, &[("origin", "null"), host], None),
+            "sandboxed or opaque origins"
+        );
         assert!(!ok(&Method::POST, &[host], None), "nothing to tell: refused");
         let proxied = [("origin", "https://cloud.example.com"), ("host", "10.0.0.5:3000")];
         assert!(!ok(&Method::POST, &proxied, None), "a proxy rewrote Host…");
-        assert!(ok(&Method::POST, &proxied, Some("https://cloud.example.com")), "…so [session] public_url is compared instead");
-        assert!(!ok(&Method::DELETE, &[("origin", "https://evil.example"), ("host", "evil.example")], Some("https://cloud.example.com")));
+        assert!(
+            ok(&Method::POST, &proxied, Some("https://cloud.example.com")),
+            "…so [session] public_url is compared instead"
+        );
+        assert!(!ok(
+            &Method::DELETE,
+            &[("origin", "https://evil.example"), ("host", "evil.example")],
+            Some("https://cloud.example.com")
+        ));
     }
 
     #[test]
@@ -169,10 +236,16 @@ mod tests {
         assert!(ok("text/javascript; charset=utf-8"));
         assert!(ok("application/javascript"));
         assert!(ok("Text/CSS"));
-        assert!(!ok("text/html; charset=utf-8"), "pages can hold secrets next to user input (BREACH)");
+        assert!(
+            !ok("text/html; charset=utf-8"),
+            "pages can hold secrets next to user input (BREACH)"
+        );
         assert!(!ok("application/json"), "server function results, same reason");
         assert!(!ok("image/png"));
-        assert!(!super::compressible(&http::HeaderMap::new()), "no Content-Type: left alone");
+        assert!(
+            !super::compressible(&http::HeaderMap::new()),
+            "no Content-Type: left alone"
+        );
     }
 
     #[test]
@@ -180,8 +253,17 @@ mod tests {
         let mut h = http::HeaderMap::new();
         super::add_security_headers(&mut h, false);
         assert_eq!(h["x-frame-options"], "DENY");
-        assert_eq!(h["content-security-policy"], "frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
-        assert_eq!((h["x-content-type-options"].to_str().unwrap(), h["referrer-policy"].to_str().unwrap()), ("nosniff", "same-origin"));
+        assert_eq!(
+            h["content-security-policy"],
+            "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        );
+        assert_eq!(
+            (
+                h["x-content-type-options"].to_str().unwrap(),
+                h["referrer-policy"].to_str().unwrap()
+            ),
+            ("nosniff", "same-origin")
+        );
         assert!(!h.contains_key("strict-transport-security"), "no HSTS over plain HTTP");
         let mut h = http::HeaderMap::new();
         h.insert("x-frame-options", http::HeaderValue::from_static("SAMEORIGIN"));

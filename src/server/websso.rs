@@ -100,7 +100,13 @@ impl WebSso {
         if keystone.cannot_be_a_base() || keystone.query().is_some() {
             return Err(format!("not a base URL (got {keystone:?})"));
         }
-        Ok(WebSso { keystone, origin: format!("{public_origin}{CALLBACK}"), protocols, idp_mapping, logout_url })
+        Ok(WebSso {
+            keystone,
+            origin: format!("{public_origin}{CALLBACK}"),
+            protocols,
+            idp_mapping,
+            logout_url,
+        })
     }
 
     /// Where to send the browser for `choice`, or `None` when it is not a
@@ -135,8 +141,14 @@ impl WebSso {
             return None;
         }
         Some(match self.idp_mapping.get(choice) {
-            Some((idp, protocol)) => super::session::SsoVia { identity_provider: Some(idp.clone()), protocol: protocol.clone() },
-            None => super::session::SsoVia { identity_provider: None, protocol: choice.to_string() },
+            Some((idp, protocol)) => super::session::SsoVia {
+                identity_provider: Some(idp.clone()),
+                protocol: protocol.clone(),
+            },
+            None => super::session::SsoVia {
+                identity_provider: None,
+                protocol: choice.to_string(),
+            },
         })
     }
 
@@ -155,15 +167,23 @@ pub fn is_callback(method: &http::Method, path: &str, enabled: bool) -> bool {
 
 /// `Set-Cookie` of a new nonce for `choice`, valid until `now + NONCE_SECONDS`.
 pub fn nonce_cookie(key: &Key, now: DateTime<Utc>, choice: &str) -> String {
-    let nonce = serde_json::to_string(&Nonce { expires: now.timestamp() + NONCE_SECONDS, choice: choice.into() }).expect("nonce serialises");
+    let nonce = serde_json::to_string(&Nonce {
+        expires: now.timestamp() + NONCE_SECONDS,
+        choice: choice.into(),
+    })
+    .expect("nonce serialises");
     let mut jar = CookieJar::new();
-    jar.private_mut(key).add(nonce_attrs(Cookie::build((NONCE_COOKIE, nonce))).max_age(cookie::time::Duration::seconds(NONCE_SECONDS)));
+    jar.private_mut(key)
+        .add(nonce_attrs(Cookie::build((NONCE_COOKIE, nonce))).max_age(cookie::time::Duration::seconds(NONCE_SECONDS)));
     jar.get(NONCE_COOKIE).expect("cookie just added").to_string()
 }
 
 /// `Set-Cookie` that deletes the nonce.
 pub fn nonce_removal() -> String {
-    nonce_attrs(Cookie::build((NONCE_COOKIE, ""))).max_age(cookie::time::Duration::ZERO).build().to_string()
+    nonce_attrs(Cookie::build((NONCE_COOKIE, "")))
+        .max_age(cookie::time::Duration::ZERO)
+        .build()
+        .to_string()
 }
 
 fn nonce_attrs(c: cookie::CookieBuilder<'static>) -> cookie::CookieBuilder<'static> {
@@ -174,7 +194,10 @@ fn nonce_attrs(c: cookie::CookieBuilder<'static>) -> cookie::CookieBuilder<'stat
 /// expired: the hash of the cookie value (the key for the replay check) and
 /// the choice it was issued for.
 pub fn valid_nonce(cookie_header: &str, key: &Key, now: DateTime<Utc>) -> Option<(String, String)> {
-    let raw = Cookie::split_parse(cookie_header.to_owned()).flatten().find(|c| c.name() == NONCE_COOKIE)?.into_owned();
+    let raw = Cookie::split_parse(cookie_header.to_owned())
+        .flatten()
+        .find(|c| c.name() == NONCE_COOKIE)?
+        .into_owned();
     let mut jar = CookieJar::new();
     jar.add_original(raw.clone());
     let plain = jar.private(key).get(NONCE_COOKIE)?;
@@ -186,7 +209,11 @@ pub fn valid_nonce(cookie_header: &str, key: &Key, now: DateTime<Utc>) -> Option
 /// its page has `Referrer-Policy: no-referrer`; anything else is another site.
 /// No header at all: an old browser, left to the nonce.
 pub fn origin_allowed(headers: &http::HeaderMap, keystone_origin: &str) -> bool {
-    match headers.get(http::header::ORIGIN).and_then(|v| v.to_str().ok()).map(str::trim) {
+    match headers
+        .get(http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+    {
         None => true,
         Some(o) => o.eq_ignore_ascii_case("null") || o.eq_ignore_ascii_case(keystone_origin),
     }
@@ -195,7 +222,10 @@ pub fn origin_allowed(headers: &http::HeaderMap, keystone_origin: &str) -> bool 
 /// `GET /auth/websso/start?choice=<id>`: sets the nonce cookie and answers
 /// `303` to Keystone's WebSSO URL for that choice; `404` with WebSSO off,
 /// `400` for a choice that is not a configured federation protocol.
-pub async fn start(headers: http::HeaderMap, axum::extract::Query(q): axum::extract::Query<BTreeMap<String, String>>) -> axum::response::Response {
+pub async fn start(
+    headers: http::HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<BTreeMap<String, String>>,
+) -> axum::response::Response {
     use axum::response::{IntoResponse, Redirect};
     let st = super::config::state();
     let Some(ws) = &st.config.websso else {
@@ -204,9 +234,21 @@ pub async fn start(headers: http::HeaderMap, axum::extract::Query(q): axum::extr
     let choice = q.get("choice").map(String::as_str).unwrap_or("");
     match ws.start_url(choice) {
         Some(url) => {
-            let client = st.config.client_ip_header.as_ref().and_then(|h| super::session::client_ip_from(&headers, h, st.config.trusted_proxies)).unwrap_or_else(|| "-".into());
+            let client = st
+                .config
+                .client_ip_header
+                .as_ref()
+                .and_then(|h| super::session::client_ip_from(&headers, h, st.config.trusted_proxies))
+                .unwrap_or_else(|| "-".into());
             tracing::info!(%choice, %client, "websso start: sent to Keystone");
-            ([(http::header::SET_COOKIE, nonce_cookie(&st.cookie_key, Utc::now(), choice))], Redirect::to(&url)).into_response()
+            (
+                [(
+                    http::header::SET_COOKIE,
+                    nonce_cookie(&st.cookie_key, Utc::now(), choice),
+                )],
+                Redirect::to(&url),
+            )
+                .into_response()
         }
         None => (http::StatusCode::BAD_REQUEST, "unknown sign-in choice").into_response(),
     }
@@ -218,23 +260,44 @@ pub async fn start(headers: http::HeaderMap, axum::extract::Query(q): axum::extr
 /// `303` to `/project` with the session cookie ([`signed_in`]); otherwise `303`
 /// to `/login?sso=<Refusal::code>`. The nonce is deleted either way. Not
 /// throttled: no password reaches Moonlight. The token is never logged.
-pub async fn callback(headers: http::HeaderMap, form: Result<axum::Form<BTreeMap<String, String>>, axum::extract::rejection::FormRejection>) -> axum::response::Response {
+pub async fn callback(
+    headers: http::HeaderMap,
+    form: Result<axum::Form<BTreeMap<String, String>>, axum::extract::rejection::FormRejection>,
+) -> axum::response::Response {
     use axum::response::{IntoResponse, Redirect};
     let st = super::config::state();
     let Some(ws) = &st.config.websso else {
         return http::StatusCode::NOT_FOUND.into_response();
     };
-    let client = st.config.client_ip_header.as_ref().and_then(|h| super::session::client_ip_from(&headers, h, st.config.trusted_proxies)).unwrap_or_else(|| "-".into());
+    let client = st
+        .config
+        .client_ip_header
+        .as_ref()
+        .and_then(|h| super::session::client_ip_from(&headers, h, st.config.trusted_proxies))
+        .unwrap_or_else(|| "-".into());
     let back = |r: Refusal| {
-        ([(http::header::SET_COOKIE, nonce_removal())], Redirect::to(&format!("/login?sso={}", r.code()))).into_response()
+        (
+            [(http::header::SET_COOKIE, nonce_removal())],
+            Redirect::to(&format!("/login?sso={}", r.code())),
+        )
+            .into_response()
     };
-    let cookies = headers.get_all(http::header::COOKIE).iter().filter_map(|v| v.to_str().ok()).collect::<Vec<_>>().join("; ");
+    let cookies = headers
+        .get_all(http::header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect::<Vec<_>>()
+        .join("; ");
     let nonce = valid_nonce(&cookies, &st.cookie_key, Utc::now());
     // `get_with` is atomic: of two requests with the same nonce, one inserts.
     let fresh = match &nonce {
         Some((n, _)) => {
             let first = std::sync::atomic::AtomicBool::new(false);
-            st.websso_used.get_with(n.clone(), async { first.store(true, std::sync::atomic::Ordering::Relaxed) }).await;
+            st.websso_used
+                .get_with(n.clone(), async {
+                    first.store(true, std::sync::atomic::Ordering::Relaxed)
+                })
+                .await;
             first.into_inner()
         }
         None => false,
@@ -243,11 +306,20 @@ pub async fn callback(headers: http::HeaderMap, form: Result<axum::Form<BTreeMap
     // from the settings counts as no nonce.
     let via = nonce.as_ref().and_then(|(_, choice)| ws.via(choice));
     let Some(via) = via.filter(|_| fresh && origin_allowed(&headers, &ws.keystone_origin())) else {
-        let origin = headers.get(http::header::ORIGIN).and_then(|v| v.to_str().ok()).unwrap_or("-");
+        let origin = headers
+            .get(http::header::ORIGIN)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("-");
         tracing::warn!(%client, %origin, "websso callback refused: no valid nonce or foreign origin");
         return back(Refusal::NotStarted);
     };
-    let Some(token) = form.as_ref().ok().and_then(|f| f.get("token")).map(|t| t.trim()).filter(|t| !t.is_empty()) else {
+    let Some(token) = form
+        .as_ref()
+        .ok()
+        .and_then(|f| f.get("token"))
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+    else {
         tracing::warn!(%client, "websso callback without a token");
         return back(Refusal::Failed);
     };
@@ -269,7 +341,12 @@ pub async fn callback(headers: http::HeaderMap, form: Result<axum::Form<BTreeMap
         }
     };
     sess.websso = Some(via);
-    let session = super::session::encode(&sess, &st.cookie_key, st.config.secure_cookies, sess.ends_at(st.config.session_timeout));
+    let session = super::session::encode(
+        &sess,
+        &st.cookie_key,
+        st.config.secure_cookies,
+        sess.ends_at(st.config.session_timeout),
+    );
     if !super::session::fits_in_a_cookie(&session) {
         tracing::warn!(user = %sess.user, %client, token_bytes = sess.token.len(), cookie_bytes = session.len(), "websso sign-in refused: the session does not fit in a cookie");
         return back(Refusal::Failed);
@@ -284,7 +361,14 @@ pub async fn callback(headers: http::HeaderMap, form: Result<axum::Form<BTreeMap
 /// landed on the login page with no session cookie (seen on ttcp-dev).
 fn signed_in(session: String) -> axum::response::Response {
     use axum::response::{AppendHeaders, IntoResponse, Redirect};
-    (AppendHeaders([(http::header::SET_COOKIE, session), (http::header::SET_COOKIE, nonce_removal())]), Redirect::to("/project")).into_response()
+    (
+        AppendHeaders([
+            (http::header::SET_COOKIE, session),
+            (http::header::SET_COOKIE, nonce_removal()),
+        ]),
+        Redirect::to("/project"),
+    )
+        .into_response()
 }
 
 #[cfg(test)]
@@ -293,7 +377,14 @@ mod tests {
 
     fn sso(keystone: &str) -> WebSso {
         let mapping = BTreeMap::from([("acme".to_string(), ("acme idp/1".to_string(), "openid".to_string()))]);
-        WebSso::new(keystone, "https://cloud.example.com", vec!["oidc".into(), "saml2".into(), "acme".into()], mapping, None).unwrap()
+        WebSso::new(
+            keystone,
+            "https://cloud.example.com",
+            vec!["oidc".into(), "saml2".into(), "acme".into()],
+            mapping,
+            None,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -314,15 +405,33 @@ mod tests {
     fn a_choice_names_its_identity_provider_and_protocol() {
         use crate::server::session::SsoVia;
         let s = sso("https://k.example.com");
-        assert_eq!(s.via("acme"), Some(SsoVia { identity_provider: Some("acme idp/1".into()), protocol: "openid".into() }), "idp_mapping");
-        assert_eq!(s.via("saml2"), Some(SsoVia { identity_provider: None, protocol: "saml2".into() }), "Keystone picks the provider");
+        assert_eq!(
+            s.via("acme"),
+            Some(SsoVia {
+                identity_provider: Some("acme idp/1".into()),
+                protocol: "openid".into()
+            }),
+            "idp_mapping"
+        );
+        assert_eq!(
+            s.via("saml2"),
+            Some(SsoVia {
+                identity_provider: None,
+                protocol: "saml2".into()
+            }),
+            "Keystone picks the provider"
+        );
         assert_eq!(s.via("credentials"), None);
     }
 
     #[test]
     fn only_configured_federated_choices_get_a_url() {
         let s = sso("https://k.example.com");
-        assert_eq!(s.start_url("credentials"), None, "the password form never leaves Moonlight");
+        assert_eq!(
+            s.start_url("credentials"),
+            None,
+            "the password form never leaves Moonlight"
+        );
         assert_eq!(s.start_url("evil/../x"), None);
         assert_eq!(s.start_url(""), None);
     }
@@ -342,25 +451,53 @@ mod tests {
             assert!(set.contains(attr), "{attr} in {set}");
         }
         let (n, choice) = valid_nonce(&format!("other=1; {}", sent(&set)), &key, now).expect("valid right away");
-        assert_eq!(choice, "oidc", "the choice travels in the nonce: Keystone's POST doesn't say it");
+        assert_eq!(
+            choice, "oidc",
+            "the choice travels in the nonce: Keystone's POST doesn't say it"
+        );
         assert!(valid_nonce(&sent(&set), &key, now + chrono::Duration::seconds(NONCE_SECONDS - 1)).is_some());
-        assert_eq!(valid_nonce(&sent(&set), &key, now + chrono::Duration::seconds(NONCE_SECONDS)), None, "expired");
-        assert_ne!(valid_nonce(&sent(&nonce_cookie(&key, now, "oidc")), &key, now).unwrap().0, n, "each nonce has its own replay key");
+        assert_eq!(
+            valid_nonce(&sent(&set), &key, now + chrono::Duration::seconds(NONCE_SECONDS)),
+            None,
+            "expired"
+        );
+        assert_ne!(
+            valid_nonce(&sent(&nonce_cookie(&key, now, "oidc")), &key, now)
+                .unwrap()
+                .0,
+            n,
+            "each nonce has its own replay key"
+        );
     }
 
     #[test]
     fn a_missing_forged_or_foreign_key_nonce_is_refused() {
         let key = Key::generate();
         let now = Utc::now();
-        assert_eq!(valid_nonce("", &key, now), None, "sign-in not started from this browser");
-        assert_eq!(valid_nonce(&sent(&nonce_cookie(&Key::generate(), now, "oidc")), &key, now), None, "another deployment's key");
-        assert_eq!(valid_nonce("__Host-ml_sso={\"expires\":99999999999,\"choice\":\"oidc\"}", &key, now), None, "plain text is not encrypted");
+        assert_eq!(
+            valid_nonce("", &key, now),
+            None,
+            "sign-in not started from this browser"
+        );
+        assert_eq!(
+            valid_nonce(&sent(&nonce_cookie(&Key::generate(), now, "oidc")), &key, now),
+            None,
+            "another deployment's key"
+        );
+        assert_eq!(
+            valid_nonce("__Host-ml_sso={\"expires\":99999999999,\"choice\":\"oidc\"}", &key, now),
+            None,
+            "plain text is not encrypted"
+        );
         let mut tampered = sent(&nonce_cookie(&key, now, "oidc"));
         let last = tampered.pop().unwrap();
         tampered.push(if last == 'A' { 'B' } else { 'A' });
         assert_eq!(valid_nonce(&tampered, &key, now), None);
         let gone = nonce_removal();
-        assert!(gone.starts_with("__Host-ml_sso=;") && gone.contains("Max-Age=0") && gone.contains("Secure"), "{gone}");
+        assert!(
+            gone.starts_with("__Host-ml_sso=;") && gone.contains("Max-Age=0") && gone.contains("Secure"),
+            "{gone}"
+        );
     }
 
     #[test]
@@ -375,38 +512,64 @@ mod tests {
         let k = sso("https://keystone.example.com:5000/v3").keystone_origin();
         assert_eq!(k, "https://keystone.example.com:5000");
         assert!(origin_allowed(&h(Some("https://keystone.example.com:5000")), &k));
-        assert!(origin_allowed(&h(Some("null")), &k), "Keystone's page with Referrer-Policy: no-referrer");
+        assert!(
+            origin_allowed(&h(Some("null")), &k),
+            "Keystone's page with Referrer-Policy: no-referrer"
+        );
         assert!(origin_allowed(&h(None), &k), "no Origin: the nonce decides");
         assert!(!origin_allowed(&h(Some("https://evil.example.com")), &k));
-        assert!(!origin_allowed(&h(Some("https://keystone.example.com")), &k), "another port is another origin");
+        assert!(
+            !origin_allowed(&h(Some("https://keystone.example.com")), &k),
+            "another port is another origin"
+        );
     }
 
     #[test]
     fn signing_in_sets_the_session_cookie_and_deletes_the_nonce() {
         let r = signed_in("ml_session=abc; Path=/; HttpOnly; SameSite=Lax".into());
-        let set: Vec<_> = r.headers().get_all(http::header::SET_COOKIE).iter().map(|v| v.to_str().unwrap().to_string()).collect();
+        let set: Vec<_> = r
+            .headers()
+            .get_all(http::header::SET_COOKIE)
+            .iter()
+            .map(|v| v.to_str().unwrap().to_string())
+            .collect();
         assert_eq!(set.len(), 2, "both cookies, not the last one only: {set:?}");
         assert!(set[0].starts_with("ml_session=abc"), "the session cookie survives");
         assert!(set[1].starts_with("__Host-ml_sso=;"), "the nonce is deleted");
-        assert_eq!((r.status(), &r.headers()[http::header::LOCATION]), (http::StatusCode::SEE_OTHER, &http::HeaderValue::from_static("/project")));
+        assert_eq!(
+            (r.status(), &r.headers()[http::header::LOCATION]),
+            (http::StatusCode::SEE_OTHER, &http::HeaderValue::from_static("/project"))
+        );
     }
 
     #[test]
     fn only_the_callback_post_skips_the_same_origin_check() {
         use http::Method;
         assert!(is_callback(&Method::POST, "/auth/websso", true));
-        assert!(!is_callback(&Method::POST, "/auth/websso", false), "WebSSO off: refused like any cross-site POST");
+        assert!(
+            !is_callback(&Method::POST, "/auth/websso", false),
+            "WebSSO off: refused like any cross-site POST"
+        );
         assert!(!is_callback(&Method::POST, "/auth/websso/", true));
         assert!(!is_callback(&Method::POST, "/api/login", true));
         assert!(!is_callback(&Method::PUT, "/auth/websso", true));
         let refusals = [Refusal::NotStarted, Refusal::Failed, Refusal::NoProjects].map(Refusal::code);
-        assert_eq!(refusals, ["expired", "failed", "noprojects"], "pages::login reads these");
+        assert_eq!(
+            refusals,
+            ["expired", "failed", "noprojects"],
+            "pages::login reads these"
+        );
     }
 
     #[test]
     fn the_keystone_url_may_end_in_v3_or_a_slash_or_carry_a_path() {
         let want = "https://k.example.com/identity/v3/auth/OS-FEDERATION/websso/saml2";
-        for k in ["https://k.example.com/identity", "https://k.example.com/identity/", "https://k.example.com/identity/v3", "https://k.example.com/identity/v3/"] {
+        for k in [
+            "https://k.example.com/identity",
+            "https://k.example.com/identity/",
+            "https://k.example.com/identity/v3",
+            "https://k.example.com/identity/v3/",
+        ] {
             assert!(sso(k).start_url("saml2").unwrap().starts_with(want), "{k}");
         }
         assert!(WebSso::new("not a url", "https://c", vec![], BTreeMap::new(), None).is_err());

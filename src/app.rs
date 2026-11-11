@@ -1,33 +1,35 @@
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
+use leptos_meta::{MetaTags, Stylesheet, Title, provide_meta_context};
 use leptos_router::components::{Outlet, ParentRoute, Redirect, Route, Router, Routes};
-use leptos_router::{path, SsrMode};
+use leptos_router::{SsrMode, path};
 
 use crate::components::layout::Layout;
+use crate::i18n::{I18n, K, initial_lang, use_i18n};
 use crate::pages::admin::*;
-use crate::i18n::{initial_lang, use_i18n, I18n, K};
+use crate::pages::alarms::{AlarmDetailPage, AlarmsPage};
 use crate::pages::details::*;
+use crate::pages::firewall::{FirewallGroupDetailPage, FirewallPolicyDetailPage, FirewallRuleDetailPage};
+use crate::pages::floating_ip::FloatingIpDetailPage;
+use crate::pages::heat_catalog::{
+    ResourceTypeDetailPage, ResourceTypesPage, TemplateVersionDetailPage, TemplateVersionsPage,
+};
+use crate::pages::identity::*;
 use crate::pages::instance_detail::InstanceDetailPage;
 use crate::pages::instances::InstancesPage;
 use crate::pages::key_manager::{ContainerDetailPage, SecretDetailPage};
-use crate::pages::heat_catalog::{ResourceTypeDetailPage, ResourceTypesPage, TemplateVersionDetailPage, TemplateVersionsPage};
-use crate::pages::stack_launch::{StackChangePage, StackLaunchPage};
-use crate::pages::template_generator::TemplateGeneratorPage;
-use crate::pages::stacks::{StackDetailPage, StacksPage};
-use crate::pages::alarms::{AlarmDetailPage, AlarmsPage};
 use crate::pages::lists::*;
-use crate::pages::floating_ip::FloatingIpDetailPage;
-use crate::pages::identity::*;
 use crate::pages::load_balancers::LoadBalancerDetailPage;
-use crate::pages::qos::QosPolicyDetailPage;
-use crate::pages::trunks::TrunkDetailPage;
-use crate::pages::firewall::{FirewallGroupDetailPage, FirewallPolicyDetailPage, FirewallRuleDetailPage};
-use crate::pages::volume_groups::{GroupSnapshotDetailPage, VolumeGroupDetailPage};
 use crate::pages::login::LoginPage;
 use crate::pages::overview::OverviewPage;
+use crate::pages::qos::QosPolicyDetailPage;
 use crate::pages::quotas::{IdentityProjectQuotasPage, QuotasPage};
+use crate::pages::stack_launch::{StackChangePage, StackLaunchPage};
+use crate::pages::stacks::{StackDetailPage, StacksPage};
+use crate::pages::template_generator::TemplateGeneratorPage;
 use crate::pages::topology::NetworkTopologyPage;
-use crate::theme::{initial_theme, ThemeCtx};
+use crate::pages::trunks::TrunkDetailPage;
+use crate::pages::volume_groups::{GroupSnapshotDetailPage, VolumeGroupDetailPage};
+use crate::theme::{ThemeCtx, initial_theme};
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     let lang = initial_lang();

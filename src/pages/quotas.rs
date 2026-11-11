@@ -10,13 +10,13 @@ use crate::api::{list_project_quotas, list_quotas};
 use crate::components::dialog::{data_version, use_dialogs};
 use crate::components::ops::{edit_quotas_dialog, quota_label, quota_service_label};
 use crate::components::table::TimingChip;
+use crate::components::widgets::{ErrorBox, PageHeader, Skeleton, render};
+use crate::i18n::{K, use_i18n};
+use crate::model::{QuotaCard, QuotaRow, QuotaService};
 use crate::pages::details::param;
+use crate::pages::overview::fmt_amount;
 use leptos_meta::Title;
 use leptos_router::components::A;
-use crate::components::widgets::{render, ErrorBox, PageHeader, Skeleton};
-use crate::i18n::{use_i18n, K};
-use crate::model::{QuotaCard, QuotaRow, QuotaService};
-use crate::pages::overview::fmt_amount;
 
 /// Percentage used, 0..=100; `None` without usage or limit (nothing to draw).
 fn percent(r: &QuotaRow) -> Option<f64> {
@@ -114,8 +114,13 @@ fn ServiceCard(card: QuotaCard) -> impl IntoView {
     // secrets with project access off (roadmap 82). For another project it
     // counts nothing (no row has a *Used*), and unknown defaults are left out.
     let other = card.rows.iter().all(|r| r.used.is_none());
-    let note_key = if other { K::KeyManagerOtherProjectNote } else { K::KeyManagerUsageNote };
-    let note = (service == QuotaService::KeyManager).then(|| view! { <p class="muted quota-note">{move || i18n.t(note_key)}</p> });
+    let note_key = if other {
+        K::KeyManagerOtherProjectNote
+    } else {
+        K::KeyManagerUsageNote
+    };
+    let note = (service == QuotaService::KeyManager)
+        .then(|| view! { <p class="muted quota-note">{move || i18n.t(note_key)}</p> });
     let card = StoredValue::new(card);
     let edit = move |_| dialogs.open(edit_quotas_dialog(i18n.lang(), &card.get_value()));
     view! {
@@ -154,7 +159,8 @@ fn row(service: QuotaService, r: QuotaRow, reserved: bool) -> impl IntoView {
     let p = percent(&r);
     let key = r.key.clone();
     // A per-type or unknown key: show the API's name too, so it can be looked up.
-    let mono = (!service.keys().contains(&r.key.as_str())).then(|| view! { <span class="quota-key mono">{key.clone()}</span> });
+    let mono = (!service.keys().contains(&r.key.as_str()))
+        .then(|| view! { <span class="quota-key mono">{key.clone()}</span> });
     let key = r.key.clone();
     view! {
         <tr>
@@ -179,7 +185,12 @@ mod tests {
 
     #[test]
     fn percent_and_level() {
-        let r = |used, limit| QuotaRow { key: "k".into(), used, reserved: None, limit };
+        let r = |used, limit| QuotaRow {
+            key: "k".into(),
+            used,
+            reserved: None,
+            limit,
+        };
         assert_eq!(percent(&r(Some(5), Some(10))), Some(50.0));
         assert_eq!(percent(&r(Some(12), Some(10))), Some(100.0), "over quota is full");
         assert_eq!(percent(&r(Some(0), Some(0))), Some(0.0));

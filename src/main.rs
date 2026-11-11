@@ -26,8 +26,8 @@ fn main() {
 async fn serve() {
     use axum::Router;
     use leptos::prelude::*;
-    use leptos_axum::{generate_route_list, LeptosRoutes};
-    use moonlight::app::{shell, App};
+    use leptos_axum::{LeptosRoutes, generate_route_list};
+    use moonlight::app::{App, shell};
     use tracing_subscriber::util::SubscriberInitExt;
 
     use clap::Parser;
@@ -49,10 +49,19 @@ async fn serve() {
     subscriber.init();
     match files.as_slice() {
         [] => tracing::info!("no moonlight.conf found: using built-in defaults and MOONLIGHT_* variables"),
-        files => tracing::info!("configuration files, in order: {}", files.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
+        files => tracing::info!(
+            "configuration files, in order: {}",
+            files
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
     if let Some(n) = settings.log.legacy_keep() {
-        tracing::warn!("[log] keep = {n} is the old file count: read as max_files = {n}; keep is now yes/no (roadmap 84)");
+        tracing::warn!(
+            "[log] keep = {n} is the old file count: read as max_files = {n}; keep is now yes/no (roadmap 84)"
+        );
     }
 
     if let Err(e) = moonlight::server::config::init(&settings) {
@@ -67,10 +76,19 @@ async fn serve() {
 
     let app = Router::new()
         // WebSSO (roadmap 80): plain redirects outside Leptos, so they answer 303.
-        .route(moonlight::server::websso::START, axum::routing::get(moonlight::server::websso::start))
-        .route(moonlight::server::websso::CALLBACK, axum::routing::post(moonlight::server::websso::callback))
+        .route(
+            moonlight::server::websso::START,
+            axum::routing::get(moonlight::server::websso::start),
+        )
+        .route(
+            moonlight::server::websso::CALLBACK,
+            axum::routing::post(moonlight::server::websso::callback),
+        )
         // Image file uploads (roadmap 45): a streamed body, so not a server function.
-        .route(moonlight::model::IMAGE_UPLOAD_ROUTE, axum::routing::put(moonlight::server::upload::proxy))
+        .route(
+            moonlight::model::IMAGE_UPLOAD_ROUTE,
+            axum::routing::put(moonlight::server::upload::proxy),
+        )
         .leptos_routes(&leptos_options, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())

@@ -41,7 +41,14 @@ pub const PALETTE: &[(&str, &[&str])] = &[
         ],
     ),
     ("Cinder", &["OS::Cinder::Volume", "OS::Cinder::VolumeAttachment"]),
-    ("Heat", &["OS::Heat::AutoScalingGroup", "OS::Heat::ResourceGroup", "OS::Heat::ScalingPolicy"]),
+    (
+        "Heat",
+        &[
+            "OS::Heat::AutoScalingGroup",
+            "OS::Heat::ResourceGroup",
+            "OS::Heat::ScalingPolicy",
+        ],
+    ),
     ("Designate", &["OS::Designate::Zone", "OS::Designate::RecordSet"]),
     ("Swift", &["OS::Swift::Container"]),
 ];
@@ -142,9 +149,17 @@ pub enum Problem {
 /// The template versions to offer: the cloud's HOT versions as dates, newest
 /// first (the list comes sorted so), or [`DEFAULT_VERSION`] when there are none.
 pub fn hot_versions(all: &[TemplateVersion]) -> Vec<String> {
-    let out: Vec<String> =
-        all.iter().filter(|v| v.kind == "hot").filter_map(|v| v.version.strip_prefix("heat_template_version.")).map(str::to_string).collect();
-    if out.is_empty() { vec![DEFAULT_VERSION.to_string()] } else { out }
+    let out: Vec<String> = all
+        .iter()
+        .filter(|v| v.kind == "hot")
+        .filter_map(|v| v.version.strip_prefix("heat_template_version."))
+        .map(str::to_string)
+        .collect();
+    if out.is_empty() {
+        vec![DEFAULT_VERSION.to_string()]
+    } else {
+        out
+    }
 }
 
 /// `FloatingIPAssociation` → `floating_ip_association`: a name base for new
@@ -166,16 +181,28 @@ pub fn snake(resource_type: &str) -> String {
 impl Draft {
     /// The version written out.
     pub fn version(&self) -> &str {
-        if self.version.trim().is_empty() { DEFAULT_VERSION } else { self.version.trim() }
+        if self.version.trim().is_empty() {
+            DEFAULT_VERSION
+        } else {
+            self.version.trim()
+        }
     }
 
     /// Adds a resource of `kind`, named after the type (`server_1`, `server_2`…),
     /// and returns its name.
     pub fn add(&mut self, kind: &str) -> String {
         let base = snake(kind);
-        let name = (1..).map(|n| format!("{base}_{n}")).find(|n| self.resource(n).is_none()).unwrap_or_default();
+        let name = (1..)
+            .map(|n| format!("{base}_{n}"))
+            .find(|n| self.resource(n).is_none())
+            .unwrap_or_default();
         let pos = Some(self.free_spot());
-        self.resources.push(DraftResource { name: name.clone(), kind: kind.to_string(), pos, ..Default::default() });
+        self.resources.push(DraftResource {
+            name: name.clone(),
+            kind: kind.to_string(),
+            pos,
+            ..Default::default()
+        });
         name
     }
 
@@ -248,7 +275,9 @@ impl Draft {
 
     /// Renames parameter `i` and the `get_param`s that use it.
     pub fn rename_param(&mut self, i: usize, new: &str) {
-        let Some(old) = self.parameters.get(i).map(|p| p.name.clone()) else { return };
+        let Some(old) = self.parameters.get(i).map(|p| p.name.clone()) else {
+            return;
+        };
         self.parameters[i].name = new.to_string();
         for p in self.resources.iter_mut().flat_map(|r| r.props.iter_mut()) {
             if p.value == PropValue::Param(old.clone()) {
@@ -288,10 +317,20 @@ impl Draft {
         let mut out = vec![];
         for r in &self.resources {
             for d in &r.depends_on {
-                out.push(Edge { from: r.name.clone(), to: d.clone(), label: "depends_on".into(), dashed: true });
+                out.push(Edge {
+                    from: r.name.clone(),
+                    to: d.clone(),
+                    label: "depends_on".into(),
+                    dashed: true,
+                });
             }
             for p in &r.props {
-                let edge = |to: &str, label: String| Edge { from: r.name.clone(), to: to.to_string(), label, dashed: false };
+                let edge = |to: &str, label: String| Edge {
+                    from: r.name.clone(),
+                    to: to.to_string(),
+                    label,
+                    dashed: false,
+                };
                 match &p.value {
                     PropValue::Resource(x) => out.push(edge(x, p.name.clone())),
                     PropValue::Text(_) => {
@@ -314,7 +353,9 @@ impl Draft {
     /// then `depends_on`. Those already pointing at `to` are left out. Uses `from`'s
     /// schema when loaded; without it only the last two kinds.
     pub fn link_options(&self, schemas: &HashMap<String, ResourceTypeDetail>, from: &str, to: &str) -> Vec<Link> {
-        let (Some(a), Some(b)) = (self.resource(from), self.resource(to)) else { return vec![] };
+        let (Some(a), Some(b)) = (self.resource(from), self.resource(to)) else {
+            return vec![];
+        };
         if from == to {
             return vec![];
         }
@@ -358,11 +399,24 @@ impl Draft {
     /// reference that fits (either way: a link drawn from a port to its server
     /// still means `networks[].port`) is applied without asking; none falls
     /// back to `a` `depends_on` `b`; several are offered, with `depends_on` last.
-    pub fn link_choices(&self, schemas: &HashMap<String, ResourceTypeDetail>, a: &str, b: &str) -> Vec<(String, String, Link)> {
+    pub fn link_choices(
+        &self,
+        schemas: &HashMap<String, ResourceTypeDetail>,
+        a: &str,
+        b: &str,
+    ) -> Vec<(String, String, Link)> {
         let forward = self.link_options(schemas, a, b);
-        let mut refs: Vec<(String, String, Link)> =
-            forward.iter().filter(|l| **l != Link::DependsOn).map(|l| (a.to_string(), b.to_string(), l.clone())).collect();
-        refs.extend(self.link_options(schemas, b, a).into_iter().filter(|l| *l != Link::DependsOn).map(|l| (b.to_string(), a.to_string(), l)));
+        let mut refs: Vec<(String, String, Link)> = forward
+            .iter()
+            .filter(|l| **l != Link::DependsOn)
+            .map(|l| (a.to_string(), b.to_string(), l.clone()))
+            .collect();
+        refs.extend(
+            self.link_options(schemas, b, a)
+                .into_iter()
+                .filter(|l| *l != Link::DependsOn)
+                .map(|l| (b.to_string(), a.to_string(), l)),
+        );
         if refs.len() != 1 && forward.contains(&Link::DependsOn) {
             refs.push((a.to_string(), b.to_string(), Link::DependsOn));
         }
@@ -417,7 +471,8 @@ impl Draft {
                 p.value = PropValue::Text(v.to_string());
             }
         }
-        r.props.retain(|p| !matches!(&p.value, PropValue::Text(t) if t == "[]" || t == "{}"));
+        r.props
+            .retain(|p| !matches!(&p.value, PropValue::Text(t) if t == "[]" || t == "{}"));
     }
 
     /// Where a new node goes: the first cell of a grid ([`GRID`] apart) with no
@@ -470,7 +525,9 @@ impl Draft {
             None
         }
         let mut state = HashMap::new();
-        self.resources.iter().find_map(|r| visit(self, &r.name, &mut state, &mut vec![]))
+        self.resources
+            .iter()
+            .find_map(|r| visit(self, &r.name, &mut state, &mut vec![]))
     }
 
     /// What Heat would refuse. `schemas` holds the loaded type schemas; a type
@@ -481,7 +538,10 @@ impl Draft {
             out.push(Problem::NoResources);
         }
         let names = [
-            self.parameters.iter().map(|p| p.name.trim().to_string()).collect::<Vec<_>>(),
+            self.parameters
+                .iter()
+                .map(|p| p.name.trim().to_string())
+                .collect::<Vec<_>>(),
             self.resources.iter().map(|r| r.name.clone()).collect(),
             self.outputs.iter().map(|o| o.name.trim().to_string()).collect(),
         ];
@@ -534,7 +594,11 @@ impl Draft {
                 .parameters
                 .iter()
                 .map(|p| {
-                    let kind = if PARAM_TYPES.contains(&p.kind.as_str()) { p.kind.clone() } else { "string".into() };
+                    let kind = if PARAM_TYPES.contains(&p.kind.as_str()) {
+                        p.kind.clone()
+                    } else {
+                        "string".into()
+                    };
                     let mut m = vec![("type".to_string(), Y::S(kind.clone()))];
                     if !p.description.trim().is_empty() {
                         m.push(("description".into(), Y::S(p.description.trim().to_string())));
@@ -545,7 +609,10 @@ impl Draft {
                             "comma_delimited_list" => "string",
                             k => k,
                         };
-                        m.push(("default".into(), typed(heat_kind, &p.default).unwrap_or_else(|| Y::S(p.default.clone()))));
+                        m.push((
+                            "default".into(),
+                            typed(heat_kind, &p.default).unwrap_or_else(|| Y::S(p.default.clone())),
+                        ));
                     }
                     if p.hidden {
                         m.push(("hidden".into(), Y::Raw("true".into())));
@@ -561,7 +628,10 @@ impl Draft {
             .map(|r| {
                 let mut m = vec![("type".to_string(), Y::S(r.kind.clone()))];
                 if !r.depends_on.is_empty() {
-                    m.push(("depends_on".into(), Y::L(r.depends_on.iter().map(|d| Y::S(d.clone())).collect())));
+                    m.push((
+                        "depends_on".into(),
+                        Y::L(r.depends_on.iter().map(|d| Y::S(d.clone())).collect()),
+                    ));
                 }
                 if !r.props.is_empty() {
                     let props = r
@@ -676,7 +746,11 @@ pub fn edge_place(seg: ((f64, f64), (f64, f64)), reverse: bool) -> EdgePlace {
     let ((x1, y1), (x2, y2)) = seg;
     let mid = ((x1 + x2) / 2.0, (y1 + y2) / 2.0);
     if !reverse {
-        return EdgePlace { line: seg, label: (mid.0, mid.1 - 5.0), anchor: "middle" };
+        return EdgePlace {
+            line: seg,
+            label: (mid.0, mid.1 - 5.0),
+            anchor: "middle",
+        };
     }
     let d = (x2 - x1).hypot(y2 - y1).max(f64::EPSILON);
     // Screen y grows downwards, so (-dy, dx) is to the right of the direction.
@@ -686,10 +760,18 @@ pub fn edge_place(seg: ((f64, f64), (f64, f64)), reverse: bool) -> EdgePlace {
     let (lx, ly) = (mid.0 + px * EDGE_GAP * 2.0, mid.1 + py * EDGE_GAP * 2.0);
     if px.abs() > py.abs() {
         // Beside a rather vertical line: the text runs away from it, centred on it.
-        EdgePlace { line, label: (lx, ly + 3.5), anchor: if px > 0.0 { "start" } else { "end" } }
+        EdgePlace {
+            line,
+            label: (lx, ly + 3.5),
+            anchor: if px > 0.0 { "start" } else { "end" },
+        }
     } else {
         // Above or below a rather horizontal one; the baseline is the text's bottom.
-        EdgePlace { line, label: (lx, ly + if py > 0.0 { 9.0 } else { -2.0 }), anchor: "middle" }
+        EdgePlace {
+            line,
+            label: (lx, ly + if py > 0.0 { 9.0 } else { -2.0 }),
+            anchor: "middle",
+        }
     }
 }
 
@@ -707,7 +789,11 @@ pub const EDGE_GAP: f64 = 5.0;
 
 /// The node within `r` of `at`, the last drawn (topmost) when they overlap.
 pub fn node_at(positions: &[(String, (f64, f64))], at: (f64, f64), r: f64) -> Option<String> {
-    positions.iter().rev().find(|(_, (x, y))| (x - at.0).hypot(y - at.1) <= r).map(|(n, _)| n.clone())
+    positions
+        .iter()
+        .rev()
+        .find(|(_, (x, y))| (x - at.0).hypot(y - at.1) <= r)
+        .map(|(n, _)| n.clone())
 }
 
 /// List properties whose items refer to other resources: `(type, property,
@@ -715,13 +801,43 @@ pub fn node_at(positions: &[(String, (f64, f64))], at: (f64, f64), r: f64) -> Op
 /// list, so these are the links Horizon's generator draws for them.
 pub const NESTED: &[(&str, &str, Option<&str>, &[&str])] = &[
     ("OS::Nova::Server", "networks", Some("port"), &["OS::Neutron::Port"]),
-    ("OS::Nova::Server", "networks", Some("network"), &["OS::Neutron::Net", "OS::Neutron::ProviderNet"]),
+    (
+        "OS::Nova::Server",
+        "networks",
+        Some("network"),
+        &["OS::Neutron::Net", "OS::Neutron::ProviderNet"],
+    ),
     ("OS::Nova::Server", "networks", Some("subnet"), &["OS::Neutron::Subnet"]),
-    ("OS::Nova::Server", "networks", Some("floating_ip"), &["OS::Neutron::FloatingIP"]),
-    ("OS::Nova::Server", "block_device_mapping_v2", Some("volume_id"), &["OS::Cinder::Volume"]),
-    ("OS::Nova::Server", "security_groups", None, &["OS::Neutron::SecurityGroup"]),
-    ("OS::Neutron::Port", "fixed_ips", Some("subnet"), &["OS::Neutron::Subnet"]),
-    ("OS::Neutron::Port", "security_groups", None, &["OS::Neutron::SecurityGroup"]),
+    (
+        "OS::Nova::Server",
+        "networks",
+        Some("floating_ip"),
+        &["OS::Neutron::FloatingIP"],
+    ),
+    (
+        "OS::Nova::Server",
+        "block_device_mapping_v2",
+        Some("volume_id"),
+        &["OS::Cinder::Volume"],
+    ),
+    (
+        "OS::Nova::Server",
+        "security_groups",
+        None,
+        &["OS::Neutron::SecurityGroup"],
+    ),
+    (
+        "OS::Neutron::Port",
+        "fixed_ips",
+        Some("subnet"),
+        &["OS::Neutron::Subnet"],
+    ),
+    (
+        "OS::Neutron::Port",
+        "security_groups",
+        None,
+        &["OS::Neutron::SecurityGroup"],
+    ),
 ];
 
 /// Distance between grid cells for new nodes, in canvas units.
@@ -731,8 +847,17 @@ pub const GRID_COLS: usize = 6;
 
 fn free_cell(taken: &[(f64, f64)]) -> (f64, f64) {
     (0..)
-        .map(|i| (GRID * (0.6 + (i % GRID_COLS) as f64), GRID * (0.6 + (i / GRID_COLS) as f64)))
-        .find(|(x, y)| !taken.iter().any(|(a, b)| (a - x).abs() < GRID / 2.0 && (b - y).abs() < GRID / 2.0))
+        .map(|i| {
+            (
+                GRID * (0.6 + (i % GRID_COLS) as f64),
+                GRID * (0.6 + (i / GRID_COLS) as f64),
+            )
+        })
+        .find(|(x, y)| {
+            !taken
+                .iter()
+                .any(|(a, b)| (a - x).abs() < GRID / 2.0 && (b - y).abs() < GRID / 2.0)
+        })
         .unwrap_or_default()
 }
 
@@ -824,7 +949,11 @@ impl DraftResource {
             (Some(i), None) => {
                 self.props.remove(i);
             }
-            (None, Some(v)) => self.props.push(DraftProp { name: name.to_string(), kind: kind.to_string(), value: v }),
+            (None, Some(v)) => self.props.push(DraftProp {
+                name: name.to_string(),
+                kind: kind.to_string(),
+                value: v,
+            }),
             (None, None) => {}
         }
     }
@@ -888,11 +1017,24 @@ fn typed(kind: &str, text: &str) -> Option<Y> {
     let t = text.trim();
     match kind {
         "integer" => t.parse::<i64>().ok().map(|_| Y::Raw(t.to_string())),
-        "number" => t.parse::<f64>().ok().filter(|n| n.is_finite()).map(|_| Y::Raw(t.to_string())),
+        "number" => t
+            .parse::<f64>()
+            .ok()
+            .filter(|n| n.is_finite())
+            .map(|_| Y::Raw(t.to_string())),
         "boolean" => matches!(t, "true" | "false").then(|| Y::Raw(t.to_string())),
-        "list" => serde_json::from_str::<Value>(t).ok().filter(Value::is_array).map(|v| from_json(&v)),
-        "map" => serde_json::from_str::<Value>(t).ok().filter(Value::is_object).map(|v| from_json(&v)),
-        "map_or_list" => serde_json::from_str::<Value>(t).ok().filter(|v| v.is_array() || v.is_object()).map(|v| from_json(&v)),
+        "list" => serde_json::from_str::<Value>(t)
+            .ok()
+            .filter(Value::is_array)
+            .map(|v| from_json(&v)),
+        "map" => serde_json::from_str::<Value>(t)
+            .ok()
+            .filter(Value::is_object)
+            .map(|v| from_json(&v)),
+        "map_or_list" => serde_json::from_str::<Value>(t)
+            .ok()
+            .filter(|v| v.is_array() || v.is_object())
+            .map(|v| from_json(&v)),
         _ => Some(Y::S(text.to_string())),
     }
 }
@@ -938,11 +1080,18 @@ fn plain(s: &str) -> bool {
         && !s.contains(": ")
         && !s.ends_with(':')
         && !"-?:&*!|>%@`".contains(first)
-        && !matches!(lower.as_str(), "true" | "false" | "yes" | "no" | "on" | "off" | "y" | "n" | "null" | "~")
+        && !matches!(
+            lower.as_str(),
+            "true" | "false" | "yes" | "no" | "on" | "off" | "y" | "n" | "null" | "~"
+        )
 }
 
 fn scalar(s: &str) -> String {
-    if plain(s) { s.to_string() } else { serde_json::to_string(s).unwrap_or_default() }
+    if plain(s) {
+        s.to_string()
+    } else {
+        serde_json::to_string(s).unwrap_or_default()
+    }
 }
 
 /// One line per item: `{get_resource: x}`, `[a, b]`.
@@ -951,7 +1100,13 @@ fn flow(y: &Y) -> String {
         Y::S(s) => scalar(s),
         Y::Raw(r) => r.clone(),
         Y::L(l) => format!("[{}]", l.iter().map(flow).collect::<Vec<_>>().join(", ")),
-        Y::M(m) => format!("{{{}}}", m.iter().map(|(k, v)| format!("{}: {}", scalar(k), flow(v))).collect::<Vec<_>>().join(", ")),
+        Y::M(m) => format!(
+            "{{{}}}",
+            m.iter()
+                .map(|(k, v)| format!("{}: {}", scalar(k), flow(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -959,7 +1114,9 @@ fn flow(y: &Y) -> String {
 fn is_flow(y: &Y) -> bool {
     match y {
         Y::S(_) | Y::Raw(_) => true,
-        Y::L(l) => l.iter().all(|x| matches!(x, Y::S(s) if !s.contains('\n')) || matches!(x, Y::Raw(_)) || (matches!(x, Y::M(_)) && is_flow(x))),
+        Y::L(l) => l.iter().all(|x| {
+            matches!(x, Y::S(s) if !s.contains('\n')) || matches!(x, Y::Raw(_)) || (matches!(x, Y::M(_)) && is_flow(x))
+        }),
         Y::M(m) => m.is_empty() || (m.len() == 1 && m[0].0.starts_with("get_") && is_flow(&m[0].1)),
     }
 }
@@ -1069,16 +1226,31 @@ mod tests {
     }
 
     fn schema(name: &str, props: Vec<TypeProperty>) -> ResourceTypeDetail {
-        ResourceTypeDetail { name: name.into(), description: None, support: None, properties: props, attributes: vec![], raw: String::new() }
+        ResourceTypeDetail {
+            name: name.into(),
+            description: None,
+            support: None,
+            properties: props,
+            attributes: vec![],
+            raw: String::new(),
+        }
     }
 
     /// A network, a subnet on it, a server with a port: the usual first template.
     fn sample() -> Draft {
-        let mut d = Draft { description: "Demo".into(), ..Default::default() };
+        let mut d = Draft {
+            description: "Demo".into(),
+            ..Default::default()
+        };
         let net = d.add("OS::Neutron::Net");
         let sub = d.add("OS::Neutron::Subnet");
         let srv = d.add("OS::Nova::Server");
-        d.parameters.push(DraftParam { name: "image".into(), kind: "string".into(), default: "cirros".into(), ..Default::default() });
+        d.parameters.push(DraftParam {
+            name: "image".into(),
+            kind: "string".into(),
+            default: "cirros".into(),
+            ..Default::default()
+        });
         let s = d.resource_mut(&sub).unwrap();
         s.set_prop("network", "string", Some(PropValue::Resource(net.clone())));
         s.set_prop("cidr", "string", Some(PropValue::Text("10.0.0.0/24".into())));
@@ -1086,9 +1258,18 @@ mod tests {
         let v = d.resource_mut(&srv).unwrap();
         v.set_prop("image", "string", Some(PropValue::Param("image".into())));
         v.set_prop("flavor", "string", Some(PropValue::Text("m1.small".into())));
-        v.set_prop("networks", "list", Some(PropValue::Text(r#"[{"network": {"get_resource": "net_1"}}]"#.into())));
+        v.set_prop(
+            "networks",
+            "list",
+            Some(PropValue::Text(r#"[{"network": {"get_resource": "net_1"}}]"#.into())),
+        );
         v.depends_on.push(sub);
-        d.outputs.push(DraftOutput { name: "ip".into(), description: "Address".into(), resource: srv, attribute: "first_address".into() });
+        d.outputs.push(DraftOutput {
+            name: "ip".into(),
+            description: "Address".into(),
+            resource: srv,
+            attribute: "first_address".into(),
+        });
         d
     }
 
@@ -1099,7 +1280,10 @@ mod tests {
         assert_eq!(snake("OS::Neutron::Net"), "net");
         assert_eq!(snake("OS::Heat::SoftwareConfig"), "software_config");
         let mut d = Draft::default();
-        assert_eq!((d.add("OS::Nova::Server"), d.add("OS::Nova::Server")), ("server_1".into(), "server_2".into()));
+        assert_eq!(
+            (d.add("OS::Nova::Server"), d.add("OS::Nova::Server")),
+            ("server_1".into(), "server_2".into())
+        );
         d.remove("server_1");
         assert_eq!(d.add("OS::Nova::Server"), "server_1", "a freed name is reused");
     }
@@ -1141,10 +1325,38 @@ outputs:
 
     #[test]
     fn quotes_strings_yaml_would_read_as_something_else() {
-        for s in ["true", "No", "n", "null", "~", "8080", "1e3", "0x1F", "2024-01-01", "1:20", "10.0.0.1", "-x", "a: b", "x #y", "*a", "", " lead", "[a]", "it's"] {
+        for s in [
+            "true",
+            "No",
+            "n",
+            "null",
+            "~",
+            "8080",
+            "1e3",
+            "0x1F",
+            "2024-01-01",
+            "1:20",
+            "10.0.0.1",
+            "-x",
+            "a: b",
+            "x #y",
+            "*a",
+            "",
+            " lead",
+            "[a]",
+            "it's",
+        ] {
             assert!(!plain(s), "{s:?} must be quoted");
         }
-        for s in ["m1.small", "OS::Nova::Server", "10.0.0.0/24", "1st", "a-b_c", "https://x/y?z=1", "nombre-español"] {
+        for s in [
+            "m1.small",
+            "OS::Nova::Server",
+            "10.0.0.0/24",
+            "1st",
+            "a-b_c",
+            "https://x/y?z=1",
+            "nombre-español",
+        ] {
             assert!(plain(s), "{s:?} can be plain");
         }
         assert_eq!(scalar("8080"), "\"8080\"");
@@ -1156,13 +1368,30 @@ outputs:
         let mut d = Draft::default();
         let s = d.add("OS::Nova::Server");
         let r = d.resource_mut(&s).unwrap();
-        r.set_prop("user_data", "string", Some(PropValue::Text("#!/bin/sh\necho hi\n\nexit 0\n".into())));
+        r.set_prop(
+            "user_data",
+            "string",
+            Some(PropValue::Text("#!/bin/sh\necho hi\n\nexit 0\n".into())),
+        );
         r.set_prop("name", "string", Some(PropValue::Text("a\n b".into())));
         let y = d.to_yaml();
-        assert!(y.contains("      user_data: |\n        #!/bin/sh\n        echo hi\n\n        exit 0\n"), "{y}");
-        assert!(y.contains("      name: |-\n        a\n         b\n"), "no final newline → |-; {y}");
-        let lead = Draft { description: " indented\nsecond".into(), resources: d.resources.clone(), ..Default::default() };
-        assert!(lead.to_yaml().contains("description: \" indented\\nsecond\"\n"), "a leading space can't start a block");
+        assert!(
+            y.contains("      user_data: |\n        #!/bin/sh\n        echo hi\n\n        exit 0\n"),
+            "{y}"
+        );
+        assert!(
+            y.contains("      name: |-\n        a\n         b\n"),
+            "no final newline → |-; {y}"
+        );
+        let lead = Draft {
+            description: " indented\nsecond".into(),
+            resources: d.resources.clone(),
+            ..Default::default()
+        };
+        assert!(
+            lead.to_yaml().contains("description: \" indented\\nsecond\"\n"),
+            "a leading space can't start a block"
+        );
     }
 
     #[test]
@@ -1173,26 +1402,59 @@ outputs:
         assert_eq!(typed("number", "NaN"), None);
         assert_eq!(typed("boolean", "yes"), None, "only true/false");
         assert_eq!(typed("list", r#"{"a": 1}"#), None, "a map is not a list");
-        assert_eq!(typed("map", r#"{"a": 1}"#), Some(Y::M(vec![("a".into(), Y::Raw("1".into()))])));
+        assert_eq!(
+            typed("map", r#"{"a": 1}"#),
+            Some(Y::M(vec![("a".into(), Y::Raw("1".into()))]))
+        );
         assert_eq!(typed("string", "8080"), Some(Y::S("8080".into())));
         let mut d = sample();
-        d.resource_mut("server_1").unwrap().set_prop("networks", "list", Some(PropValue::Text("[oops".into())));
+        d.resource_mut("server_1")
+            .unwrap()
+            .set_prop("networks", "list", Some(PropValue::Text("[oops".into())));
         let problems = d.problems(&HashMap::new());
-        assert_eq!(problems, [Problem::BadValue("server_1".into(), "networks".into(), "list".into())]);
-        assert!(d.to_yaml().contains("      networks: \"[oops\"\n"), "written as a string for Heat to name");
+        assert_eq!(
+            problems,
+            [Problem::BadValue("server_1".into(), "networks".into(), "list".into())]
+        );
+        assert!(
+            d.to_yaml().contains("      networks: \"[oops\"\n"),
+            "written as a string for Heat to name"
+        );
     }
 
     #[test]
     fn json_parameter_defaults_and_hidden() {
         let mut d = sample();
         d.parameters = vec![
-            DraftParam { name: "cfg".into(), kind: "json".into(), default: r#"{"k": [1, 2]}"#.into(), ..Default::default() },
-            DraftParam { name: "pw".into(), kind: "string".into(), hidden: true, description: "Secret".into(), ..Default::default() },
-            DraftParam { name: "count".into(), kind: "number".into(), default: "2".into(), ..Default::default() },
+            DraftParam {
+                name: "cfg".into(),
+                kind: "json".into(),
+                default: r#"{"k": [1, 2]}"#.into(),
+                ..Default::default()
+            },
+            DraftParam {
+                name: "pw".into(),
+                kind: "string".into(),
+                hidden: true,
+                description: "Secret".into(),
+                ..Default::default()
+            },
+            DraftParam {
+                name: "count".into(),
+                kind: "number".into(),
+                default: "2".into(),
+                ..Default::default()
+            },
         ];
         let y = d.to_yaml();
-        assert!(y.contains("  cfg:\n    type: json\n    default:\n      k: [1, 2]\n"), "{y}");
-        assert!(y.contains("  pw:\n    type: string\n    description: Secret\n    hidden: true\n"), "{y}");
+        assert!(
+            y.contains("  cfg:\n    type: json\n    default:\n      k: [1, 2]\n"),
+            "{y}"
+        );
+        assert!(
+            y.contains("  pw:\n    type: string\n    description: Secret\n    hidden: true\n"),
+            "{y}"
+        );
         assert!(y.contains("  count:\n    type: number\n    default: 2\n"), "{y}");
     }
 
@@ -1206,16 +1468,29 @@ outputs:
         assert_eq!(d.resource("web").unwrap().depends_on, ["sub"]);
         assert_eq!(d.outputs[0].resource, "web");
         d.remove("net_1");
-        assert_eq!(d.resource("sub").unwrap().prop("network"), None, "get_resource to it is unset");
+        assert_eq!(
+            d.resource("sub").unwrap().prop("network"),
+            None,
+            "get_resource to it is unset"
+        );
         d.remove("sub");
         assert!(d.resource("web").unwrap().depends_on.is_empty());
         d.rename_param(0, "img");
-        assert_eq!(d.resource("web").unwrap().prop("image"), Some(&PropValue::Param("img".into())));
+        assert_eq!(
+            d.resource("web").unwrap().prop("image"),
+            Some(&PropValue::Param("img".into()))
+        );
         d.remove_param(0);
         assert_eq!(d.resource("web").unwrap().prop("image"), None);
         d.remove("web");
-        assert_eq!((d.outputs[0].resource.as_str(), d.outputs[0].attribute.as_str()), ("", ""));
-        assert!(d.problems(&HashMap::new()).contains(&Problem::IncompleteOutput("ip".into())));
+        assert_eq!(
+            (d.outputs[0].resource.as_str(), d.outputs[0].attribute.as_str()),
+            ("", "")
+        );
+        assert!(
+            d.problems(&HashMap::new())
+                .contains(&Problem::IncompleteOutput("ip".into()))
+        );
     }
 
     #[test]
@@ -1224,7 +1499,15 @@ outputs:
         assert_eq!(d.cycle(), None);
         // net_1 → server_1 (depends_on) → subnet_1 (depends_on) → net_1 (get_resource)
         d.resource_mut("net_1").unwrap().depends_on.push("server_1".into());
-        assert_eq!(d.cycle(), Some(vec!["net_1".into(), "server_1".into(), "subnet_1".into(), "net_1".into()]));
+        assert_eq!(
+            d.cycle(),
+            Some(vec![
+                "net_1".into(),
+                "server_1".into(),
+                "subnet_1".into(),
+                "net_1".into()
+            ])
+        );
         assert!(matches!(d.problems(&HashMap::new()).last(), Some(Problem::Cycle(_))));
     }
 
@@ -1234,13 +1517,33 @@ outputs:
         let mut d = sample();
         let schemas = HashMap::from([(
             "OS::Nova::Server".to_string(),
-            schema("OS::Nova::Server", vec![prop("flavor", "string", true, Some("nova.flavor")), prop("key_name", "string", true, None)]),
+            schema(
+                "OS::Nova::Server",
+                vec![
+                    prop("flavor", "string", true, Some("nova.flavor")),
+                    prop("key_name", "string", true, None),
+                ],
+            ),
         )]);
-        assert_eq!(d.problems(&schemas), [Problem::MissingRequired("server_1".into(), "key_name".into())]);
-        d.parameters.push(DraftParam { name: "image".into(), ..Default::default() });
-        d.outputs.push(DraftOutput { name: " ".into(), resource: "net_1".into(), attribute: "name".into(), ..Default::default() });
+        assert_eq!(
+            d.problems(&schemas),
+            [Problem::MissingRequired("server_1".into(), "key_name".into())]
+        );
+        d.parameters.push(DraftParam {
+            name: "image".into(),
+            ..Default::default()
+        });
+        d.outputs.push(DraftOutput {
+            name: " ".into(),
+            resource: "net_1".into(),
+            attribute: "name".into(),
+            ..Default::default()
+        });
         let p = d.problems(&schemas);
-        assert!(p.contains(&Problem::Duplicate("image".into())) && p.contains(&Problem::EmptyName), "{p:?}");
+        assert!(
+            p.contains(&Problem::Duplicate("image".into())) && p.contains(&Problem::EmptyName),
+            "{p:?}"
+        );
     }
 
     #[test]
@@ -1249,22 +1552,43 @@ outputs:
         d.add("OS::Neutron::ProviderNet");
         let network = prop("network", "string", false, Some("neutron.network"));
         assert_eq!(ref_candidates(&d, "subnet_1", &network), ["net_1", "provider_net_1"]);
-        assert!(ref_candidates(&d, "server_1", &prop("flavor", "string", true, Some("nova.flavor"))).is_empty(), "no flavor in the draft");
+        assert!(
+            ref_candidates(&d, "server_1", &prop("flavor", "string", true, Some("nova.flavor"))).is_empty(),
+            "no flavor in the draft"
+        );
         assert!(ref_candidates(&d, "x", &prop("image", "string", false, Some("glance.image"))).is_empty());
-        assert_eq!(ref_candidates(&d, "net_1", &prop("floatingip_id", "string", true, None)).len(), 3, "unconstrained: any other");
-        assert!(ref_candidates(&d, "net_1", &prop("networks", "list", false, None)).is_empty(), "only strings");
+        assert_eq!(
+            ref_candidates(&d, "net_1", &prop("floatingip_id", "string", true, None)).len(),
+            3,
+            "unconstrained: any other"
+        );
+        assert!(
+            ref_candidates(&d, "net_1", &prop("networks", "list", false, None)).is_empty(),
+            "only strings"
+        );
     }
 
     #[test]
     fn edges_include_references_inside_lists() {
         let d = sample();
         let e = d.edges();
-        let pairs: Vec<(&str, &str, &str, bool)> = e.iter().map(|e| (e.from.as_str(), e.to.as_str(), e.label.as_str(), e.dashed)).collect();
+        let pairs: Vec<(&str, &str, &str, bool)> = e
+            .iter()
+            .map(|e| (e.from.as_str(), e.to.as_str(), e.label.as_str(), e.dashed))
+            .collect();
         assert_eq!(
             pairs,
-            [("subnet_1", "net_1", "network", false), ("server_1", "subnet_1", "depends_on", true), ("server_1", "net_1", "networks[].network", false)]
+            [
+                ("subnet_1", "net_1", "network", false),
+                ("server_1", "subnet_1", "depends_on", true),
+                ("server_1", "net_1", "networks[].network", false)
+            ]
         );
-        assert_eq!(d.needs("server_1"), ["subnet_1", "net_1"], "the JSON reference is a dependency too");
+        assert_eq!(
+            d.needs("server_1"),
+            ["subnet_1", "net_1"],
+            "the JSON reference is a dependency too"
+        );
     }
 
     #[test]
@@ -1272,32 +1596,79 @@ outputs:
         let mut d = sample();
         let port = d.add("OS::Neutron::Port");
         let schemas = HashMap::from([
-            ("OS::Neutron::Port".to_string(), schema("OS::Neutron::Port", vec![prop("network", "string", true, Some("neutron.network")), prop("name", "string", false, None)])),
-            ("OS::Neutron::FloatingIPAssociation".to_string(), schema("x", vec![prop("floatingip_id", "string", true, None), prop("port_id", "string", true, Some("neutron.port"))])),
+            (
+                "OS::Neutron::Port".to_string(),
+                schema(
+                    "OS::Neutron::Port",
+                    vec![
+                        prop("network", "string", true, Some("neutron.network")),
+                        prop("name", "string", false, None),
+                    ],
+                ),
+            ),
+            (
+                "OS::Neutron::FloatingIPAssociation".to_string(),
+                schema(
+                    "x",
+                    vec![
+                        prop("floatingip_id", "string", true, None),
+                        prop("port_id", "string", true, Some("neutron.port")),
+                    ],
+                ),
+            ),
         ]);
-        assert_eq!(d.link_options(&schemas, &port, "net_1"), [Link::Prop("network".into()), Link::DependsOn]);
+        assert_eq!(
+            d.link_options(&schemas, &port, "net_1"),
+            [Link::Prop("network".into()), Link::DependsOn]
+        );
         assert!(d.link(&port, "net_1", &Link::Prop("network".into())));
-        assert_eq!(d.link_options(&schemas, &port, "net_1"), [Link::DependsOn], "already set");
+        assert_eq!(
+            d.link_options(&schemas, &port, "net_1"),
+            [Link::DependsOn],
+            "already set"
+        );
         // Server → Port: an item of `networks`, which already holds a network.
-        assert_eq!(d.link_options(&schemas, "server_1", &port), [Link::Item("networks".into(), Some("port".into())), Link::DependsOn]);
+        assert_eq!(
+            d.link_options(&schemas, "server_1", &port),
+            [Link::Item("networks".into(), Some("port".into())), Link::DependsOn]
+        );
         assert!(d.link("server_1", &port, &Link::Item("networks".into(), Some("port".into()))));
         assert_eq!(
             d.resource("server_1").unwrap().prop("networks"),
-            Some(&PropValue::Text(r#"[{"network":{"get_resource":"net_1"}},{"port":{"get_resource":"port_1"}}]"#.into()))
+            Some(&PropValue::Text(
+                r#"[{"network":{"get_resource":"net_1"}},{"port":{"get_resource":"port_1"}}]"#.into()
+            ))
         );
-        assert!(d.to_yaml().contains("      networks:\n        - network: {get_resource: net_1}\n        - port: {get_resource: port_1}\n"), "{}", d.to_yaml());
+        assert!(
+            d.to_yaml().contains(
+                "      networks:\n        - network: {get_resource: net_1}\n        - port: {get_resource: port_1}\n"
+            ),
+            "{}",
+            d.to_yaml()
+        );
         // Unconstrained properties match by name; the type's own name is enough.
         let fip = d.add("OS::Neutron::FloatingIP");
         let assoc = d.add("OS::Neutron::FloatingIPAssociation");
-        assert_eq!(d.link_options(&schemas, &assoc, &fip), [Link::Prop("floatingip_id".into()), Link::DependsOn]);
+        assert_eq!(
+            d.link_options(&schemas, &assoc, &fip),
+            [Link::Prop("floatingip_id".into()), Link::DependsOn]
+        );
         assert!(names_type("port_id", "OS::Neutron::Port") && names_type("port", "OS::Neutron::Port"));
-        assert!(!names_type("software_config_transport", "OS::Neutron::Port"), "a name merely containing the type's");
-        assert_eq!(d.link_options(&schemas, &assoc, &port), [Link::Prop("port_id".into()), Link::DependsOn]);
+        assert!(
+            !names_type("software_config_transport", "OS::Neutron::Port"),
+            "a name merely containing the type's"
+        );
+        assert_eq!(
+            d.link_options(&schemas, &assoc, &port),
+            [Link::Prop("port_id".into()), Link::DependsOn]
+        );
         // Without a schema: only the fixed list items and depends_on.
         assert_eq!(d.link_options(&HashMap::new(), &port, "net_1"), [Link::DependsOn]);
         assert!(d.link_options(&schemas, &port, &port).is_empty(), "not to itself");
         // A list that isn't JSON can't take an item.
-        d.resource_mut("server_1").unwrap().set_prop("networks", "list", Some(PropValue::Text("[oops".into())));
+        d.resource_mut("server_1")
+            .unwrap()
+            .set_prop("networks", "list", Some(PropValue::Text("[oops".into())));
         assert!(!d.link("server_1", &port, &Link::Item("networks".into(), Some("port".into()))));
     }
 
@@ -1309,10 +1680,22 @@ outputs:
         d.link("server_1", &port, &Link::DependsOn);
         assert!(d.rename(&port, "web_port"));
         let nets = |d: &Draft| d.resource("server_1").unwrap().prop("networks").cloned();
-        assert_eq!(nets(&d), Some(PropValue::Text(r#"[{"network":{"get_resource":"net_1"}},{"port":{"get_resource":"web_port"}}]"#.into())));
+        assert_eq!(
+            nets(&d),
+            Some(PropValue::Text(
+                r#"[{"network":{"get_resource":"net_1"}},{"port":{"get_resource":"web_port"}}]"#.into()
+            ))
+        );
         d.unlink("server_1", "web_port");
-        assert_eq!(nets(&d), Some(PropValue::Text(r#"[{"network":{"get_resource":"net_1"}}]"#.into())));
-        assert_eq!(d.resource("server_1").unwrap().depends_on, ["subnet_1"], "depends_on on it went too");
+        assert_eq!(
+            nets(&d),
+            Some(PropValue::Text(r#"[{"network":{"get_resource":"net_1"}}]"#.into()))
+        );
+        assert_eq!(
+            d.resource("server_1").unwrap().depends_on,
+            ["subnet_1"],
+            "depends_on on it went too"
+        );
         d.remove("net_1");
         assert_eq!(nets(&d), None, "a list left empty is unset");
         assert_eq!(d.resource("subnet_1").unwrap().prop("network"), None);
@@ -1323,18 +1706,41 @@ outputs:
         let mut d = sample();
         let port = d.add("OS::Neutron::Port");
         let sg = d.add("OS::Neutron::SecurityGroup");
-        let schemas = HashMap::from([("OS::Neutron::Port".to_string(), schema("OS::Neutron::Port", vec![prop("network", "string", true, Some("neutron.network"))]))]);
+        let schemas = HashMap::from([(
+            "OS::Neutron::Port".to_string(),
+            schema(
+                "OS::Neutron::Port",
+                vec![prop("network", "string", true, Some("neutron.network"))],
+            ),
+        )]);
         let one = |from: &str, to: &str, l: Link| vec![(from.to_string(), to.to_string(), l)];
-        assert_eq!(d.link_choices(&schemas, &port, "net_1"), one(&port, "net_1", Link::Prop("network".into())));
+        assert_eq!(
+            d.link_choices(&schemas, &port, "net_1"),
+            one(&port, "net_1", Link::Prop("network".into()))
+        );
         // Drawn from the port to the server, it is still the server's reference.
-        assert_eq!(d.link_choices(&schemas, &port, "server_1"), one("server_1", &port, Link::Item("networks".into(), Some("port".into()))));
-        assert_eq!(d.link_choices(&schemas, "net_1", &sg), one("net_1", &sg, Link::DependsOn), "nothing fits: depends_on");
+        assert_eq!(
+            d.link_choices(&schemas, &port, "server_1"),
+            one("server_1", &port, Link::Item("networks".into(), Some("port".into())))
+        );
+        assert_eq!(
+            d.link_choices(&schemas, "net_1", &sg),
+            one("net_1", &sg, Link::DependsOn),
+            "nothing fits: depends_on"
+        );
         // A server and a security group: the port's list and the server's, both ways round.
         let c = d.link_choices(&schemas, &sg, &port);
         assert_eq!(c, one(&port, &sg, Link::Item("security_groups".into(), None)));
         d.link("server_1", &port, &Link::DependsOn);
-        assert!(d.link_choices(&HashMap::new(), "server_1", &port).len() == 1, "depends_on only offered once");
-        assert_eq!(d.link_choices(&HashMap::new(), "server_1", "net_1"), one("server_1", "net_1", Link::DependsOn), "its networks already hold net_1");
+        assert!(
+            d.link_choices(&HashMap::new(), "server_1", &port).len() == 1,
+            "depends_on only offered once"
+        );
+        assert_eq!(
+            d.link_choices(&HashMap::new(), "server_1", "net_1"),
+            one("server_1", "net_1", Link::DependsOn),
+            "its networks already hold net_1"
+        );
     }
 
     #[test]
@@ -1343,11 +1749,21 @@ outputs:
         d.link("server_1", "net_1", &Link::DependsOn);
         let pairs = edge_pairs(&d.edges());
         let server_net = pairs.iter().find(|e| e.from == "server_1" && e.to == "net_1").unwrap();
-        assert_eq!((server_net.label.as_str(), server_net.dashed), ("depends_on, networks[].network", false));
-        assert!(pairs.iter().any(|e| e.from == "server_1" && e.to == "subnet_1" && e.dashed));
+        assert_eq!(
+            (server_net.label.as_str(), server_net.dashed),
+            ("depends_on, networks[].network", false)
+        );
+        assert!(
+            pairs
+                .iter()
+                .any(|e| e.from == "server_1" && e.to == "subnet_1" && e.dashed)
+        );
         assert_eq!(pairs.len(), 3);
         let pos = d.positions();
-        assert_eq!(node_at(&pos, (GRID * 0.6 + 10.0, GRID * 0.6 - 10.0), 28.0), Some("net_1".into()));
+        assert_eq!(
+            node_at(&pos, (GRID * 0.6 + 10.0, GRID * 0.6 - 10.0), 28.0),
+            Some("net_1".into())
+        );
         assert_eq!(node_at(&pos, (GRID * 1.1, GRID * 0.6), 28.0), None, "between two nodes");
     }
 
@@ -1356,16 +1772,29 @@ outputs:
         let seg = ((0.0, 0.0), (100.0, 0.0));
         let back = ((100.0, 0.0), (0.0, 0.0));
         // Alone: the line as it is, the label just above its middle.
-        assert_eq!(edge_place(seg, false), EdgePlace { line: seg, label: (50.0, -5.0), anchor: "middle" });
+        assert_eq!(
+            edge_place(seg, false),
+            EdgePlace {
+                line: seg,
+                label: (50.0, -5.0),
+                anchor: "middle"
+            }
+        );
         // Both ways: each moves to its own right, so they end up on opposite sides.
         let a = edge_place(seg, true);
         let b = edge_place(back, true);
         assert_eq!(a.line, ((0.0, EDGE_GAP), (100.0, EDGE_GAP)));
         assert_eq!(b.line, ((100.0, -EDGE_GAP), (0.0, -EDGE_GAP)));
-        assert!(a.label.1 > a.line.0.1 && b.label.1 < b.line.0.1, "labels on the outer sides: {a:?} {b:?}");
+        assert!(
+            a.label.1 > a.line.0.1 && b.label.1 < b.line.0.1,
+            "labels on the outer sides: {a:?} {b:?}"
+        );
         assert_eq!((a.label.0, a.anchor), (50.0, "middle"));
         // Vertical: the labels start right of the right line and end left of the left one.
-        let (down, up) = (edge_place(((0.0, 0.0), (0.0, 100.0)), true), edge_place(((0.0, 100.0), (0.0, 0.0)), true));
+        let (down, up) = (
+            edge_place(((0.0, 0.0), (0.0, 100.0)), true),
+            edge_place(((0.0, 100.0), (0.0, 0.0)), true),
+        );
         assert_eq!((down.line.0.0, down.anchor), (-EDGE_GAP, "end"));
         assert_eq!((up.line.0.0, up.anchor), (EDGE_GAP, "start"));
         assert!(down.label.0 < down.line.0.0 && up.label.0 > up.line.0.0);
@@ -1390,10 +1819,27 @@ outputs:
 
     #[test]
     fn versions_are_the_clouds_hot_dates() {
-        let v = |version: &str, kind: &str| TemplateVersion { version: version.into(), kind: kind.into(), aliases: vec![] };
-        assert_eq!(hot_versions(&[v("heat_template_version.2021-04-16", "hot"), v("AWSTemplateFormatVersion.2010-09-09", "cfn")]), ["2021-04-16"]);
+        let v = |version: &str, kind: &str| TemplateVersion {
+            version: version.into(),
+            kind: kind.into(),
+            aliases: vec![],
+        };
+        assert_eq!(
+            hot_versions(&[
+                v("heat_template_version.2021-04-16", "hot"),
+                v("AWSTemplateFormatVersion.2010-09-09", "cfn")
+            ]),
+            ["2021-04-16"]
+        );
         assert_eq!(hot_versions(&[]), [DEFAULT_VERSION]);
-        assert_eq!(Draft { version: " ".into(), ..Default::default() }.version(), DEFAULT_VERSION);
+        assert_eq!(
+            Draft {
+                version: " ".into(),
+                ..Default::default()
+            }
+            .version(),
+            DEFAULT_VERSION
+        );
     }
 
     #[test]
@@ -1401,19 +1847,29 @@ outputs:
         for t in PALETTE.iter().flat_map(|(_, ts)| ts.iter()) {
             assert!(super::super::hot_icons::markup(t).is_some(), "{t}");
         }
-        assert_eq!(PALETTE.iter().map(|(_, ts)| ts.len()).sum::<usize>(), 18, "Horizon's generator types");
+        assert_eq!(
+            PALETTE.iter().map(|(_, ts)| ts.len()).sum::<usize>(),
+            18,
+            "Horizon's generator types"
+        );
     }
 
     #[test]
     fn drafts_survive_local_storage() {
         let d = sample();
-        assert_eq!(serde_json::from_str::<Draft>(&serde_json::to_string(&d).unwrap()).unwrap(), d);
+        assert_eq!(
+            serde_json::from_str::<Draft>(&serde_json::to_string(&d).unwrap()).unwrap(),
+            d
+        );
         let old: Draft = serde_json::from_str(r#"{"resources": [{"name": "a", "kind": "OS::Heat::None"}]}"#).unwrap();
         assert_eq!(old.resources[0].pos, None, "fields added later default");
     }
 
     #[test]
     fn data_urls_escape_everything_else() {
-        assert_eq!(data_url("application/x-yaml", "a: b\n#ñ"), "data:application/x-yaml;charset=utf-8,a%3A%20b%0A%23%C3%B1");
+        assert_eq!(
+            data_url("application/x-yaml", "a: b\n#ñ"),
+            "data:application/x-yaml;charset=utf-8,a%3A%20b%0A%23%C3%B1"
+        );
     }
 }

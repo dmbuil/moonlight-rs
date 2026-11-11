@@ -1,16 +1,19 @@
 //! What each resource can do: Horizon's create buttons and row-action menus,
 //! expressed as dialogs that build an [`OsAction`]. Shared by list and detail pages.
 
-use crate::components::dialog::{caps, options, options_raw, Dialog, DialogSize, Field, MenuItem, Sets, Source, Step, Vals, Values};
+use crate::components::dialog::{
+    Dialog, DialogSize, Field, MenuItem, Sets, Source, Step, Vals, Values, caps, options, options_raw,
+};
 use std::sync::Arc;
 
-use crate::components::upload::{guess_format, Picked};
-use crate::i18n::{t, Lang, K};
-use crate::prefs::ImageUpload;
+use crate::components::upload::{Picked, guess_format};
+use crate::i18n::{K, Lang, t};
 use crate::model::*;
+use crate::prefs::ImageUpload;
 
 fn req(v: &Values, k: &str, label: K, lang: Lang) -> Result<String, String> {
-    v.opt(k).ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
+    v.opt(k)
+        .ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
 }
 
 fn num_u32(v: &Values, k: &str, label: K, lang: Lang) -> Result<Option<u32>, String> {
@@ -51,7 +54,9 @@ fn chosen<'a>(sets: &'a Sets, set: Option<ChoiceSet>, id: Option<&String>) -> Op
 }
 /// Sizing facts of the selected image (none for volume sources).
 fn image_facts<'a>(v: &Vals, sets: &'a Sets) -> Option<&'a Facts> {
-    image_like(v).then(|| chosen(sets, source_set(v), v.get("source_id")).map(|c| &c.facts)).flatten()
+    image_like(v)
+        .then(|| chosen(sets, source_set(v), v.get("source_id")).map(|c| &c.facts))
+        .flatten()
 }
 fn flavor_message(lang: Lang, issue: FlavorIssue) -> String {
     match issue {
@@ -78,20 +83,30 @@ const BOOT_SOURCES: [(&str, K); 4] = [
 fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let offered = p.sources();
-    let sources: Vec<(&str, K)> = BOOT_SOURCES.iter().copied().filter(|(s, _)| offered.contains(s) || preset == Some(*s)).collect();
+    let sources: Vec<(&str, K)> = BOOT_SOURCES
+        .iter()
+        .copied()
+        .filter(|(s, _)| offered.contains(s) || preset == Some(*s))
+        .collect();
     let first_source = sources.first().map(|(s, _)| *s).unwrap_or("image");
     let key_pair = Field::pick("key_name", tr(K::KeyPair), Source::Set(ChoiceSet::KeyPairs));
     let mut fields = vec![
         // Details
         Field::text("name", tr(K::InstanceName)).required(),
         Field::text("description", tr(K::Description)),
-        Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::ComputeZones)).empty_label(tr(K::AnyAvailabilityZone)),
+        Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::ComputeZones))
+            .empty_label(tr(K::AnyAvailabilityZone)),
         Field::number("count", tr(K::Count), 1).value("1").required(),
         // Source
-        Field::select("source", tr(K::BootSource), options(&sources, lang)).value(first_source).required(),
+        Field::select("source", tr(K::BootSource), options(&sources, lang))
+            .value(first_source)
+            .required(),
         // `[launch] create_volume`: the production cloud boots from volume, so Yes by default.
         Field::yes_no("create_volume", tr(K::CreateNewVolume), p.create_volume).show_if(image_like),
-        Field::number("volume_size", tr(K::VolumeSizeGb), 1).value("1").required().show_if(creates_volume),
+        Field::number("volume_size", tr(K::VolumeSizeGb), 1)
+            .value("1")
+            .required()
+            .show_if(creates_volume),
         Field::yes_no("delete_on_terminate", tr(K::DeleteOnTerminate), false).show_if(boots_from_volume),
         Field::pick(
             "source_id",
@@ -110,13 +125,26 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         Field::pick("flavor", tr(K::Flavor), Source::Set(ChoiceSet::Flavors)).required(),
         Field::pick_many("networks", tr(K::Networks), Source::Set(ChoiceSet::Networks)),
         Field::pick_many("ports", tr(K::Ports), Source::Set(ChoiceSet::FreePorts)),
-        Field::pick_many("security_groups", tr(K::SecurityGroups), Source::Set(ChoiceSet::SecurityGroups)).value("default"),
-        if p.requires_keypair { key_pair.required() } else { key_pair },
+        Field::pick_many(
+            "security_groups",
+            tr(K::SecurityGroups),
+            Source::Set(ChoiceSet::SecurityGroups),
+        )
+        .value("default"),
+        if p.requires_keypair {
+            key_pair.required()
+        } else {
+            key_pair
+        },
         // Configuration
         Field::area("user_data", tr(K::CustomizationScript)).from_file(MAX_USER_DATA_BYTES),
-        Field::select("disk_partition", tr(K::DiskPartition), options(&[("auto", K::Automatic), ("manual", K::Manual)], lang))
-            .value("auto")
-            .required(),
+        Field::select(
+            "disk_partition",
+            tr(K::DiskPartition),
+            options(&[("auto", K::Automatic), ("manual", K::Manual)], lang),
+        )
+        .value("auto")
+        .required(),
         Field::check("config_drive", tr(K::ConfigDrive), p.config_drive),
         Field::pick("server_group", tr(K::ServerGroup), Source::Set(ChoiceSet::ServerGroups)),
     ];
@@ -126,12 +154,25 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         config_step.push("admin_pass");
     }
     let steps = vec![
-        Step::new(tr(K::StepDetails), &["name", "description", "az", "count"]).help(tr(K::DetailsHelp)).required(),
-        Step::new(tr(K::StepSource), &["source", "create_volume", "volume_size", "delete_on_terminate", "source_id"])
-            .help(tr(K::SourceHelp))
+        Step::new(tr(K::StepDetails), &["name", "description", "az", "count"])
+            .help(tr(K::DetailsHelp))
             .required(),
+        Step::new(
+            tr(K::StepSource),
+            &[
+                "source",
+                "create_volume",
+                "volume_size",
+                "delete_on_terminate",
+                "source_id",
+            ],
+        )
+        .help(tr(K::SourceHelp))
+        .required(),
         Step::new(tr(K::Flavor), &["flavor"]).help(tr(K::FlavorHelp)).required(),
-        Step::new(tr(K::Networks), &["networks"]).help(tr(K::NetworksHelp)).required(),
+        Step::new(tr(K::Networks), &["networks"])
+            .help(tr(K::NetworksHelp))
+            .required(),
         Step::new(tr(K::StepNetworkPorts), &["ports"]).help(tr(K::PortsHelp)),
         Step::new(tr(K::SecurityGroups), &["security_groups"]).help(tr(K::SecurityGroupsHelp)),
         {
@@ -156,7 +197,11 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
             source,
             source_id: req(v, "source_id", K::SourceItem, lang)?,
             create_volume,
-            volume_size_gb: if create_volume { num_u32(v, "volume_size", K::VolumeSizeGb, lang)? } else { None },
+            volume_size_gb: if create_volume {
+                num_u32(v, "volume_size", K::VolumeSizeGb, lang)?
+            } else {
+                None
+            },
             delete_volume_on_terminate: v.flag("delete_on_terminate"),
             flavor_id: req(v, "flavor", K::Flavor, lang)?,
             network_ids: v.list("networks"),
@@ -180,7 +225,10 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         // …and allocating an image raises the volume size to its minimum.
         "source_id" => {
             if let Some(min) = image_facts(v, sets).map(min_volume_gb) {
-                let cur = v.get("volume_size").and_then(|s| s.trim().parse::<u32>().ok()).unwrap_or(0);
+                let cur = v
+                    .get("volume_size")
+                    .and_then(|s| s.trim().parse::<u32>().ok())
+                    .unwrap_or(0);
                 v.insert("volume_size".into(), cur.max(min).to_string());
             }
         }
@@ -190,7 +238,10 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         let mut out = Vec::new();
         if creates_volume(v) {
             let min = image_facts(v, sets).map(min_volume_gb).unwrap_or(1);
-            let size = v.get("volume_size").and_then(|s| s.trim().parse::<u32>().ok()).unwrap_or(0);
+            let size = v
+                .get("volume_size")
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .unwrap_or(0);
             if size < min {
                 out.push(("volume_size", crate::i18n::volume_min(lang, min)));
             }
@@ -357,7 +408,9 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
     // One-click actions still confirm, like Horizon.
     let simple = |label: K, a: OsAction| {
         let n = name.clone();
-        MenuItem::dialog(tr(label), move || Dialog::simple(lang, t(lang, label), n.clone(), a.clone()))
+        MenuItem::dialog(tr(label), move || {
+            Dialog::simple(lang, t(lang, label), n.clone(), a.clone())
+        })
     };
     let i = id.clone();
     match op {
@@ -368,8 +421,17 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
             Dialog::form(
                 t(lang, K::CreateSnapshot),
                 t(lang, K::CreateSnapshot),
-                vec![Field::text("name", t(lang, K::SnapshotName)).value(format!("{name}-snapshot")).required()],
-                move |v| Ok(OsAction::ServerSnapshot { id: i.clone(), name: req(v, "name", K::SnapshotName, lang)? }),
+                vec![
+                    Field::text("name", t(lang, K::SnapshotName))
+                        .value(format!("{name}-snapshot"))
+                        .required(),
+                ],
+                move |v| {
+                    Ok(OsAction::ServerSnapshot {
+                        id: i.clone(),
+                        name: req(v, "name", K::SnapshotName, lang)?,
+                    })
+                },
             )
         }),
         Op::AssociateIp => MenuItem::dialog(tr(K::AssociateFloatingIp), move || associate_ip_dialog(lang, &i)),
@@ -379,23 +441,49 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
             let mut d = Dialog::form(
                 t(lang, K::DetachInterface),
                 t(lang, K::DetachInterface),
-                vec![Field::select("port", t(lang, K::Port), Source::Of(ChoiceSet::InstancePorts, i.clone())).required()],
-                move |v| Ok(OsAction::ServerDetachInterface { id: i.clone(), port_id: req(v, "port", K::Port, lang)? }),
+                vec![
+                    Field::select(
+                        "port",
+                        t(lang, K::Port),
+                        Source::Of(ChoiceSet::InstancePorts, i.clone()),
+                    )
+                    .required(),
+                ],
+                move |v| {
+                    Ok(OsAction::ServerDetachInterface {
+                        id: i.clone(),
+                        port_id: req(v, "port", K::Port, lang)?,
+                    })
+                },
             );
             d.danger = true;
             d
         }),
         Op::UpdateMetadata => {
             let i = i.clone();
-            metadata_item(lang, "OS::Nova::Server", &inst.metadata, move |metadata, _| OsAction::ServerSetMetadata { id: i.clone(), metadata })
+            metadata_item(lang, "OS::Nova::Server", &inst.metadata, move |metadata, _| {
+                OsAction::ServerSetMetadata {
+                    id: i.clone(),
+                    metadata,
+                }
+            })
         }
         Op::Edit => MenuItem::dialog(tr(K::EditInstance), move || {
             let i = i.clone();
             Dialog::form(
                 t(lang, K::EditInstance),
                 t(lang, K::Save),
-                vec![Field::text("name", t(lang, K::InstanceName)).value(name.clone()).required()],
-                move |v| Ok(OsAction::ServerUpdate { id: i.clone(), name: req(v, "name", K::InstanceName, lang)? }),
+                vec![
+                    Field::text("name", t(lang, K::InstanceName))
+                        .value(name.clone())
+                        .required(),
+                ],
+                move |v| {
+                    Ok(OsAction::ServerUpdate {
+                        id: i.clone(),
+                        name: req(v, "name", K::InstanceName, lang)?,
+                    })
+                },
             )
         }),
         Op::AttachVolume => MenuItem::dialog(tr(K::AttachVolume), move || {
@@ -404,21 +492,38 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
                 t(lang, K::AttachVolume),
                 t(lang, K::AttachVolume),
                 vec![Field::select("volume", t(lang, K::Volume), Source::Set(ChoiceSet::AvailableVolumes)).required()],
-                move |v| Ok(OsAction::ServerAttachVolume { server_id: i.clone(), volume_id: req(v, "volume", K::Volume, lang)? }),
+                move |v| {
+                    Ok(OsAction::ServerAttachVolume {
+                        server_id: i.clone(),
+                        volume_id: req(v, "volume", K::Volume, lang)?,
+                    })
+                },
             )
         }),
         Op::EditSecurityGroups => {
             let current = inst.security_groups.clone();
-            MenuItem::dialog(tr(K::EditSecurityGroups), move || security_groups_dialog(lang, &i, &current))
+            MenuItem::dialog(tr(K::EditSecurityGroups), move || {
+                security_groups_dialog(lang, &i, &current)
+            })
         }
-        Op::EditPortSecurityGroups => MenuItem::dialog(tr(K::EditPortSecurityGroups), move || port_security_groups_dialog(lang, &i)),
+        Op::EditPortSecurityGroups => MenuItem::dialog(tr(K::EditPortSecurityGroups), move || {
+            port_security_groups_dialog(lang, &i)
+        }),
         Op::Rescue => MenuItem::dialog(tr(K::RescueInstance), move || {
             let i = i.clone();
             Dialog::form(
                 t(lang, K::RescueInstance),
                 t(lang, K::RescueInstance),
-                vec![Field::select("image", t(lang, K::RescueImage), Source::Set(ChoiceSet::Images)).help(t(lang, K::RescueImageHelp))],
-                move |v| Ok(OsAction::ServerRescue { id: i.clone(), image_id: v.opt("image") }),
+                vec![
+                    Field::select("image", t(lang, K::RescueImage), Source::Set(ChoiceSet::Images))
+                        .help(t(lang, K::RescueImageHelp)),
+                ],
+                move |v| {
+                    Ok(OsAction::ServerRescue {
+                        id: i.clone(),
+                        image_id: v.opt("image"),
+                    })
+                },
             )
         }),
         Op::Unrescue => simple(K::UnrescueInstance, OsAction::ServerUnrescue { id }),
@@ -432,15 +537,25 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
             MenuItem::dialog(tr(K::UnshelveInstance), move || {
                 let i = i.clone();
                 let fields = if to_zone {
-                    vec![Field::select("az", t(lang, K::AvailabilityZone), Source::Set(ChoiceSet::ComputeZones))
-                        .empty_label(t(lang, K::AnyAvailabilityZone))
-                        .help(t(lang, K::AnyZone))]
+                    vec![
+                        Field::select("az", t(lang, K::AvailabilityZone), Source::Set(ChoiceSet::ComputeZones))
+                            .empty_label(t(lang, K::AnyAvailabilityZone))
+                            .help(t(lang, K::AnyZone)),
+                    ]
                 } else {
                     vec![]
                 };
-                let mut d = Dialog::form(t(lang, K::UnshelveInstance), t(lang, K::UnshelveInstance), fields, move |v| {
-                    Ok(OsAction::ServerUnshelve { id: i.clone(), availability_zone: v.opt("az") })
-                });
+                let mut d = Dialog::form(
+                    t(lang, K::UnshelveInstance),
+                    t(lang, K::UnshelveInstance),
+                    fields,
+                    move |v| {
+                        Ok(OsAction::ServerUnshelve {
+                            id: i.clone(),
+                            availability_zone: v.opt("az"),
+                        })
+                    },
+                );
                 if !to_zone {
                     d.intro = vec![t(lang, K::YouSelected).into()];
                     d.selection = vec![name.clone()];
@@ -461,15 +576,30 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
                         if flavor_id == current {
                             return Err(t(lang, K::SameFlavor).to_string());
                         }
-                        Ok(OsAction::ServerResize { id: i.clone(), flavor_id })
+                        Ok(OsAction::ServerResize {
+                            id: i.clone(),
+                            flavor_id,
+                        })
                     },
                 )
             })
         }
         Op::Lock => simple(K::LockInstance, OsAction::ServerLock { id }),
         Op::Unlock => simple(K::UnlockInstance, OsAction::ServerUnlock { id }),
-        Op::SoftReboot => simple(K::SoftReboot, OsAction::ServerReboot { id, kind: RebootKind::Soft }),
-        Op::HardReboot => simple(K::HardReboot, OsAction::ServerReboot { id, kind: RebootKind::Hard }),
+        Op::SoftReboot => simple(
+            K::SoftReboot,
+            OsAction::ServerReboot {
+                id,
+                kind: RebootKind::Soft,
+            },
+        ),
+        Op::HardReboot => simple(
+            K::HardReboot,
+            OsAction::ServerReboot {
+                id,
+                kind: RebootKind::Hard,
+            },
+        ),
         Op::ShutOff => simple(K::ShutOff, OsAction::ServerStop { id }),
         Op::Start => simple(K::StartInstance, OsAction::ServerStart { id }),
         Op::Rebuild => MenuItem::danger(tr(K::RebuildInstance), move || {
@@ -477,14 +607,28 @@ fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
             let mut d = Dialog::form(
                 t(lang, K::RebuildInstance),
                 t(lang, K::RebuildInstance),
-                vec![Field::select("image", t(lang, K::BootImage), Source::Set(ChoiceSet::Images)).required().help(t(lang, K::RebuildHelp))],
-                move |v| Ok(OsAction::ServerRebuild { id: i.clone(), image_id: req(v, "image", K::BootImage, lang)? }),
+                vec![
+                    Field::select("image", t(lang, K::BootImage), Source::Set(ChoiceSet::Images))
+                        .required()
+                        .help(t(lang, K::RebuildHelp)),
+                ],
+                move |v| {
+                    Ok(OsAction::ServerRebuild {
+                        id: i.clone(),
+                        image_id: req(v, "image", K::BootImage, lang)?,
+                    })
+                },
             );
             d.danger = true;
             d
         }),
         Op::Delete => MenuItem::danger(tr(K::DeleteInstance), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteInstance), name.clone(), OsAction::ServerDelete { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteInstance),
+                name.clone(),
+                OsAction::ServerDelete { id: i.clone() },
+            )
         }),
     }
 }
@@ -498,16 +642,33 @@ pub fn associate_ip_dialog(lang: Lang, server_id: &str) -> Dialog {
         t(lang, K::Associate),
         vec![
             Field::check("allocate", t(lang, K::AllocateNewIp), false),
-            Field::select("ip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps)).required().when("allocate", "false"),
-            Field::select("pool", t(lang, K::Pool), Source::Set(ChoiceSet::ExternalNetworks)).required().when("allocate", "true"),
-            Field::select("port", t(lang, K::PortToAssociate), Source::Of(ChoiceSet::AssociablePorts, server_id.to_string())).required(),
+            Field::select("ip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps))
+                .required()
+                .when("allocate", "false"),
+            Field::select("pool", t(lang, K::Pool), Source::Set(ChoiceSet::ExternalNetworks))
+                .required()
+                .when("allocate", "true"),
+            Field::select(
+                "port",
+                t(lang, K::PortToAssociate),
+                Source::Of(ChoiceSet::AssociablePorts, server_id.to_string()),
+            )
+            .required(),
         ],
         move |v| {
             let port_id = req(v, "port", K::PortToAssociate, lang)?;
             Ok(if v.flag("allocate") {
-                OsAction::FloatingIpAllocate { network_id: req(v, "pool", K::Pool, lang)?, description: None, port_id: Some(port_id), qos_policy_id: None }
+                OsAction::FloatingIpAllocate {
+                    network_id: req(v, "pool", K::Pool, lang)?,
+                    description: None,
+                    port_id: Some(port_id),
+                    qos_policy_id: None,
+                }
             } else {
-                OsAction::FloatingIpAssociate { id: req(v, "ip", K::FloatingIp, lang)?, port_id }
+                OsAction::FloatingIpAssociate {
+                    id: req(v, "ip", K::FloatingIp, lang)?,
+                    port_id,
+                }
             })
         },
     )
@@ -520,16 +681,31 @@ pub fn attach_interface_dialog(lang: Lang, server_id: &str) -> Dialog {
         t(lang, K::AttachInterface),
         t(lang, K::AttachInterface),
         vec![
-            Field::select("by", t(lang, K::InterfaceSource), options(&[("network", K::ByNetwork), ("port", K::ByPort)], lang))
-                .value("network")
-                .required(),
-            Field::select("network", t(lang, K::Network), Source::Set(ChoiceSet::Networks)).required().when("by", "network"),
-            Field::text("fixed_ip", t(lang, K::FixedIpAddress)).help(t(lang, K::FixedIpHelp)).when("by", "network"),
-            Field::select("port", t(lang, K::Port), Source::Set(ChoiceSet::FreePorts)).required().when("by", "port"),
+            Field::select(
+                "by",
+                t(lang, K::InterfaceSource),
+                options(&[("network", K::ByNetwork), ("port", K::ByPort)], lang),
+            )
+            .value("network")
+            .required(),
+            Field::select("network", t(lang, K::Network), Source::Set(ChoiceSet::Networks))
+                .required()
+                .when("by", "network"),
+            Field::text("fixed_ip", t(lang, K::FixedIpAddress))
+                .help(t(lang, K::FixedIpHelp))
+                .when("by", "network"),
+            Field::select("port", t(lang, K::Port), Source::Set(ChoiceSet::FreePorts))
+                .required()
+                .when("by", "port"),
         ],
         move |v| {
             Ok(if v.get("by") == "port" {
-                OsAction::ServerAttachInterface { id: id.clone(), network_id: None, port_id: Some(req(v, "port", K::Port, lang)?), fixed_ip: None }
+                OsAction::ServerAttachInterface {
+                    id: id.clone(),
+                    network_id: None,
+                    port_id: Some(req(v, "port", K::Port, lang)?),
+                    fixed_ip: None,
+                }
             } else {
                 OsAction::ServerAttachInterface {
                     id: id.clone(),
@@ -552,13 +728,25 @@ pub fn security_groups_dialog(lang: Lang, server_id: &str, current: &[String]) -
         t(lang, K::Save),
         // *Allocated / Available* tables with a filter (name and description), for
         // projects with many groups (roadmap 43).
-        vec![Field::pick_many("groups", t(lang, K::SecurityGroups), Source::Set(ChoiceSet::SecurityGroups)).value(current.join(",")).help(t(lang, K::EditSecurityGroupsHelp))],
+        vec![
+            Field::pick_many(
+                "groups",
+                t(lang, K::SecurityGroups),
+                Source::Set(ChoiceSet::SecurityGroups),
+            )
+            .value(current.join(","))
+            .help(t(lang, K::EditSecurityGroupsHelp)),
+        ],
         move |v| {
             let (add, remove) = list_diff(&current, &v.list("groups"));
             if add.is_empty() && remove.is_empty() {
                 return Err(t(lang, K::NothingChanged).to_string());
             }
-            Ok(OsAction::ServerSetSecurityGroups { id: id.clone(), add, remove })
+            Ok(OsAction::ServerSetSecurityGroups {
+                id: id.clone(),
+                add,
+                remove,
+            })
         },
     )
 }
@@ -577,12 +765,26 @@ pub fn port_security_groups_dialog(lang: Lang, server_id: &str) -> Dialog {
         t(lang, K::EditPortSecurityGroups),
         t(lang, K::Save),
         vec![
-            Field::select("port", t(lang, K::Port), Source::Of(ChoiceSet::InstancePorts, server_id.to_string())).required(),
+            Field::select(
+                "port",
+                t(lang, K::Port),
+                Source::Of(ChoiceSet::InstancePorts, server_id.to_string()),
+            )
+            .required(),
             // Same filtered tables as *Edit Security Groups*; the port's groups are
             // preset by `on_change` as the same comma list (roadmap 43).
-            Field::pick_many("groups", t(lang, K::SecurityGroups), Source::Set(ChoiceSet::SecurityGroupIds)),
+            Field::pick_many(
+                "groups",
+                t(lang, K::SecurityGroups),
+                Source::Set(ChoiceSet::SecurityGroupIds),
+            ),
         ],
-        move |v| Ok(OsAction::PortSetSecurityGroups { id: req(v, "port", K::Port, lang)?, security_group_ids: v.list("groups") }),
+        move |v| {
+            Ok(OsAction::PortSetSecurityGroups {
+                id: req(v, "port", K::Port, lang)?,
+                security_group_ids: v.list("groups"),
+            })
+        },
     )
     .on_change(|field, vals, sets| {
         if field == "port" {
@@ -615,7 +817,10 @@ pub fn launch_from(lang: Lang, source: &'static str, source_id: &str) -> Dialog 
 /// (raw when the list leaves none).
 pub fn upload_formats(configured: &[String]) -> Vec<&'static str> {
     const CINDER: [&str; 7] = ["raw", "qcow2", "vmdk", "vdi", "vhd", "vhdx", "ploop"];
-    let out: Vec<_> = CINDER.into_iter().filter(|f| configured.iter().any(|c| c == f)).collect();
+    let out: Vec<_> = CINDER
+        .into_iter()
+        .filter(|f| configured.iter().any(|c| c == f))
+        .collect();
     if out.is_empty() { vec!["raw"] } else { out }
 }
 
@@ -628,7 +833,10 @@ pub fn bulk_instance_items(lang: Lang, picked: Vec<(String, String)>) -> Vec<Men
     vec![
         item(K::StartInstances, |id| OsAction::ServerStart { id }),
         item(K::ShutOffInstances, |id| OsAction::ServerStop { id }),
-        item(K::SoftRebootInstances, |id| OsAction::ServerReboot { id, kind: RebootKind::Soft }),
+        item(K::SoftRebootInstances, |id| OsAction::ServerReboot {
+            id,
+            kind: RebootKind::Soft,
+        }),
     ]
 }
 
@@ -647,7 +855,11 @@ pub fn bulk(lang: Lang, title: K, items: Vec<(String, String)>, make: fn(String)
     let title_key = title;
     let title = t(lang, title);
     let mut d = Dialog::form(title, title, vec![], move |_| {
-        if too_many { Err(t(lang, K::TooManySelected).to_string()) } else { Ok(batch.clone()) }
+        if too_many {
+            Err(t(lang, K::TooManySelected).to_string())
+        } else {
+            Ok(batch.clone())
+        }
     });
     d.intro = vec![t(lang, K::YouSelected).into()];
     d.selection = names;
@@ -692,27 +904,48 @@ pub fn edit_port_dialog(lang: Lang, port_id: &str, current: &PortSettings, group
     ];
     let mut info = vec!["name", "admin_up"];
     if needs::PORT_BINDING.met(&caps) {
-        let mut types: Vec<(String, String)> = VNIC_TYPES.iter().map(|(v, k)| (v.to_string(), t(lang, *k).to_string())).collect();
+        let mut types: Vec<(String, String)> = VNIC_TYPES
+            .iter()
+            .map(|(v, k)| (v.to_string(), t(lang, *k).to_string()))
+            .collect();
         // Keep a type Horizon doesn't list (e.g. `accelerator-direct`) selectable.
-        if let Some(v) = current.vnic_type.as_ref().filter(|v| !VNIC_TYPES.iter().any(|(x, _)| x == v)) {
+        if let Some(v) = current
+            .vnic_type
+            .as_ref()
+            .filter(|v| !VNIC_TYPES.iter().any(|(x, _)| x == v))
+        {
             types.push((v.clone(), v.clone()));
         }
         let value = current.vnic_type.clone().unwrap_or_else(|| "normal".into());
-        fields.push(Field::select("vnic_type", t(lang, K::VnicType), Source::Static(types)).value(value).required());
+        fields.push(
+            Field::select("vnic_type", t(lang, K::VnicType), Source::Static(types))
+                .value(value)
+                .required(),
+        );
         info.push("vnic_type");
     }
     if needs::PORT_SECURITY.met(&caps) {
-        fields.push(Field::check("port_security", t(lang, K::PortSecurity), current.port_security));
+        fields.push(Field::check(
+            "port_security",
+            t(lang, K::PortSecurity),
+            current.port_security,
+        ));
         info.push("port_security");
     }
     fields.push(
-        Field::pick_many("groups", t(lang, K::SecurityGroups), Source::Set(ChoiceSet::SecurityGroupIds))
-            .value(current.security_group_ids.join(",")),
+        Field::pick_many(
+            "groups",
+            t(lang, K::SecurityGroups),
+            Source::Set(ChoiceSet::SecurityGroupIds),
+        )
+        .value(current.security_group_ids.join(",")),
     );
     let groups_on: fn(&Vals) -> bool = |v| v.get("port_security").is_none_or(|p| p == "true");
     let steps = vec![
         Step::new(t(lang, K::StepInfo), &info).help(t(lang, K::EditPortInfoHelp)),
-        Step::new(t(lang, K::SecurityGroups), &["groups"]).help(t(lang, K::EditPortGroupsHelp)).enabled_if(groups_on),
+        Step::new(t(lang, K::SecurityGroups), &["groups"])
+            .help(t(lang, K::EditPortGroupsHelp))
+            .enabled_if(groups_on),
     ];
     // A disabled step can't be shown: with port security off, start on *Info*.
     let first = usize::from(groups_first && current.port_security);
@@ -723,10 +956,20 @@ pub fn edit_port_dialog(lang: Lang, port_id: &str, current: &PortSettings, group
             name: v.get("name"),
             admin_up: v.flag("admin_up"),
             vnic_type: v.opt("vnic_type").or_else(|| before.vnic_type.clone()),
-            port_security: if v.0.contains_key("port_security") { v.flag("port_security") } else { before.port_security },
-            security_group_ids: if v.0.contains_key("groups") { v.list("groups") } else { before.security_group_ids.clone() },
+            port_security: if v.0.contains_key("port_security") {
+                v.flag("port_security")
+            } else {
+                before.port_security
+            },
+            security_group_ids: if v.0.contains_key("groups") {
+                v.list("groups")
+            } else {
+                before.security_group_ids.clone()
+            },
         };
-        before.changes(&id, &after).ok_or_else(|| t(lang, K::NothingChanged).to_string())
+        before
+            .changes(&id, &after)
+            .ok_or_else(|| t(lang, K::NothingChanged).to_string())
     })
     .wizard(steps)
     .starting_at(first)
@@ -740,19 +983,40 @@ pub fn instance_interface_items(lang: Lang, server_id: &str, it: &Interface) -> 
     let mut items = vec![];
     if let Some(port) = &it.port {
         let (i, p) = (it.port_id.clone(), port.clone());
-        items.push(MenuItem::dialog(t(lang, K::EditSecurityGroups), move || edit_port_dialog(lang, &i, &p, true)));
+        items.push(MenuItem::dialog(t(lang, K::EditSecurityGroups), move || {
+            edit_port_dialog(lang, &i, &p, true)
+        }));
         let (i, p) = (it.port_id.clone(), port.clone());
-        items.push(MenuItem::dialog(t(lang, K::EditPort), move || edit_port_dialog(lang, &i, &p, false)));
+        items.push(MenuItem::dialog(t(lang, K::EditPort), move || {
+            edit_port_dialog(lang, &i, &p, false)
+        }));
     }
-    items.push(detach_interface_item(lang, server_id, &it.port_id, &it.fixed_ips.join(", ")));
+    items.push(detach_interface_item(
+        lang,
+        server_id,
+        &it.port_id,
+        &it.fixed_ips.join(", "),
+    ));
     items
 }
 
 /// *Detach Interface* on a row of the instance's Interfaces tab.
 pub fn detach_interface_item(lang: Lang, server_id: &str, port_id: &str, label: &str) -> MenuItem {
-    let (s, p, l) = (server_id.to_string(), port_id.to_string(), if label.is_empty() { port_id } else { label }.to_string());
+    let (s, p, l) = (
+        server_id.to_string(),
+        port_id.to_string(),
+        if label.is_empty() { port_id } else { label }.to_string(),
+    );
     MenuItem::danger(t(lang, K::DetachInterface), move || {
-        Dialog::confirm(lang, t(lang, K::DetachInterface), l.clone(), OsAction::ServerDetachInterface { id: s.clone(), port_id: p.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DetachInterface),
+            l.clone(),
+            OsAction::ServerDetachInterface {
+                id: s.clone(),
+                port_id: p.clone(),
+            },
+        )
     })
 }
 
@@ -760,7 +1024,15 @@ pub fn detach_interface_item(lang: Lang, server_id: &str, port_id: &str, label: 
 pub fn detach_volume_item(lang: Lang, server_id: &str, volume_id: &str, volume_name: &str) -> MenuItem {
     let (s, v, n) = (server_id.to_string(), volume_id.to_string(), volume_name.to_string());
     MenuItem::danger(t(lang, K::DetachVolume), move || {
-        Dialog::confirm(lang, t(lang, K::DetachVolume), n.clone(), OsAction::ServerDetachVolume { server_id: s.clone(), volume_id: v.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DetachVolume),
+            n.clone(),
+            OsAction::ServerDetachVolume {
+                server_id: s.clone(),
+                volume_id: v.clone(),
+            },
+        )
     })
 }
 
@@ -772,10 +1044,20 @@ pub fn detach_volume_item(lang: Lang, server_id: &str, volume_id: &str, volume_n
 pub fn image_items(lang: Lang, im: &Image) -> Vec<MenuItem> {
     let mut items = Vec::new();
     if im.status.eq_ignore_ascii_case("active") {
-        let (i, src) = (im.id.clone(), if im.is_snapshot { "instance_snapshot" } else { "image" });
-        items.push(MenuItem::dialog(t(lang, K::LaunchFromRow), move || launch_from(lang, src, &i)));
+        let (i, src) = (
+            im.id.clone(),
+            if im.is_snapshot { "instance_snapshot" } else { "image" },
+        );
+        items.push(MenuItem::dialog(t(lang, K::LaunchFromRow), move || {
+            launch_from(lang, src, &i)
+        }));
     }
-    items.push(create_volume_item(lang, VolumeSource::Image, &im.id, im.size.map(|b| b.div_ceil(1 << 30).max(1) as u32)));
+    items.push(create_volume_item(
+        lang,
+        VolumeSource::Image,
+        &im.id,
+        im.size.map(|b| b.div_ceil(1 << 30).max(1) as u32),
+    ));
     if im.owned_by_project {
         items.extend(image_owner_items(lang, im, needs::PUBLICIZE_IMAGE.met(&caps())));
     }
@@ -787,13 +1069,20 @@ pub fn image_items(lang: Lang, im: &Image) -> Vec<MenuItem> {
 fn image_owner_items(lang: Lang, im: &Image, publicize: bool) -> Vec<MenuItem> {
     let im2 = im.clone();
     let formats = crate::components::dialog::prefs().images.disk_formats;
-    let mut items = vec![MenuItem::dialog(t(lang, K::EditImage), move || edit_image_dialog(lang, &im2, publicize, &formats))];
+    let mut items = vec![MenuItem::dialog(t(lang, K::EditImage), move || {
+        edit_image_dialog(lang, &im2, publicize, &formats)
+    })];
     items.push(image_metadata_item(lang, im));
     // Glance refuses deleting a protected image; Horizon hides the item.
     if !im.protected {
         let (i, n) = (im.id.clone(), im.name.clone());
         items.push(MenuItem::danger(t(lang, K::DeleteImage), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteImage), n.clone(), OsAction::ImageDelete { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteImage),
+                n.clone(),
+                OsAction::ImageDelete { id: i.clone() },
+            )
         }));
     }
     items
@@ -804,11 +1093,20 @@ fn image_metadata_item(lang: Lang, im: &Image) -> MenuItem {
     // `os_glance_*` properties belong to Glance's import machinery, and `[images]
     // reserved_properties` are the operator's: neither is editable.
     let reserved = crate::components::dialog::prefs().images.reserved_properties;
-    let editable: Vec<_> = im.properties.iter().filter(|(k, _)| !is_reserved_image_key(k, &reserved)).cloned().collect();
+    let editable: Vec<_> = im
+        .properties
+        .iter()
+        .filter(|(k, _)| !is_reserved_image_key(k, &reserved))
+        .cloned()
+        .collect();
     let i = im.id.clone();
     metadata_item(lang, "OS::Glance::Image", &editable, move |new, old| {
         let (set, remove) = metadata_changes(old, &new);
-        OsAction::ImageSetProperties { id: i.clone(), set, remove }
+        OsAction::ImageSetProperties {
+            id: i.clone(),
+            set,
+            remove,
+        }
     })
 }
 
@@ -844,14 +1142,26 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
         fields.push(Field::text("kernel_id", tr(K::KernelId)).value(prop("kernel_id")));
         fields.push(Field::text("ramdisk_id", tr(K::RamdiskId)).value(prop("ramdisk_id")));
     }
-    fields.push(Field::text("architecture", tr(K::Architecture)).value(prop("architecture")).help(tr(K::ArchitectureHelp)));
+    fields.push(
+        Field::text("architecture", tr(K::Architecture))
+            .value(prop("architecture"))
+            .help(tr(K::ArchitectureHelp)),
+    );
     fields.push(Field::number("min_disk", tr(K::MinDiskGb), 0).value(im.min_disk_gb.unwrap_or(0).to_string()));
     fields.push(Field::number("min_ram", tr(K::MinRamMb), 0).value(im.min_ram_mb.unwrap_or(0).to_string()));
     if queued {
         let opts: Vec<&str> = formats.iter().map(String::as_str).collect();
-        fields.push(Field::select("disk_format", tr(K::DiskFormat), options_raw(&opts)).value(im.disk_format.clone().unwrap_or_default()).required());
+        fields.push(
+            Field::select("disk_format", tr(K::DiskFormat), options_raw(&opts))
+                .value(im.disk_format.clone().unwrap_or_default())
+                .required(),
+        );
     }
-    fields.push(Field::select("visibility", tr(K::Visibility), options_raw(&vis)).value(im.visibility.clone()).required());
+    fields.push(
+        Field::select("visibility", tr(K::Visibility), options_raw(&vis))
+            .value(im.visibility.clone())
+            .required(),
+    );
     fields.push(Field::check("protected", tr(K::Protected), im.protected));
     let old = im.clone();
     Dialog::form(tr(K::EditImage), tr(K::Save), fields, move |v| {
@@ -865,7 +1175,10 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
         c.min_disk_gb = (i64::from(min_disk) != old.min_disk_gb.unwrap_or(0)).then_some(min_disk);
         let min_ram = num_u32(v, "min_ram", K::MinRamMb, lang)?.unwrap_or(0);
         c.min_ram_mb = (i64::from(min_ram) != old.min_ram_mb.unwrap_or(0)).then_some(min_ram);
-        if let Some(f) = v.opt("disk_format").filter(|f| Some(f.as_str()) != old.disk_format.as_deref()) {
+        if let Some(f) = v
+            .opt("disk_format")
+            .filter(|f| Some(f.as_str()) != old.disk_format.as_deref())
+        {
             c.disk_format = Some(f);
         }
         for key in IMAGE_FIELD_PROPS {
@@ -883,7 +1196,10 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
         if c == ImageChanges::default() {
             return Err(t(lang, K::NothingChanged).to_string());
         }
-        Ok(OsAction::ImageUpdate { id: old.id.clone(), changes: c })
+        Ok(OsAction::ImageUpdate {
+            id: old.id.clone(),
+            changes: c,
+        })
     })
 }
 
@@ -894,7 +1210,13 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
 pub fn create_image_dialog(lang: Lang) -> Dialog {
     let img = crate::components::dialog::prefs().images;
     let c = caps();
-    create_image_form(lang, &img, needs::PUBLICIZE_IMAGE.met(&c), needs::IMAGE_URL_IMPORT.met(&c), false)
+    create_image_form(
+        lang,
+        &img,
+        needs::PUBLICIZE_IMAGE.met(&c),
+        needs::IMAGE_URL_IMPORT.met(&c),
+        false,
+    )
 }
 
 /// Admin › Images' *Create Image* (roadmap 89): Project's, plus the owning
@@ -902,19 +1224,35 @@ pub fn create_image_dialog(lang: Lang) -> Dialog {
 pub fn admin_create_image_dialog(lang: Lang) -> Dialog {
     let img = crate::components::dialog::prefs().images;
     let c = caps();
-    create_image_form(lang, &img, needs::PUBLICIZE_IMAGE.met(&c), needs::IMAGE_URL_IMPORT.met(&c), true)
+    create_image_form(
+        lang,
+        &img,
+        needs::PUBLICIZE_IMAGE.met(&c),
+        needs::IMAGE_URL_IMPORT.met(&c),
+        true,
+    )
 }
 
 /// [`create_image_dialog`] for given settings: `publicize` (the admin role) offers `public`
 /// visibility, `url_import` is whether Glance has `web-download`, `admin` adds the owner.
-fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool, url_import: bool, admin: bool) -> Dialog {
+fn create_image_form(
+    lang: Lang,
+    img: &crate::prefs::ImagePrefs,
+    publicize: bool,
+    url_import: bool,
+    admin: bool,
+) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let formats: Vec<&str> = img.disk_formats.iter().map(String::as_str).collect();
     let mut vis: Vec<&str> = vec!["private", "shared", "community"];
     if publicize {
         vis.push("public");
     }
-    let default_vis = if vis.contains(&img.default_visibility.as_str()) { img.default_visibility.clone() } else { "private".into() };
+    let default_vis = if vis.contains(&img.default_visibility.as_str()) {
+        img.default_visibility.clone()
+    } else {
+        "private".into()
+    };
     let mut sources = vec![("none".to_string(), tr(K::ImageSourceNone))];
     // *File* (roadmap 45): `[images] upload`, whatever the cloud, since the upload is plain Glance.
     if img.upload != ImageUpload::Off {
@@ -929,30 +1267,62 @@ fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool
         Field::text("name", tr(K::ImageName)).required(),
         Field::area("description", tr(K::Description)).rows(2),
         // The source and its URL or file share a line (only one of the two shows).
-        Field::select("source", tr(K::ImageSource), Source::Static(sources)).value(first_source).required().help(tr(K::ImageSourceNoneHelp)).half(),
-        Field::text("url", tr(K::Url)).required().help(tr(K::ImageUrlHelp)).when("source", "url").half(),
-        Field::file("file", tr(K::ImageSourceFile)).required().help(tr(K::ImageFileHelp)).when("source", "file").half(),
+        Field::select("source", tr(K::ImageSource), Source::Static(sources))
+            .value(first_source)
+            .required()
+            .help(tr(K::ImageSourceNoneHelp))
+            .half(),
+        Field::text("url", tr(K::Url))
+            .required()
+            .help(tr(K::ImageUrlHelp))
+            .when("source", "url")
+            .half(),
+        Field::file("file", tr(K::ImageSourceFile))
+            .required()
+            .help(tr(K::ImageFileHelp))
+            .when("source", "file")
+            .half(),
         // Format and architecture, then minimum disk and RAM, share a line each; the AMI-only
         // kernel and ramdisk (full rows) sit between the two pairs.
-        Field::select("disk_format", tr(K::DiskFormat), options_raw(&formats)).value(formats.first().copied().unwrap_or("qcow2")).required().half(),
+        Field::select("disk_format", tr(K::DiskFormat), options_raw(&formats))
+            .value(formats.first().copied().unwrap_or("qcow2"))
+            .required()
+            .half(),
         // The hint is a tooltip: a help line would make this row taller than its neighbours.
-        Field::text("architecture", tr(K::Architecture)).tip(tr(K::ArchitectureHelp)).half(),
+        Field::text("architecture", tr(K::Architecture))
+            .tip(tr(K::ArchitectureHelp))
+            .half(),
         Field::text("kernel_id", tr(K::KernelId)).when("disk_format", "ami"),
         Field::text("ramdisk_id", tr(K::RamdiskId)).when("disk_format", "ami"),
         Field::number("min_disk", tr(K::MinDiskGb), 0).value("0").half(),
         Field::number("min_ram", tr(K::MinRamMb), 0).value("0").half(),
-        Field::select("visibility", tr(K::Visibility), options_raw(&vis)).value(default_vis).required().half(),
+        Field::select("visibility", tr(K::Visibility), options_raw(&vis))
+            .value(default_vis)
+            .required()
+            .half(),
         Field::check("protected", tr(K::Protected), false).half(),
-        Field::key_values("metadata", tr(K::Metadata), &[]).help(tr(K::MetadataHelp)).catalog("OS::Glance::Image").catalog_skip(&IMAGE_FIELD_PROPS),
+        Field::key_values("metadata", tr(K::Metadata), &[])
+            .help(tr(K::MetadataHelp))
+            .catalog("OS::Glance::Image")
+            .catalog_skip(&IMAGE_FIELD_PROPS),
     ];
     if admin {
-        fields.insert(2, Field::select("owner", tr(K::Project), Source::Set(ChoiceSet::AllProjects)).help(tr(K::ImageOwnerHelp)).empty_label(tr(K::SelectProject)));
+        fields.insert(
+            2,
+            Field::select("owner", tr(K::Project), Source::Set(ChoiceSet::AllProjects))
+                .help(tr(K::ImageOwnerHelp))
+                .empty_label(tr(K::SelectProject)),
+        );
     }
-    let (max_bytes, offered) = (img.max_upload_bytes(), formats.iter().map(|f| f.to_string()).collect::<Vec<_>>());
+    let (max_bytes, offered) = (
+        img.max_upload_bytes(),
+        formats.iter().map(|f| f.to_string()).collect::<Vec<_>>(),
+    );
     let details: Vec<&'static str> = fields.iter().map(|f| f.name).filter(|n| *n != "metadata").collect();
     let mut dialog = Dialog::form(tr(K::CreateImage), tr(K::CreateImage), fields, move |v| {
         let file = if v.get("source") == "file" {
-            let picked = Picked::decode(&v.get("file")).ok_or_else(|| invalid(lang, t(lang, K::ImageSourceFile).to_string()))?;
+            let picked =
+                Picked::decode(&v.get("file")).ok_or_else(|| invalid(lang, t(lang, K::ImageSourceFile).to_string()))?;
             if picked.size > max_bytes {
                 return Err(too_big(lang, max_bytes));
             }
@@ -973,7 +1343,11 @@ fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool
         }
         Ok(OsAction::ImageCreate(ImageSpec {
             name: req(v, "name", K::ImageName, lang)?,
-            url: if v.get("source") == "url" { Some(req(v, "url", K::Url, lang)?) } else { None },
+            url: if v.get("source") == "url" {
+                Some(req(v, "url", K::Url, lang)?)
+            } else {
+                None
+            },
             disk_format: req(v, "disk_format", K::DiskFormat, lang)?,
             container_format: None,
             visibility: req(v, "visibility", K::Visibility, lang)?,
@@ -986,12 +1360,16 @@ fn create_image_form(lang: Lang, img: &crate::prefs::ImagePrefs, publicize: bool
         }))
     });
     // Horizon's wizard: the details, then the metadata (item 25 adds the catalog to that step).
-    dialog = dialog.wizard(vec![Step::new(tr(K::ImageDetails), &details), Step::new(tr(K::Metadata), &["metadata"])]);
+    dialog = dialog.wizard(vec![
+        Step::new(tr(K::ImageDetails), &details),
+        Step::new(tr(K::Metadata), &["metadata"]),
+    ]);
     // Picking a file preselects its disk format (Horizon does), and a file over the limit is
     // refused on the field, before anything is created.
     dialog.on_change = Some(Arc::new(move |name, vals, _| {
         if name == "file"
-            && let Some(f) = Picked::decode(vals.get("file").map_or("", String::as_str)).and_then(|p| guess_format(&p.name, &offered))
+            && let Some(f) = Picked::decode(vals.get("file").map_or("", String::as_str))
+                .and_then(|p| guess_format(&p.name, &offered))
         {
             vals.insert("disk_format".into(), f);
         }
@@ -1026,7 +1404,15 @@ fn metadata_item(
     current: &[(String, String)],
     to_action: impl Fn(Vec<(String, String)>, &[(String, String)]) -> OsAction + Send + Sync + 'static,
 ) -> MenuItem {
-    pairs_item(lang, K::UpdateMetadata, K::Metadata, K::MetadataHelp, Some(catalog), current, to_action)
+    pairs_item(
+        lang,
+        K::UpdateMetadata,
+        K::Metadata,
+        K::MetadataHelp,
+        Some(catalog),
+        current,
+        to_action,
+    )
 }
 
 /// A key/value editor entry titled `title` (metadata, extra specs, QoS or
@@ -1050,7 +1436,10 @@ fn pairs_item(
         Dialog::form(
             t(lang, title),
             t(lang, K::Save),
-            vec![with_catalog(Field::key_values("metadata", t(lang, label), &cur).help(t(lang, help)), catalog)],
+            vec![with_catalog(
+                Field::key_values("metadata", t(lang, label), &cur).help(t(lang, help)),
+                catalog,
+            )],
             move |v| {
                 let new = validate_metadata(&v.pairs("metadata"))?;
                 if new == *cur {
@@ -1072,15 +1461,28 @@ pub fn import_keypair_dialog(lang: Lang) -> Dialog {
         t(lang, K::ImportPublicKey),
         vec![
             Field::text("name", t(lang, K::Name)).required(),
-            Field::select("key_type", t(lang, K::KeyType), Source::Static(vec![("ssh".into(), t(lang, K::SshKey).into()), ("x509".into(), t(lang, K::X509Certificate).into())]))
-                .value("ssh")
-                .required(),
-            Field::area("public_key", t(lang, K::PublicKey)).required().help(t(lang, K::PublicKeyHelp)),
+            Field::select(
+                "key_type",
+                t(lang, K::KeyType),
+                Source::Static(vec![
+                    ("ssh".into(), t(lang, K::SshKey).into()),
+                    ("x509".into(), t(lang, K::X509Certificate).into()),
+                ]),
+            )
+            .value("ssh")
+            .required(),
+            Field::area("public_key", t(lang, K::PublicKey))
+                .required()
+                .help(t(lang, K::PublicKeyHelp)),
         ],
         move |v| {
             let (public_key, key_type) = (req(v, "public_key", K::PublicKey, lang)?, v.get("key_type"));
             check_public_key(&key_type, &public_key).map_err(|e| invalid(lang, e))?;
-            Ok(OsAction::KeyPairImport { name: req(v, "name", K::Name, lang)?, public_key, key_type })
+            Ok(OsAction::KeyPairImport {
+                name: req(v, "name", K::Name, lang)?,
+                public_key,
+                key_type,
+            })
         },
     )
 }
@@ -1091,8 +1493,16 @@ pub fn generate_keypair_dialog(lang: Lang) -> Dialog {
     Dialog::form(
         t(lang, K::CreateKeyPair),
         t(lang, K::CreateKeyPair),
-        vec![Field::text("name", t(lang, K::Name)).required().help(t(lang, K::GeneratedKeyHelp))],
-        move |v| Ok(OsAction::KeyPairGenerate { name: req(v, "name", K::Name, lang)? }),
+        vec![
+            Field::text("name", t(lang, K::Name))
+                .required()
+                .help(t(lang, K::GeneratedKeyHelp)),
+        ],
+        move |v| {
+            Ok(OsAction::KeyPairGenerate {
+                name: req(v, "name", K::Name, lang)?,
+            })
+        },
     )
 }
 
@@ -1100,7 +1510,12 @@ pub fn generate_keypair_dialog(lang: Lang) -> Dialog {
 pub fn keypair_items(lang: Lang, name: &str) -> Vec<MenuItem> {
     let n = name.to_string();
     vec![MenuItem::danger(t(lang, K::DeleteKeyPair), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteKeyPair), n.clone(), OsAction::KeyPairDelete { name: n.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteKeyPair),
+            n.clone(),
+            OsAction::KeyPairDelete { name: n.clone() },
+        )
     })]
 }
 
@@ -1111,11 +1526,20 @@ pub fn create_server_group_dialog(lang: Lang) -> Dialog {
         t(lang, K::CreateServerGroup),
         vec![
             Field::text("name", t(lang, K::Name)).required(),
-            Field::select("policy", t(lang, K::Policy), options_raw(&["anti-affinity", "affinity", "soft-anti-affinity", "soft-affinity"]))
-                .value("anti-affinity")
-                .required(),
+            Field::select(
+                "policy",
+                t(lang, K::Policy),
+                options_raw(&["anti-affinity", "affinity", "soft-anti-affinity", "soft-affinity"]),
+            )
+            .value("anti-affinity")
+            .required(),
         ],
-        move |v| Ok(OsAction::ServerGroupCreate { name: req(v, "name", K::Name, lang)?, policy: req(v, "policy", K::Policy, lang)? }),
+        move |v| {
+            Ok(OsAction::ServerGroupCreate {
+                name: req(v, "name", K::Name, lang)?,
+                policy: req(v, "policy", K::Policy, lang)?,
+            })
+        },
     )
 }
 
@@ -1132,7 +1556,12 @@ pub fn server_group_detail_items(lang: Lang, g: &ServerGroup) -> Vec<MenuItem> {
 fn group_items(lang: Lang, g: &ServerGroup, back: Option<&'static str>) -> Vec<MenuItem> {
     let (i, n) = (g.id.clone(), g.name.clone());
     vec![MenuItem::danger(t(lang, K::DeleteServerGroup), move || {
-        let d = Dialog::confirm(lang, t(lang, K::DeleteServerGroup), n.clone(), OsAction::ServerGroupDelete { id: i.clone() });
+        let d = Dialog::confirm(
+            lang,
+            t(lang, K::DeleteServerGroup),
+            n.clone(),
+            OsAction::ServerGroupDelete { id: i.clone() },
+        );
         match back {
             Some(href) => d.then_go(href),
             None => d,
@@ -1161,18 +1590,53 @@ pub fn create_volume_dialog(lang: Lang, preset: Option<(VolumeSource, String, Op
             Field::select(
                 "source",
                 tr(K::VolumeSource),
-                options(&[("empty", K::SourceEmpty), ("image", K::BootImage), ("snapshot", K::Snapshots), ("volume", K::Volume)], lang),
+                options(
+                    &[
+                        ("empty", K::SourceEmpty),
+                        ("image", K::BootImage),
+                        ("snapshot", K::Snapshots),
+                        ("volume", K::Volume),
+                    ],
+                    lang,
+                ),
             )
             .value("empty")
             .required(),
         );
-        fields.push(Field::select("source_id", tr(K::SourceItem), Source::Set(ChoiceSet::Images)).when("source", "image"));
-        fields.push(Field::select("source_snap", tr(K::SourceItem), Source::Set(ChoiceSet::VolumeSnapshots)).when("source", "snapshot"));
-        fields.push(Field::select("source_vol", tr(K::SourceItem), Source::Set(ChoiceSet::AvailableVolumes)).when("source", "volume"));
+        fields.push(
+            Field::select("source_id", tr(K::SourceItem), Source::Set(ChoiceSet::Images)).when("source", "image"),
+        );
+        fields.push(
+            Field::select(
+                "source_snap",
+                tr(K::SourceItem),
+                Source::Set(ChoiceSet::VolumeSnapshots),
+            )
+            .when("source", "snapshot"),
+        );
+        fields.push(
+            Field::select(
+                "source_vol",
+                tr(K::SourceItem),
+                Source::Set(ChoiceSet::AvailableVolumes),
+            )
+            .when("source", "volume"),
+        );
     }
-    fields.push(Field::select("volume_type", tr(K::VolumeType), Source::Set(ChoiceSet::VolumeTypes)));
-    fields.push(Field::number("size", tr(K::SizeGb), 1).value(size.unwrap_or(1).to_string()).required());
-    fields.push(Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::VolumeZones)).empty_label(tr(K::AnyAvailabilityZone)));
+    fields.push(Field::select(
+        "volume_type",
+        tr(K::VolumeType),
+        Source::Set(ChoiceSet::VolumeTypes),
+    ));
+    fields.push(
+        Field::number("size", tr(K::SizeGb), 1)
+            .value(size.unwrap_or(1).to_string())
+            .required(),
+    );
+    fields.push(
+        Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::VolumeZones))
+            .empty_label(tr(K::AnyAvailabilityZone)),
+    );
 
     Dialog::form(tr(K::CreateVolume), tr(K::CreateVolume), fields, move |v| {
         let (source, source_id) = match &src_id {
@@ -1198,7 +1662,9 @@ pub fn create_volume_dialog(lang: Lang, preset: Option<(VolumeSource, String, Op
 
 fn create_volume_item(lang: Lang, src: VolumeSource, id: &str, size: Option<u32>) -> MenuItem {
     let id = id.to_string();
-    MenuItem::dialog(t(lang, K::CreateVolume), move || create_volume_dialog(lang, Some((src, id.clone(), size))))
+    MenuItem::dialog(t(lang, K::CreateVolume), move || {
+        create_volume_dialog(lang, Some((src, id.clone(), size)))
+    })
 }
 
 /// A volume's menu: launch, edit, extend, snapshot, change type, upload to image,
@@ -1208,7 +1674,9 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
     let mut items = Vec::new();
     if v.bootable && v.status.eq_ignore_ascii_case("available") {
         let i = v.id.clone();
-        items.push(MenuItem::dialog(tr(K::LaunchAsInstance), move || launch_from(lang, "volume", &i)));
+        items.push(MenuItem::dialog(tr(K::LaunchAsInstance), move || {
+            launch_from(lang, "volume", &i)
+        }));
     }
     let (i, n, d) = (v.id.clone(), v.name.clone(), v.description.clone().unwrap_or_default());
     items.push(MenuItem::dialog(tr(K::EditVolume), move || {
@@ -1216,8 +1684,17 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
         Dialog::form(
             t(lang, K::EditVolume),
             t(lang, K::Save),
-            vec![Field::text("name", t(lang, K::VolumeName)).value(n.clone()), Field::area("description", t(lang, K::Description)).value(d.clone())],
-            move |v| Ok(OsAction::VolumeUpdate { id: i.clone(), name: v.get("name"), description: v.opt("description") }),
+            vec![
+                Field::text("name", t(lang, K::VolumeName)).value(n.clone()),
+                Field::area("description", t(lang, K::Description)).value(d.clone()),
+            ],
+            move |v| {
+                Ok(OsAction::VolumeUpdate {
+                    id: i.clone(),
+                    name: v.get("name"),
+                    description: v.opt("description"),
+                })
+            },
         )
     }));
     let (i, size) = (v.id.clone(), v.size_gb);
@@ -1226,13 +1703,20 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
         Dialog::form(
             t(lang, K::ExtendVolume),
             t(lang, K::ExtendVolume),
-            vec![Field::number("size", t(lang, K::NewSizeGb), size + 1).value((size + 1).to_string()).required()],
+            vec![
+                Field::number("size", t(lang, K::NewSizeGb), size + 1)
+                    .value((size + 1).to_string())
+                    .required(),
+            ],
             move |v| {
                 let new = num_u32(v, "size", K::NewSizeGb, lang)?.unwrap_or(0);
                 if (new as i64) <= size {
                     return Err(format!("{} > {size}", t(lang, K::NewSizeGb)));
                 }
-                Ok(OsAction::VolumeExtend { id: i.clone(), new_size_gb: new })
+                Ok(OsAction::VolumeExtend {
+                    id: i.clone(),
+                    new_size_gb: new,
+                })
             },
         )
     }));
@@ -1243,7 +1727,9 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
             t(lang, K::CreateSnapshot),
             t(lang, K::CreateSnapshot),
             vec![
-                Field::text("name", t(lang, K::SnapshotName)).value(format!("{n}-snapshot")).required(),
+                Field::text("name", t(lang, K::SnapshotName))
+                    .value(format!("{n}-snapshot"))
+                    .required(),
                 Field::area("description", t(lang, K::Description)),
                 Field::check("force", t(lang, K::ForceSnapshot), attached),
             ],
@@ -1259,7 +1745,9 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
     }));
     if needs::BACKUP.met(&caps()) {
         let (i, n, attached) = (v.id.clone(), v.name.clone(), !v.attachments.is_empty());
-        items.push(MenuItem::dialog(tr(K::CreateBackup), move || backup_form(lang, Some(i.clone()), format!("{n}-backup"), attached)));
+        items.push(MenuItem::dialog(tr(K::CreateBackup), move || {
+            backup_form(lang, Some(i.clone()), format!("{n}-backup"), attached)
+        }));
     }
     let status = v.status.to_ascii_lowercase();
     // Horizon: retype and upload for available or in-use volumes, transfer only when available.
@@ -1280,7 +1768,11 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                     if new_type == current {
                         return Err(t(lang, K::SameVolumeType).to_string());
                     }
-                    Ok(OsAction::VolumeRetype { id: i.clone(), new_type, migrate: v.flag("migrate") })
+                    Ok(OsAction::VolumeRetype {
+                        id: i.clone(),
+                        new_type,
+                        migrate: v.flag("migrate"),
+                    })
                 },
             )
         }));
@@ -1291,13 +1783,23 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
             let i = i.clone();
             let img = crate::components::dialog::prefs().images;
             let formats = upload_formats(&img.disk_formats);
-            let first = if formats.contains(&"raw") { "raw" } else { formats.first().copied().unwrap_or("raw") };
+            let first = if formats.contains(&"raw") {
+                "raw"
+            } else {
+                formats.first().copied().unwrap_or("raw")
+            };
             let mut fields = vec![
                 Field::text("name", t(lang, K::ImageName)).value(n.clone()).required(),
-                Field::select("format", t(lang, K::DiskFormat), options_raw(&formats)).value(first).required(),
-                Field::select("visibility", t(lang, K::Visibility), options_raw(&crate::prefs::VISIBILITIES))
-                    .value(img.default_visibility.clone())
+                Field::select("format", t(lang, K::DiskFormat), options_raw(&formats))
+                    .value(first)
                     .required(),
+                Field::select(
+                    "visibility",
+                    t(lang, K::Visibility),
+                    options_raw(&crate::prefs::VISIBILITIES),
+                )
+                .value(img.default_visibility.clone())
+                .required(),
             ];
             if attached {
                 fields.push(Field::check("force", t(lang, K::ForceUpload), false));
@@ -1320,8 +1822,17 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
             Dialog::form(
                 t(lang, K::CreateTransfer),
                 t(lang, K::CreateTransfer),
-                vec![Field::text("name", t(lang, K::TransferName)).value(n.clone()).help(t(lang, K::TransferHelp))],
-                move |v| Ok(OsAction::VolumeTransferCreate { volume_id: i.clone(), name: v.opt("name") }),
+                vec![
+                    Field::text("name", t(lang, K::TransferName))
+                        .value(n.clone())
+                        .help(t(lang, K::TransferHelp)),
+                ],
+                move |v| {
+                    Ok(OsAction::VolumeTransferCreate {
+                        volume_id: i.clone(),
+                        name: v.opt("name"),
+                    })
+                },
             )
         }));
     }
@@ -1333,18 +1844,41 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                 t(lang, K::AttachVolume),
                 t(lang, K::AttachVolume),
                 vec![Field::select("server", t(lang, K::Instance), Source::Set(ChoiceSet::Servers)).required()],
-                move |v| Ok(OsAction::ServerAttachVolume { server_id: req(v, "server", K::Instance, lang)?, volume_id: i.clone() }),
+                move |v| {
+                    Ok(OsAction::ServerAttachVolume {
+                        server_id: req(v, "server", K::Instance, lang)?,
+                        volume_id: i.clone(),
+                    })
+                },
             )
         }));
     }
     for a in &v.attachments {
-        items.push(detach_volume_item(lang, &a.server_id, &v.id, &format!("{} → {}", v.name, a.server_name.as_deref().unwrap_or(&a.server_id))));
+        items.push(detach_volume_item(
+            lang,
+            &a.server_id,
+            &v.id,
+            &format!("{} → {}", v.name, a.server_name.as_deref().unwrap_or(&a.server_id)),
+        ));
     }
     let i = v.id.clone();
-    items.push(metadata_item(lang, "OS::Cinder::Volume", &v.metadata, move |metadata, _| OsAction::VolumeSetMetadata { id: i.clone(), metadata }));
+    items.push(metadata_item(
+        lang,
+        "OS::Cinder::Volume",
+        &v.metadata,
+        move |metadata, _| OsAction::VolumeSetMetadata {
+            id: i.clone(),
+            metadata,
+        },
+    ));
     let (i, n) = (v.id.clone(), v.name.clone());
     items.push(MenuItem::danger(tr(K::DeleteVolume), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteVolume), n.clone(), OsAction::VolumeDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteVolume),
+            n.clone(),
+            OsAction::VolumeDelete { id: i.clone() },
+        )
     }));
     items
 }
@@ -1354,8 +1888,16 @@ pub fn accept_transfer_dialog(lang: Lang) -> Dialog {
     Dialog::form(
         t(lang, K::AcceptTransfer),
         t(lang, K::AcceptTransfer),
-        vec![Field::text("id", t(lang, K::TransferId)).required(), Field::text("key", t(lang, K::AuthKey)).required()],
-        move |v| Ok(OsAction::VolumeTransferAccept { transfer_id: req(v, "id", K::TransferId, lang)?, auth_key: req(v, "key", K::AuthKey, lang)? }),
+        vec![
+            Field::text("id", t(lang, K::TransferId)).required(),
+            Field::text("key", t(lang, K::AuthKey)).required(),
+        ],
+        move |v| {
+            Ok(OsAction::VolumeTransferAccept {
+                transfer_id: req(v, "id", K::TransferId, lang)?,
+                auth_key: req(v, "key", K::AuthKey, lang)?,
+            })
+        },
     )
 }
 
@@ -1402,24 +1944,47 @@ pub fn backup_items(lang: Lang, b: &BackupRow) -> Vec<MenuItem> {
         items.push(MenuItem::dialog(tr(K::RestoreBackup), move || {
             let i = i.clone();
             let fields = vec![
-                Field::select("volume", tr(K::RestoreToVolume), Source::Set(ChoiceSet::AvailableVolumes)).help(tr(K::RestoreToVolumeHelp)),
+                Field::select(
+                    "volume",
+                    tr(K::RestoreToVolume),
+                    Source::Set(ChoiceSet::AvailableVolumes),
+                )
+                .help(tr(K::RestoreToVolumeHelp)),
                 Field::text("name", tr(K::RestoredVolumeName)).value(format!("restore_backup_{n}")),
             ];
             Dialog::form(tr(K::RestoreBackup), tr(K::RestoreBackup), fields, move |v| {
-                Ok(OsAction::BackupRestore { id: i.clone(), volume_id: v.opt("volume"), name: v.opt("name") })
+                Ok(OsAction::BackupRestore {
+                    id: i.clone(),
+                    volume_id: v.opt("volume"),
+                    name: v.opt("name"),
+                })
             })
         }));
     }
     let (i, n, d) = (b.id.clone(), b.name.clone(), b.description.clone().unwrap_or_default());
     items.push(MenuItem::dialog(tr(K::EditBackup), move || {
         let i = i.clone();
-        let fields = vec![Field::text("name", tr(K::Name)).value(n.clone()).required(), Field::area("description", tr(K::Description)).value(d.clone())];
+        let fields = vec![
+            Field::text("name", tr(K::Name)).value(n.clone()).required(),
+            Field::area("description", tr(K::Description)).value(d.clone()),
+        ];
         Dialog::form(tr(K::EditBackup), tr(K::Save), fields, move |v| {
-            Ok(OsAction::BackupUpdate { id: i.clone(), name: req(v, "name", K::Name, lang)?, description: v.opt("description") })
+            Ok(OsAction::BackupUpdate {
+                id: i.clone(),
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+            })
         })
     }));
     let (i, n) = (b.id.clone(), b.name.clone());
-    items.push(MenuItem::danger(tr(K::DeleteBackup), move || Dialog::confirm(lang, tr(K::DeleteBackup), n.clone(), OsAction::BackupDelete { id: i.clone() })));
+    items.push(MenuItem::danger(tr(K::DeleteBackup), move || {
+        Dialog::confirm(
+            lang,
+            tr(K::DeleteBackup),
+            n.clone(),
+            OsAction::BackupDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -1428,24 +1993,53 @@ pub fn snapshot_items(lang: Lang, s: &Snapshot) -> Vec<MenuItem> {
     let mut items = Vec::new();
     if s.status.eq_ignore_ascii_case("available") {
         let i = s.id.clone();
-        items.push(MenuItem::dialog(t(lang, K::LaunchAsInstance), move || launch_from(lang, "volume_snapshot", &i)));
+        items.push(MenuItem::dialog(t(lang, K::LaunchAsInstance), move || {
+            launch_from(lang, "volume_snapshot", &i)
+        }));
     }
-    items.push(create_volume_item(lang, VolumeSource::Snapshot, &s.id, Some(s.size_gb.max(1) as u32)));
+    items.push(create_volume_item(
+        lang,
+        VolumeSource::Snapshot,
+        &s.id,
+        Some(s.size_gb.max(1) as u32),
+    ));
     let (i, n, d) = (s.id.clone(), s.name.clone(), s.description.clone().unwrap_or_default());
     items.push(MenuItem::dialog(t(lang, K::EditSnapshot), move || {
         let i = i.clone();
         Dialog::form(
             t(lang, K::EditSnapshot),
             t(lang, K::Save),
-            vec![Field::text("name", t(lang, K::Name)).value(n.clone()), Field::area("description", t(lang, K::Description)).value(d.clone())],
-            move |v| Ok(OsAction::SnapshotUpdate { id: i.clone(), name: v.get("name"), description: v.opt("description") }),
+            vec![
+                Field::text("name", t(lang, K::Name)).value(n.clone()),
+                Field::area("description", t(lang, K::Description)).value(d.clone()),
+            ],
+            move |v| {
+                Ok(OsAction::SnapshotUpdate {
+                    id: i.clone(),
+                    name: v.get("name"),
+                    description: v.opt("description"),
+                })
+            },
         )
     }));
     let i = s.id.clone();
-    items.push(metadata_item(lang, "OS::Cinder::Snapshot", &s.metadata, move |metadata, _| OsAction::SnapshotSetMetadata { id: i.clone(), metadata }));
+    items.push(metadata_item(
+        lang,
+        "OS::Cinder::Snapshot",
+        &s.metadata,
+        move |metadata, _| OsAction::SnapshotSetMetadata {
+            id: i.clone(),
+            metadata,
+        },
+    ));
     let (i, n) = (s.id.clone(), s.name.clone());
     items.push(MenuItem::danger(t(lang, K::DeleteSnapshot), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteSnapshot), n.clone(), OsAction::SnapshotDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteSnapshot),
+            n.clone(),
+            OsAction::SnapshotDelete { id: i.clone() },
+        )
     }));
     items
 }
@@ -1458,8 +2052,15 @@ pub fn create_volume_group(lang: Lang) -> Dialog {
         Field::text("name", tr(K::Name)).required(),
         Field::area("description", tr(K::Description)),
         Field::select("group_type", tr(K::GroupType), Source::Set(ChoiceSet::GroupTypes)).required(),
-        Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::VolumeZones)).empty_label(tr(K::AnyAvailabilityZone)),
-        Field::multi("volume_types", tr(K::VolumeTypes), Source::Set(ChoiceSet::VolumeTypeIds)).required().help(tr(K::VolumeGroupTypesHelp)),
+        Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::VolumeZones))
+            .empty_label(tr(K::AnyAvailabilityZone)),
+        Field::multi(
+            "volume_types",
+            tr(K::VolumeTypes),
+            Source::Set(ChoiceSet::VolumeTypeIds),
+        )
+        .required()
+        .help(tr(K::VolumeGroupTypesHelp)),
     ];
     Dialog::form(tr(K::CreateGroup), tr(K::CreateGroup), fields, move |v| {
         let volume_type_ids = v.list("volume_types");
@@ -1478,8 +2079,21 @@ pub fn create_volume_group(lang: Lang) -> Dialog {
 
 /// A name and description form that creates a group from a source: *Clone
 /// Group* (a group) or *Create Group* (a group snapshot).
-fn create_group_from(lang: Lang, title: K, help: K, name: String, source_group_id: Option<String>, group_snapshot_id: Option<String>) -> Dialog {
-    let fields = vec![Field::text("name", t(lang, K::Name)).value(name).required().help(t(lang, help)), Field::area("description", t(lang, K::Description))];
+fn create_group_from(
+    lang: Lang,
+    title: K,
+    help: K,
+    name: String,
+    source_group_id: Option<String>,
+    group_snapshot_id: Option<String>,
+) -> Dialog {
+    let fields = vec![
+        Field::text("name", t(lang, K::Name))
+            .value(name)
+            .required()
+            .help(t(lang, help)),
+        Field::area("description", t(lang, K::Description)),
+    ];
     Dialog::form(t(lang, title), t(lang, title), fields, move |v| {
         Ok(OsAction::VolumeGroupCreateFrom {
             name: req(v, "name", K::Name, lang)?,
@@ -1499,27 +2113,66 @@ pub fn volume_group_items(lang: Lang, g: &VolumeGroupRow) -> Vec<MenuItem> {
     let (i, n) = (g.id.clone(), g.name.clone());
     let snapshot = MenuItem::dialog(tr(K::CreateSnapshot), move || {
         let i = i.clone();
-        let fields = vec![Field::text("name", tr(K::SnapshotName)).value(format!("{n}-snapshot")).required(), Field::area("description", tr(K::Description))];
+        let fields = vec![
+            Field::text("name", tr(K::SnapshotName))
+                .value(format!("{n}-snapshot"))
+                .required(),
+            Field::area("description", tr(K::Description)),
+        ];
         Dialog::form(tr(K::CreateSnapshot), tr(K::CreateSnapshot), fields, move |v| {
-            Ok(OsAction::GroupSnapshotCreate { group_id: i.clone(), name: req(v, "name", K::SnapshotName, lang)?, description: v.opt("description") })
+            Ok(OsAction::GroupSnapshotCreate {
+                group_id: i.clone(),
+                name: req(v, "name", K::SnapshotName, lang)?,
+                description: v.opt("description"),
+            })
         })
     });
     let (i, n, d) = (g.id.clone(), g.name.clone(), g.description.clone().unwrap_or_default());
     let edit = MenuItem::dialog(tr(K::EditGroup), move || {
         let i = i.clone();
-        let fields = vec![Field::text("name", tr(K::Name)).value(n.clone()).required(), Field::area("description", tr(K::Description)).value(d.clone())];
+        let fields = vec![
+            Field::text("name", tr(K::Name)).value(n.clone()).required(),
+            Field::area("description", tr(K::Description)).value(d.clone()),
+        ];
         Dialog::form(tr(K::EditGroup), tr(K::Save), fields, move |v| {
-            Ok(OsAction::VolumeGroupUpdate { id: i.clone(), name: req(v, "name", K::Name, lang)?, description: v.opt("description") })
+            Ok(OsAction::VolumeGroupUpdate {
+                id: i.clone(),
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+            })
         })
     });
     let (i, n) = (g.id.clone(), g.name.clone());
-    let clone = MenuItem::dialog(tr(K::CloneGroup), move || create_group_from(lang, K::CloneGroup, K::CloneGroupHelp, format!("{n}-clone"), Some(i.clone()), None));
+    let clone = MenuItem::dialog(tr(K::CloneGroup), move || {
+        create_group_from(
+            lang,
+            K::CloneGroup,
+            K::CloneGroupHelp,
+            format!("{n}-clone"),
+            Some(i.clone()),
+            None,
+        )
+    });
     let (i, n) = (g.id.clone(), g.name.clone());
     let delete = MenuItem::danger(tr(K::DeleteGroup), move || {
         let i = i.clone();
-        let mut d = Dialog::confirm(lang, tr(K::DeleteGroup), n.clone(), OsAction::VolumeGroupDelete { id: i.clone(), delete_volumes: false });
-        d.fields = vec![Field::check("delete_volumes", tr(K::DeleteGroupVolumes), false).help(tr(K::DeleteGroupVolumesHelp))];
-        d.build = std::sync::Arc::new(move |v| Ok(OsAction::VolumeGroupDelete { id: i.clone(), delete_volumes: v.flag("delete_volumes") }));
+        let mut d = Dialog::confirm(
+            lang,
+            tr(K::DeleteGroup),
+            n.clone(),
+            OsAction::VolumeGroupDelete {
+                id: i.clone(),
+                delete_volumes: false,
+            },
+        );
+        d.fields =
+            vec![Field::check("delete_volumes", tr(K::DeleteGroupVolumes), false).help(tr(K::DeleteGroupVolumesHelp))];
+        d.build = std::sync::Arc::new(move |v| {
+            Ok(OsAction::VolumeGroupDelete {
+                id: i.clone(),
+                delete_volumes: v.flag("delete_volumes"),
+            })
+        });
         d
     });
     vec![snapshot, edit, clone, delete]
@@ -1534,21 +2187,38 @@ pub fn volume_group_detail_items(lang: Lang, d: &VolumeGroupDetail) -> Vec<MenuI
     let (gid, before): (String, Vec<String>) = (d.row.id.clone(), d.volumes.iter().map(|v| v.id.clone()).collect());
     let manage = MenuItem::dialog(tr(K::ManageVolumes), move || {
         let (gid, before) = (gid.clone(), before.clone());
-        let field = Field::multi("volumes", tr(K::Volumes), Source::Of(ChoiceSet::GroupVolumes, gid.clone())).value(before.join(",")).help(tr(K::ManageVolumesHelp));
+        let field = Field::multi(
+            "volumes",
+            tr(K::Volumes),
+            Source::Of(ChoiceSet::GroupVolumes, gid.clone()),
+        )
+        .value(before.join(","))
+        .help(tr(K::ManageVolumesHelp));
         Dialog::form(tr(K::ManageVolumes), tr(K::Save), vec![field], move |v| {
             let (add_volume_ids, remove_volume_ids) = list_diff(&before, &v.list("volumes"));
             if add_volume_ids.is_empty() && remove_volume_ids.is_empty() {
                 return Err(tr(K::NothingChanged));
             }
-            Ok(OsAction::VolumeGroupSetVolumes { id: gid.clone(), add_volume_ids, remove_volume_ids })
+            Ok(OsAction::VolumeGroupSetVolumes {
+                id: gid.clone(),
+                add_volume_ids,
+                remove_volume_ids,
+            })
         })
     });
     items.insert(1, manage);
     if !d.volumes.is_empty() {
-        let (gid, ids, names): (String, Vec<String>, Vec<String>) =
-            (d.row.id.clone(), d.volumes.iter().map(|v| v.id.clone()).collect(), d.volumes.iter().map(|v| v.name.clone()).collect());
+        let (gid, ids, names): (String, Vec<String>, Vec<String>) = (
+            d.row.id.clone(),
+            d.volumes.iter().map(|v| v.id.clone()).collect(),
+            d.volumes.iter().map(|v| v.name.clone()).collect(),
+        );
         let remove = MenuItem::dialog(tr(K::RemoveGroupVolumes), move || {
-            let action = OsAction::VolumeGroupSetVolumes { id: gid.clone(), add_volume_ids: vec![], remove_volume_ids: ids.clone() };
+            let action = OsAction::VolumeGroupSetVolumes {
+                id: gid.clone(),
+                add_volume_ids: vec![],
+                remove_volume_ids: ids.clone(),
+            };
             let mut dlg = Dialog::simple(lang, tr(K::RemoveGroupVolumes), String::new(), action);
             dlg.selection = names.clone();
             dlg.intro.push(tr(K::RemoveGroupVolumesHelp));
@@ -1563,13 +2233,25 @@ pub fn volume_group_detail_items(lang: Lang, d: &VolumeGroupDetail) -> Vec<MenuI
 pub fn group_snapshot_items(lang: Lang, s: &GroupSnapshotRow) -> Vec<MenuItem> {
     let (i, n) = (s.id.clone(), s.name.clone());
     let create = MenuItem::dialog(t(lang, K::CreateGroup), move || {
-        create_group_from(lang, K::CreateGroup, K::CreateGroupFromSnapshotHelp, n.clone(), None, Some(i.clone()))
+        create_group_from(
+            lang,
+            K::CreateGroup,
+            K::CreateGroupFromSnapshotHelp,
+            n.clone(),
+            None,
+            Some(i.clone()),
+        )
     });
     let (i, n) = (s.id.clone(), s.name.clone());
     vec![
         create,
         MenuItem::danger(t(lang, K::DeleteGroupSnapshot), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteGroupSnapshot), n.clone(), OsAction::GroupSnapshotDelete { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteGroupSnapshot),
+                n.clone(),
+                OsAction::GroupSnapshotDelete { id: i.clone() },
+            )
         }),
     ]
 }
@@ -1579,7 +2261,11 @@ pub fn group_snapshot_items(lang: Lang, s: &GroupSnapshotRow) -> Vec<MenuItem> {
 // ---------------------------------------------------------------------------
 
 /// Subnet fields, prefilled from `[network]` (DNS servers, IPv6 on or off).
-fn subnet_fields(lang: Lang, when: Option<(&'static str, &'static str)>, net: &crate::prefs::NetworkPrefs) -> Vec<Field> {
+fn subnet_fields(
+    lang: Lang,
+    when: Option<(&'static str, &'static str)>,
+    net: &crate::prefs::NetworkPrefs,
+) -> Vec<Field> {
     let tr = |k| t(lang, k).to_string();
     let versions: &[&str] = if net.enable_ipv6 { &["4", "6"] } else { &["4"] };
     let w = |f: Field| match when {
@@ -1588,28 +2274,51 @@ fn subnet_fields(lang: Lang, when: Option<(&'static str, &'static str)>, net: &c
     };
     vec![
         w(Field::text("subnet_name", tr(K::SubnetName))),
-        w(Field::text("cidr", tr(K::NetworkAddress)).help("192.168.0.0/24").required()),
-        w(Field::select("ip_version", tr(K::IpVersion), options_raw(versions)).value("4").required()),
+        w(Field::text("cidr", tr(K::NetworkAddress))
+            .help("192.168.0.0/24")
+            .required()),
+        w(Field::select("ip_version", tr(K::IpVersion), options_raw(versions))
+            .value("4")
+            .required()),
         w(Field::text("gateway", tr(K::GatewayIp)).help(tr(K::GatewayAuto))),
         w(Field::check("no_gateway", tr(K::DisableGateway), false)),
         w(Field::check("dhcp", tr(K::EnableDhcp), true)),
         // Horizon shows the mode only for IPv6 subnets.
-        w(Field::select("ipv6_modes", tr(K::Ipv6Modes), ipv6_mode_options(lang)).value(IPV6_MODES[0]).show_if(|v| v.get("ip_version").map(String::as_str) == Some("6"))),
+        w(Field::select("ipv6_modes", tr(K::Ipv6Modes), ipv6_mode_options(lang))
+            .value(IPV6_MODES[0])
+            .show_if(|v| v.get("ip_version").map(String::as_str) == Some("6"))),
         w(Field::area("pools", tr(K::AllocationPools)).help(tr(K::PoolsHelp))),
-        w(Field::area("dns", tr(K::DnsNameServers)).help(tr(K::OnePerLine)).value(net.default_dns_nameservers.join("\n"))),
+        w(Field::area("dns", tr(K::DnsNameServers))
+            .help(tr(K::OnePerLine))
+            .value(net.default_dns_nameservers.join("\n"))),
         w(Field::area("host_routes", tr(K::HostRoutes)).help(tr(K::HostRoutesHelp))),
     ]
 }
 
 /// Horizon's five *IPv6 Address Configuration Mode* choices, translated.
 fn ipv6_mode_options(lang: Lang) -> Source {
-    let keys = [K::Ipv6ModeNone, K::Ipv6ModeSlaacRouter, K::Ipv6ModeSlaacExternal, K::Ipv6ModeStateful, K::Ipv6ModeStateless];
-    Source::Static(IPV6_MODES.iter().zip(keys).map(|(v, k)| (v.to_string(), t(lang, k).to_string())).collect())
+    let keys = [
+        K::Ipv6ModeNone,
+        K::Ipv6ModeSlaacRouter,
+        K::Ipv6ModeSlaacExternal,
+        K::Ipv6ModeStateful,
+        K::Ipv6ModeStateless,
+    ];
+    Source::Static(
+        IPV6_MODES
+            .iter()
+            .zip(keys)
+            .map(|(v, k)| (v.to_string(), t(lang, k).to_string()))
+            .collect(),
+    )
 }
 
 /// `[network] allowed_private_subnet_cidr` / `enable_ipv6`, before submitting
 /// (the server checks again). Skipped when the network dialog creates no subnet.
-fn subnet_check(lang: Lang, net: crate::prefs::NetworkPrefs) -> impl Fn(&Vals, &Sets) -> Vec<(&'static str, String)> + Send + Sync + 'static {
+fn subnet_check(
+    lang: Lang,
+    net: crate::prefs::NetworkPrefs,
+) -> impl Fn(&Vals, &Sets) -> Vec<(&'static str, String)> + Send + Sync + 'static {
     move |v, _| {
         let cidr = v.get("cidr").map(|c| c.trim()).unwrap_or_default();
         if v.get("with_subnet").map(String::as_str) == Some("false") || cidr.is_empty() {
@@ -1632,7 +2341,11 @@ fn subnet_spec(v: &Values, lang: Lang) -> Result<SubnetSpec, String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     let ip_version = if v.get("ip_version") == "6" { 6 } else { 4 };
-    let (ipv6_ra_mode, ipv6_address_mode) = if ip_version == 6 { ipv6_modes(&v.opt("ipv6_modes").unwrap_or_else(|| IPV6_MODES[0].into()))? } else { (None, None) };
+    let (ipv6_ra_mode, ipv6_address_mode) = if ip_version == 6 {
+        ipv6_modes(&v.opt("ipv6_modes").unwrap_or_else(|| IPV6_MODES[0].into()))?
+    } else {
+        (None, None)
+    };
     let host_routes = v
         .lines("host_routes")
         .into_iter()
@@ -1645,7 +2358,11 @@ fn subnet_spec(v: &Values, lang: Lang) -> Result<SubnetSpec, String> {
         name: v.get("subnet_name"),
         cidr: req(v, "cidr", K::NetworkAddress, lang)?,
         ip_version,
-        gateway_ip: if v.flag("no_gateway") { Some(String::new()) } else { v.opt("gateway") },
+        gateway_ip: if v.flag("no_gateway") {
+            Some(String::new())
+        } else {
+            v.opt("gateway")
+        },
         enable_dhcp: v.flag("dhcp"),
         dns_nameservers: v.lines("dns"),
         allocation_pools: pools,
@@ -1670,16 +2387,28 @@ pub fn create_network_dialog(lang: Lang) -> Dialog {
         Ok(OsAction::NetworkCreate {
             name: v.get("name"),
             admin_up: v.flag("admin_up"),
-            subnet: if v.flag("with_subnet") { Some(subnet_spec(v, lang)?) } else { None },
+            subnet: if v.flag("with_subnet") {
+                Some(subnet_spec(v, lang)?)
+            } else {
+                None
+            },
         })
     })
     // Horizon's three steps; the subnet ones switch off without a subnet.
     .wizard(vec![
         Step::new(tr(K::Network), &["name", "admin_up", "with_subnet"]).help(tr(K::NetworkStepHelp)),
-        Step::new(tr(K::Subnet), &["subnet_name", "cidr", "ip_version", "gateway", "no_gateway"])
-            .help(tr(K::SubnetStepHelp))
-            .enabled_if(with_subnet),
-        Step::new(tr(K::StepSubnetDetails), &["dhcp", "ipv6_modes", "pools", "dns", "host_routes"]).help(tr(K::SubnetDetailsHelp)).enabled_if(with_subnet),
+        Step::new(
+            tr(K::Subnet),
+            &["subnet_name", "cidr", "ip_version", "gateway", "no_gateway"],
+        )
+        .help(tr(K::SubnetStepHelp))
+        .enabled_if(with_subnet),
+        Step::new(
+            tr(K::StepSubnetDetails),
+            &["dhcp", "ipv6_modes", "pools", "dns", "host_routes"],
+        )
+        .help(tr(K::SubnetDetailsHelp))
+        .enabled_if(with_subnet),
     ])
     .check(subnet_check(lang, net))
 }
@@ -1695,14 +2424,29 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
     // Horizon: a physical network for flat and VLAN, a segmentation ID for the
     // tunnelled types and VLAN.
     let physical: fn(&Vals) -> bool = |v| matches!(v.get("provider_type").map(String::as_str), Some("flat" | "vlan"));
-    let segmented: fn(&Vals) -> bool = |v| matches!(v.get("provider_type").map(String::as_str), Some("vlan" | "gre" | "vxlan" | "geneve"));
+    let segmented: fn(&Vals) -> bool = |v| {
+        matches!(
+            v.get("provider_type").map(String::as_str),
+            Some("vlan" | "gre" | "vxlan" | "geneve")
+        )
+    };
     let mut fields = vec![
         Field::text("name", tr(K::NetworkName)),
-        Field::select("project_id", tr(K::Project), Source::Set(ChoiceSet::AllProjects)).required().empty_label(tr(K::SelectProject)),
+        Field::select("project_id", tr(K::Project), Source::Set(ChoiceSet::AllProjects))
+            .required()
+            .empty_label(tr(K::SelectProject)),
         // Horizon preselects the first type, *Local*.
-        Field::select("provider_type", tr(K::ProviderNetworkType), options_raw(&types)).value(types[0]).help(tr(K::ProviderNetworkTypeHelp)).required(),
-        Field::text("physical_network", tr(K::PhysicalNetwork)).help("physnet1").show_if(physical).required(),
-        Field::number("segmentation_id", tr(K::SegmentationId), 1).help(tr(K::SegmentationIdHelp)).show_if(segmented),
+        Field::select("provider_type", tr(K::ProviderNetworkType), options_raw(&types))
+            .value(types[0])
+            .help(tr(K::ProviderNetworkTypeHelp))
+            .required(),
+        Field::text("physical_network", tr(K::PhysicalNetwork))
+            .help("physnet1")
+            .show_if(physical)
+            .required(),
+        Field::number("segmentation_id", tr(K::SegmentationId), 1)
+            .help(tr(K::SegmentationIdHelp))
+            .show_if(segmented),
         Field::check("admin_up", tr(K::EnableAdminState), true),
         Field::check("shared", tr(K::Shared), false),
         Field::check("external", tr(K::ExternalNetwork), false),
@@ -1711,7 +2455,11 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
     // Horizon's *Availability Zone Hints*, only where Neutron schedules by zone.
     let zones = needs::NETWORK_AZ.met(&crate::components::dialog::caps());
     if zones {
-        fields.push(Field::multi("az_hints", tr(K::AzHints), Source::Set(ChoiceSet::NetworkZones)).help(tr(K::AzHintsHelp)).hide_when_empty());
+        fields.push(
+            Field::multi("az_hints", tr(K::AzHints), Source::Set(ChoiceSet::NetworkZones))
+                .help(tr(K::AzHintsHelp))
+                .hide_when_empty(),
+        );
     }
     fields.push(Field::number("mtu", tr(K::Mtu), 68).help(tr(K::MtuHelp)));
     let net = crate::components::dialog::prefs().network;
@@ -1720,7 +2468,11 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
     Dialog::form(tr(K::CreateNetwork), tr(K::CreateNetwork), fields, move |v| {
         let mtu = num_u32(v, "mtu", K::Mtu, lang)?;
         let segmentation_id = num_u32(v, "segmentation_id", K::SegmentationId, lang)?;
-        let provider = ProviderNetwork { network_type: req(v, "provider_type", K::ProviderNetworkType, lang)?, physical_network: v.opt("physical_network"), segmentation_id };
+        let provider = ProviderNetwork {
+            network_type: req(v, "provider_type", K::ProviderNetworkType, lang)?,
+            physical_network: v.opt("physical_network"),
+            segmentation_id,
+        };
         provider.validate(&provider_types)?;
         Ok(OsAction::AdminNetworkCreate(Box::new(AdminNetworkSpec {
             name: v.get("name"),
@@ -1731,17 +2483,44 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
             external: v.flag("external"),
             mtu,
             az_hints: v.list("az_hints"),
-            subnet: if v.flag("with_subnet") { Some(subnet_spec(v, lang)?) } else { None },
+            subnet: if v.flag("with_subnet") {
+                Some(subnet_spec(v, lang)?)
+            } else {
+                None
+            },
         })))
     })
     .wizard(vec![
         // Horizon's order: the subnet checkbox, then the zone hints and the MTU.
-        Step::new(tr(K::Network), &["name", "project_id", "provider_type", "physical_network", "segmentation_id", "admin_up", "shared", "external", "with_subnet", "az_hints", "mtu"])
-            .help(tr(K::AdminNetworkStepHelp)),
-        Step::new(tr(K::Subnet), &["subnet_name", "cidr", "ip_version", "gateway", "no_gateway"])
-            .help(tr(K::SubnetStepHelp))
-            .enabled_if(with_subnet),
-        Step::new(tr(K::StepSubnetDetails), &["dhcp", "ipv6_modes", "pools", "dns", "host_routes"]).help(tr(K::SubnetDetailsHelp)).enabled_if(with_subnet),
+        Step::new(
+            tr(K::Network),
+            &[
+                "name",
+                "project_id",
+                "provider_type",
+                "physical_network",
+                "segmentation_id",
+                "admin_up",
+                "shared",
+                "external",
+                "with_subnet",
+                "az_hints",
+                "mtu",
+            ],
+        )
+        .help(tr(K::AdminNetworkStepHelp)),
+        Step::new(
+            tr(K::Subnet),
+            &["subnet_name", "cidr", "ip_version", "gateway", "no_gateway"],
+        )
+        .help(tr(K::SubnetStepHelp))
+        .enabled_if(with_subnet),
+        Step::new(
+            tr(K::StepSubnetDetails),
+            &["dhcp", "ipv6_modes", "pools", "dns", "host_routes"],
+        )
+        .help(tr(K::SubnetDetailsHelp))
+        .enabled_if(with_subnet),
     ])
     .check(subnet_check(lang, net))
 }
@@ -1751,22 +2530,57 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
 /// network or the QoS policy it shares. *Shared QoS Policy* needs Neutron's `qos`.
 pub fn create_rbac_policy_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    let mut kinds = vec![("shared_network", K::SharedNetwork), ("external_network", K::ExternalNetwork)];
+    let mut kinds = vec![
+        ("shared_network", K::SharedNetwork),
+        ("external_network", K::ExternalNetwork),
+    ];
     if Requires::NetExt("qos").met(&crate::components::dialog::caps()) {
         kinds.push(("shared_qos_policy", K::SharedQosPolicy));
     }
-    let network: fn(&Vals) -> bool = |v| matches!(v.get("kind").map(String::as_str), Some("shared_network" | "external_network"));
+    let network: fn(&Vals) -> bool = |v| {
+        matches!(
+            v.get("kind").map(String::as_str),
+            Some("shared_network" | "external_network")
+        )
+    };
     let fields = vec![
-        Field::select("target_project", tr(K::TargetProject), Source::Set(ChoiceSet::RbacTargets)).help(tr(K::RbacTargetHelp)).required().empty_label(tr(K::SelectChoice)),
-        Field::select("kind", tr(K::ActionObjectType), options(&kinds, lang)).required().empty_label(tr(K::SelectChoice)),
-        Field::select("network_id", tr(K::Network), Source::Set(ChoiceSet::AllNetworks)).show_if(network).required().empty_label(tr(K::SelectChoice)),
-        Field::select("qos_policy_id", tr(K::QosPolicy), Source::Set(ChoiceSet::AllQosPolicies)).when("kind", "shared_qos_policy").required().empty_label(tr(K::SelectChoice)),
+        Field::select(
+            "target_project",
+            tr(K::TargetProject),
+            Source::Set(ChoiceSet::RbacTargets),
+        )
+        .help(tr(K::RbacTargetHelp))
+        .required()
+        .empty_label(tr(K::SelectChoice)),
+        Field::select("kind", tr(K::ActionObjectType), options(&kinds, lang))
+            .required()
+            .empty_label(tr(K::SelectChoice)),
+        Field::select("network_id", tr(K::Network), Source::Set(ChoiceSet::AllNetworks))
+            .show_if(network)
+            .required()
+            .empty_label(tr(K::SelectChoice)),
+        Field::select(
+            "qos_policy_id",
+            tr(K::QosPolicy),
+            Source::Set(ChoiceSet::AllQosPolicies),
+        )
+        .when("kind", "shared_qos_policy")
+        .required()
+        .empty_label(tr(K::SelectChoice)),
     ];
     Dialog::form(tr(K::CreateRbacPolicy), tr(K::CreateRbacPolicy), fields, move |v| {
         let kind = req(v, "kind", K::ActionObjectType, lang)?;
         let (object_type, _) = rbac_kind(&kind)?;
-        let object_id = if object_type == "qos_policy" { req(v, "qos_policy_id", K::QosPolicy, lang)? } else { req(v, "network_id", K::Network, lang)? };
-        Ok(OsAction::RbacPolicyCreate { kind, object_id, target_project: req(v, "target_project", K::TargetProject, lang)? })
+        let object_id = if object_type == "qos_policy" {
+            req(v, "qos_policy_id", K::QosPolicy, lang)?
+        } else {
+            req(v, "network_id", K::Network, lang)?
+        };
+        Ok(OsAction::RbacPolicyCreate {
+            kind,
+            object_id,
+            target_project: req(v, "target_project", K::TargetProject, lang)?,
+        })
     })
 }
 
@@ -1774,23 +2588,43 @@ pub fn create_rbac_policy_dialog(lang: Lang) -> Dialog {
 /// project), preselected with the current one.
 pub fn edit_rbac_policy_dialog(lang: Lang, r: &RbacPolicyRow) -> Dialog {
     let id = r.id.clone();
-    let target = Field::select("target_project", t(lang, K::TargetProject), Source::Set(ChoiceSet::RbacTargets))
-        .value(r.target_id.clone())
-        .help(t(lang, K::RbacTargetHelp))
-        .required();
-    Dialog::form(t(lang, K::UpdateRbacPolicy), t(lang, K::SaveChanges), vec![target], move |v| {
-        Ok(OsAction::RbacPolicyUpdate { id: id.clone(), target_project: req(v, "target_project", K::TargetProject, lang)? })
-    })
+    let target = Field::select(
+        "target_project",
+        t(lang, K::TargetProject),
+        Source::Set(ChoiceSet::RbacTargets),
+    )
+    .value(r.target_id.clone())
+    .help(t(lang, K::RbacTargetHelp))
+    .required();
+    Dialog::form(
+        t(lang, K::UpdateRbacPolicy),
+        t(lang, K::SaveChanges),
+        vec![target],
+        move |v| {
+            Ok(OsAction::RbacPolicyUpdate {
+                id: id.clone(),
+                target_project: req(v, "target_project", K::TargetProject, lang)?,
+            })
+        },
+    )
 }
 
 /// An RBAC policy's row menu, as Horizon's: *Edit Policy*, *Delete RBAC Policy*.
 pub fn rbac_policy_items(lang: Lang, r: &RbacPolicyRow) -> Vec<MenuItem> {
     let row = r.clone();
-    let (id, label) = (r.id.clone(), format!("{} {} → {}", r.object_type, r.object.name, r.target));
+    let (id, label) = (
+        r.id.clone(),
+        format!("{} {} → {}", r.object_type, r.object.name, r.target),
+    );
     vec![
         MenuItem::dialog(t(lang, K::EditPolicy), move || edit_rbac_policy_dialog(lang, &row)),
         MenuItem::danger(t(lang, K::DeleteRbacPolicy), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteRbacPolicy), label.clone(), OsAction::RbacPolicyDelete { id: id.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteRbacPolicy),
+                label.clone(),
+                OsAction::RbacPolicyDelete { id: id.clone() },
+            )
         }),
     ]
 }
@@ -1799,9 +2633,17 @@ pub fn rbac_policy_items(lang: Lang, r: &RbacPolicyRow) -> Vec<MenuItem> {
 pub fn create_subnet_dialog(lang: Lang, network_id: &str) -> Dialog {
     let n = network_id.to_string();
     let net = crate::components::dialog::prefs().network;
-    Dialog::form(t(lang, K::CreateSubnet), t(lang, K::CreateSubnet), subnet_fields(lang, None, &net), move |v| {
-        Ok(OsAction::SubnetCreate { network_id: n.clone(), spec: subnet_spec(v, lang)? })
-    })
+    Dialog::form(
+        t(lang, K::CreateSubnet),
+        t(lang, K::CreateSubnet),
+        subnet_fields(lang, None, &net),
+        move |v| {
+            Ok(OsAction::SubnetCreate {
+                network_id: n.clone(),
+                spec: subnet_spec(v, lang)?,
+            })
+        },
+    )
     .check(subnet_check(lang, net))
 }
 
@@ -1833,7 +2675,15 @@ pub fn admin_edit_network_dialog(lang: Lang, net: &NetworkRow) -> Dialog {
             Field::check("shared", t(lang, K::Shared), net.shared),
             Field::check("external", t(lang, K::ExternalNetwork), net.external),
         ],
-        move |v| Ok(OsAction::AdminNetworkUpdate { id: id.clone(), name: v.get("name"), admin_up: v.flag("admin_up"), shared: v.flag("shared"), external: v.flag("external") }),
+        move |v| {
+            Ok(OsAction::AdminNetworkUpdate {
+                id: id.clone(),
+                name: v.get("name"),
+                admin_up: v.flag("admin_up"),
+                shared: v.flag("shared"),
+                external: v.flag("external"),
+            })
+        },
     );
     if let Some(p) = &net.provider {
         d.intro = vec![crate::i18n::provider_summary(lang, p)];
@@ -1855,26 +2705,49 @@ fn network_menu(lang: Lang, net: &NetworkRow, admin: bool) -> Vec<MenuItem> {
         Dialog::form(
             t(lang, K::EditNetwork),
             t(lang, K::Save),
-            vec![Field::text("name", t(lang, K::NetworkName)).value(n.clone()), Field::check("admin_up", t(lang, K::EnableAdminState), admin_up)],
-            move |v| Ok(OsAction::NetworkUpdate { id: i.clone(), name: v.get("name"), admin_up: v.flag("admin_up") }),
+            vec![
+                Field::text("name", t(lang, K::NetworkName)).value(n.clone()),
+                Field::check("admin_up", t(lang, K::EnableAdminState), admin_up),
+            ],
+            move |v| {
+                Ok(OsAction::NetworkUpdate {
+                    id: i.clone(),
+                    name: v.get("name"),
+                    admin_up: v.flag("admin_up"),
+                })
+            },
         )
     })];
     let i = id.to_string();
-    items.push(MenuItem::dialog(t(lang, K::CreateSubnet), move || create_subnet_dialog(lang, &i)));
+    items.push(MenuItem::dialog(t(lang, K::CreateSubnet), move || {
+        create_subnet_dialog(lang, &i)
+    }));
     if !admin {
         let i = id.to_string();
-        items.push(MenuItem::dialog(t(lang, K::CreatePort), move || create_port_dialog(lang, &i)));
+        items.push(MenuItem::dialog(t(lang, K::CreatePort), move || {
+            create_port_dialog(lang, &i)
+        }));
     }
     let (i, n) = (id.to_string(), name.to_string());
     items.push(MenuItem::danger(t(lang, K::DeleteNetwork), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteNetwork), n.clone(), OsAction::NetworkDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteNetwork),
+            n.clone(),
+            OsAction::NetworkDelete { id: i.clone() },
+        )
     }));
     items
 }
 
 /// A subnet's menu (edit, delete).
 pub fn subnet_items(lang: Lang, s: &SubnetRow) -> Vec<MenuItem> {
-    let (i, n, dhcp, dns) = (s.id.clone(), s.name.clone(), s.enable_dhcp, s.dns_nameservers.join("\n"));
+    let (i, n, dhcp, dns) = (
+        s.id.clone(),
+        s.name.clone(),
+        s.enable_dhcp,
+        s.dns_nameservers.join("\n"),
+    );
     let mut items = vec![MenuItem::dialog(t(lang, K::EditSubnet), move || {
         let i = i.clone();
         Dialog::form(
@@ -1883,14 +2756,28 @@ pub fn subnet_items(lang: Lang, s: &SubnetRow) -> Vec<MenuItem> {
             vec![
                 Field::text("name", t(lang, K::SubnetName)).value(n.clone()),
                 Field::check("dhcp", t(lang, K::EnableDhcp), dhcp),
-                Field::area("dns", t(lang, K::DnsNameServers)).value(dns.clone()).help(t(lang, K::OnePerLine)),
+                Field::area("dns", t(lang, K::DnsNameServers))
+                    .value(dns.clone())
+                    .help(t(lang, K::OnePerLine)),
             ],
-            move |v| Ok(OsAction::SubnetUpdate { id: i.clone(), name: v.get("name"), enable_dhcp: v.flag("dhcp"), dns_nameservers: v.lines("dns") }),
+            move |v| {
+                Ok(OsAction::SubnetUpdate {
+                    id: i.clone(),
+                    name: v.get("name"),
+                    enable_dhcp: v.flag("dhcp"),
+                    dns_nameservers: v.lines("dns"),
+                })
+            },
         )
     })];
     let (i, n) = (s.id.clone(), s.name.clone());
     items.push(MenuItem::danger(t(lang, K::DeleteSubnet), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteSubnet), n.clone(), OsAction::SubnetDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteSubnet),
+            n.clone(),
+            OsAction::SubnetDelete { id: i.clone() },
+        )
     }));
     items
 }
@@ -1906,17 +2793,38 @@ pub fn create_port_dialog(lang: Lang, network_id: &str) -> Dialog {
             Field::check("admin_up", t(lang, K::EnableAdminState), true),
             Field::text("fixed_ip", t(lang, K::FixedIpOptional)),
         ],
-        move |v| Ok(OsAction::PortCreate { network_id: n.clone(), name: v.get("name"), admin_up: v.flag("admin_up"), fixed_ip: v.opt("fixed_ip") }),
+        move |v| {
+            Ok(OsAction::PortCreate {
+                network_id: n.clone(),
+                name: v.get("name"),
+                admin_up: v.flag("admin_up"),
+                fixed_ip: v.opt("fixed_ip"),
+            })
+        },
     )
 }
 
 /// A port's menu (edit, delete).
 pub fn port_items(lang: Lang, p: &PortRow) -> Vec<MenuItem> {
     let (i, settings) = (p.id.clone(), p.settings());
-    let mut items = vec![MenuItem::dialog(t(lang, K::EditPort), move || edit_port_dialog(lang, &i, &settings, false))];
-    let (i, label) = (p.id.clone(), if p.name.is_empty() { p.id.clone() } else { p.name.clone() });
+    let mut items = vec![MenuItem::dialog(t(lang, K::EditPort), move || {
+        edit_port_dialog(lang, &i, &settings, false)
+    })];
+    let (i, label) = (
+        p.id.clone(),
+        if p.name.is_empty() {
+            p.id.clone()
+        } else {
+            p.name.clone()
+        },
+    );
     items.push(MenuItem::danger(t(lang, K::DeletePort), move || {
-        Dialog::confirm(lang, t(lang, K::DeletePort), label.clone(), OsAction::PortDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeletePort),
+            label.clone(),
+            OsAction::PortDelete { id: i.clone() },
+        )
     }));
     items
 }
@@ -1935,7 +2843,11 @@ pub fn create_router_dialog(lang: Lang) -> Dialog {
     let mut fields = vec![
         Field::text("name", t(lang, K::Name)),
         Field::check("admin_up", t(lang, K::EnableAdminState), true),
-        Field::select("external", t(lang, K::ExternalNetwork), Source::Set(ChoiceSet::ExternalNetworks)),
+        Field::select(
+            "external",
+            t(lang, K::ExternalNetwork),
+            Source::Set(ChoiceSet::ExternalNetworks),
+        ),
     ];
     // The gateway's policy (`qos` plugin and `qos-gateway-ip`); only with a gateway.
     let gateway: fn(&Vals) -> bool = |v| v.get("external").is_some_and(|e| !e.trim().is_empty());
@@ -1960,7 +2872,12 @@ pub fn add_interface_dialog(lang: Lang, router_id: &str) -> Dialog {
         t(lang, K::AddInterface),
         t(lang, K::AddInterface),
         vec![Field::select("subnet", t(lang, K::Subnet), Source::Set(ChoiceSet::Subnets)).required()],
-        move |v| Ok(OsAction::RouterAddInterface { id: r.clone(), subnet_id: req(v, "subnet", K::Subnet, lang)? }),
+        move |v| {
+            Ok(OsAction::RouterAddInterface {
+                id: r.clone(),
+                subnet_id: req(v, "subnet", K::Subnet, lang)?,
+            })
+        },
     )
 }
 
@@ -1970,7 +2887,12 @@ pub fn router_items(lang: Lang, r: &RouterRow) -> Vec<MenuItem> {
     if r.external_network.is_some() {
         let (i, n) = (r.id.clone(), r.name.clone());
         items.push(MenuItem::danger(t(lang, K::ClearGateway), move || {
-            Dialog::confirm(lang, t(lang, K::ClearGateway), n.clone(), OsAction::RouterClearGateway { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::ClearGateway),
+                n.clone(),
+                OsAction::RouterClearGateway { id: i.clone() },
+            )
         }));
     } else {
         let i = r.id.clone();
@@ -1979,14 +2901,28 @@ pub fn router_items(lang: Lang, r: &RouterRow) -> Vec<MenuItem> {
             Dialog::form(
                 t(lang, K::SetGateway),
                 t(lang, K::SetGateway),
-                vec![Field::select("external", t(lang, K::ExternalNetwork), Source::Set(ChoiceSet::ExternalNetworks)).required()],
-                move |v| Ok(OsAction::RouterSetGateway { id: i.clone(), network_id: req(v, "external", K::ExternalNetwork, lang)? }),
+                vec![
+                    Field::select(
+                        "external",
+                        t(lang, K::ExternalNetwork),
+                        Source::Set(ChoiceSet::ExternalNetworks),
+                    )
+                    .required(),
+                ],
+                move |v| {
+                    Ok(OsAction::RouterSetGateway {
+                        id: i.clone(),
+                        network_id: req(v, "external", K::ExternalNetwork, lang)?,
+                    })
+                },
             )
         }));
     }
     items.push(edit_router_item(lang, r, false));
     let i = r.id.clone();
-    items.push(MenuItem::dialog(t(lang, K::AddInterface), move || add_interface_dialog(lang, &i)));
+    items.push(MenuItem::dialog(t(lang, K::AddInterface), move || {
+        add_interface_dialog(lang, &i)
+    }));
     items.push(delete_router_item(lang, r));
     items
 }
@@ -2004,15 +2940,24 @@ fn edit_router_item(lang: Lang, r: &RouterRow, admin: bool) -> MenuItem {
     let ha = r.ha.filter(|_| admin && needs::L3_HA.met(&caps()));
     MenuItem::dialog(t(lang, K::EditRouter), move || {
         let (i, gw) = (i.clone(), gw.clone());
-        let mut fields =
-            vec![Field::text("name", t(lang, K::Name)).value(n.clone()), Field::check("admin_up", t(lang, K::EnableAdminState), up)];
+        let mut fields = vec![
+            Field::text("name", t(lang, K::Name)).value(n.clone()),
+            Field::check("admin_up", t(lang, K::EnableAdminState), up),
+        ];
         if gw.is_some() {
             fields.push(Field::check("snat", t(lang, K::EnableSnat), snat));
         }
         let down_help = t(lang, K::RouterChangeWhileDown);
         if let Some(d) = dvr {
-            let kinds = options(&[("distributed", K::Distributed), ("centralized", K::Centralized)], lang);
-            fields.push(Field::select("mode", t(lang, K::RouterType), kinds).value(if d { "distributed" } else { "centralized" }).help(down_help));
+            let kinds = options(
+                &[("distributed", K::Distributed), ("centralized", K::Centralized)],
+                lang,
+            );
+            fields.push(
+                Field::select("mode", t(lang, K::RouterType), kinds)
+                    .value(if d { "distributed" } else { "centralized" })
+                    .help(down_help),
+            );
         }
         if let Some(h) = ha {
             fields.push(Field::check("ha", t(lang, K::HighAvailability), h).help(down_help));
@@ -2027,9 +2972,19 @@ fn edit_router_item(lang: Lang, r: &RouterRow, admin: bool) -> MenuItem {
         };
         Dialog::form(t(lang, K::EditRouter), t(lang, K::Save), fields, move |v| {
             // Only a change goes in the request, so a rename leaves the gateway alone.
-            let snat = gw.clone().map(|net| (net, v.flag("snat"))).filter(|(_, on)| *on != snat);
+            let snat = gw
+                .clone()
+                .map(|net| (net, v.flag("snat")))
+                .filter(|(_, on)| *on != snat);
             let (distributed, ha) = changes(&v.0);
-            Ok(OsAction::RouterUpdate { id: i.clone(), name: v.get("name"), admin_up: v.flag("admin_up"), snat, distributed, ha })
+            Ok(OsAction::RouterUpdate {
+                id: i.clone(),
+                name: v.get("name"),
+                admin_up: v.flag("admin_up"),
+                snat,
+                distributed,
+                ha,
+            })
         })
         // Neutron refuses them on a router that is up ("set router admin_state_up
         // to False prior to upgrade"), whatever this request sets.
@@ -2054,7 +3009,12 @@ fn edit_router_item(lang: Lang, r: &RouterRow, admin: bool) -> MenuItem {
 fn delete_router_item(lang: Lang, r: &RouterRow) -> MenuItem {
     let (i, n) = (r.id.clone(), r.name.clone());
     MenuItem::danger(t(lang, K::DeleteRouter), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteRouter), n.clone(), OsAction::RouterDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteRouter),
+            n.clone(),
+            OsAction::RouterDelete { id: i.clone() },
+        )
     })
 }
 
@@ -2074,9 +3034,15 @@ pub fn admin_create_router_dialog(lang: Lang) -> Dialog {
     let gateway: fn(&Vals) -> bool = |v| v.get("external").is_some_and(|e| !e.trim().is_empty());
     let mut fields = vec![
         Field::text("name", tr(K::Name)),
-        Field::select("project_id", tr(K::Project), Source::Set(ChoiceSet::AllProjects)).required().empty_label(tr(K::SelectProject)),
+        Field::select("project_id", tr(K::Project), Source::Set(ChoiceSet::AllProjects))
+            .required()
+            .empty_label(tr(K::SelectProject)),
         Field::check("admin_up", tr(K::EnableAdminState), true),
-        Field::select("external", tr(K::ExternalNetwork), Source::Set(ChoiceSet::ExternalNetworks)),
+        Field::select(
+            "external",
+            tr(K::ExternalNetwork),
+            Source::Set(ChoiceSet::ExternalNetworks),
+        ),
     ];
     if needs::SNAT.met(&caps) {
         // Horizon's default: SNAT on.
@@ -2090,7 +3056,11 @@ pub fn admin_create_router_dialog(lang: Lang) -> Dialog {
         fields.push(Field::select("ha", tr(K::HaMode), tri(K::HaEnable, K::HaDisable)).value("default"));
     }
     if needs::ROUTER_AZ.met(&caps) {
-        fields.push(Field::multi("az_hints", tr(K::AzHints), Source::Set(ChoiceSet::RouterZones)).help(tr(K::RouterAzHintsHelp)).hide_when_empty());
+        fields.push(
+            Field::multi("az_hints", tr(K::AzHints), Source::Set(ChoiceSet::RouterZones))
+                .help(tr(K::RouterAzHintsHelp))
+                .hide_when_empty(),
+        );
     }
     // `default` (or a hidden field) sends nothing.
     let tri_value = |v: &Values, k: &str| match v.get(k).as_str() {
@@ -2122,14 +3092,24 @@ pub fn add_route_dialog(lang: Lang, router_id: &str, current: Option<Vec<(String
         t(lang, K::AddStaticRoute),
         t(lang, K::AddStaticRoute),
         vec![
-            Field::text("destination", t(lang, K::Destination)).required().help("10.9.0.0/16"),
-            Field::text("nexthop", t(lang, K::NextHop)).required().help(t(lang, K::NextHopHelp)),
+            Field::text("destination", t(lang, K::Destination))
+                .required()
+                .help("10.9.0.0/16"),
+            Field::text("nexthop", t(lang, K::NextHop))
+                .required()
+                .help(t(lang, K::NextHopHelp)),
         ],
         move |v| {
-            let (destination, nexthop) =
-                validate_route(&req(v, "destination", K::Destination, lang)?, &req(v, "nexthop", K::NextHop, lang)?)?;
+            let (destination, nexthop) = validate_route(
+                &req(v, "destination", K::Destination, lang)?,
+                &req(v, "nexthop", K::NextHop, lang)?,
+            )?;
             Ok(match &current {
-                None => OsAction::RouterAddRoute { id: r.clone(), destination, nexthop },
+                None => OsAction::RouterAddRoute {
+                    id: r.clone(),
+                    destination,
+                    nexthop,
+                },
                 Some(list) => {
                     let mut routes = list.clone();
                     if !routes.contains(&(destination.clone(), nexthop.clone())) {
@@ -2143,14 +3123,31 @@ pub fn add_route_dialog(lang: Lang, router_id: &str, current: Option<Vec<(String
 }
 
 /// `current` as in [`add_route_dialog`].
-pub fn route_items(lang: Lang, router_id: &str, route: &(String, String), current: Option<&[(String, String)]>) -> Vec<MenuItem> {
+pub fn route_items(
+    lang: Lang,
+    router_id: &str,
+    route: &(String, String),
+    current: Option<&[(String, String)]>,
+) -> Vec<MenuItem> {
     let (r, (dest, hop)) = (router_id.to_string(), route.clone());
     let action = match current {
-        None => OsAction::RouterRemoveRoute { id: r, destination: dest.clone(), nexthop: hop.clone() },
-        Some(list) => OsAction::RouterSetRoutes { id: r, routes: list.iter().filter(|x| **x != route.clone()).cloned().collect() },
+        None => OsAction::RouterRemoveRoute {
+            id: r,
+            destination: dest.clone(),
+            nexthop: hop.clone(),
+        },
+        Some(list) => OsAction::RouterSetRoutes {
+            id: r,
+            routes: list.iter().filter(|x| **x != route.clone()).cloned().collect(),
+        },
     };
     vec![MenuItem::danger(t(lang, K::DeleteStaticRoute), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteStaticRoute), format!("{dest} → {hop}"), action.clone())
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteStaticRoute),
+            format!("{dest} → {hop}"),
+            action.clone(),
+        )
     })]
 }
 
@@ -2162,7 +3159,15 @@ pub fn interface_items(lang: Lang, router_id: &str, p: &PortRow) -> Vec<MenuItem
         return vec![];
     }
     vec![MenuItem::danger(t(lang, K::DeleteInterface), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteInterface), label.clone(), OsAction::RouterRemoveInterface { id: r.clone(), port_id: pid.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteInterface),
+            label.clone(),
+            OsAction::RouterRemoveInterface {
+                id: r.clone(),
+                port_id: pid.clone(),
+            },
+        )
     })]
 }
 
@@ -2175,17 +3180,34 @@ pub fn create_security_group_dialog(lang: Lang) -> Dialog {
     Dialog::form(
         t(lang, K::CreateSecurityGroup),
         t(lang, K::CreateSecurityGroup),
-        vec![Field::text("name", t(lang, K::Name)).required(), Field::area("description", t(lang, K::Description))],
-        move |v| Ok(OsAction::SecurityGroupCreate { name: req(v, "name", K::Name, lang)?, description: v.opt("description") }),
+        vec![
+            Field::text("name", t(lang, K::Name)).required(),
+            Field::area("description", t(lang, K::Description)),
+        ],
+        move |v| {
+            Ok(OsAction::SecurityGroupCreate {
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+            })
+        },
     )
 }
 
 /// `default` only gets *Manage Rules*: Neutron won't delete it, and renaming it
 /// is pointless (Horizon offers neither).
-pub fn security_group_items(lang: Lang, id: &str, name: &str, description: Option<&str>, with_manage: bool) -> Vec<MenuItem> {
+pub fn security_group_items(
+    lang: Lang,
+    id: &str,
+    name: &str,
+    description: Option<&str>,
+    with_manage: bool,
+) -> Vec<MenuItem> {
     let mut items = Vec::new();
     if with_manage {
-        items.push(MenuItem::link(t(lang, K::ManageRules), format!("/project/security_groups/{id}")));
+        items.push(MenuItem::link(
+            t(lang, K::ManageRules),
+            format!("/project/security_groups/{id}"),
+        ));
     }
     if name == "default" {
         return items;
@@ -2196,13 +3218,27 @@ pub fn security_group_items(lang: Lang, id: &str, name: &str, description: Optio
         Dialog::form(
             t(lang, K::EditSecurityGroup),
             t(lang, K::Save),
-            vec![Field::text("name", t(lang, K::Name)).value(n.clone()).required(), Field::area("description", t(lang, K::Description)).value(d.clone())],
-            move |v| Ok(OsAction::SecurityGroupUpdate { id: i.clone(), name: req(v, "name", K::Name, lang)?, description: v.opt("description") }),
+            vec![
+                Field::text("name", t(lang, K::Name)).value(n.clone()).required(),
+                Field::area("description", t(lang, K::Description)).value(d.clone()),
+            ],
+            move |v| {
+                Ok(OsAction::SecurityGroupUpdate {
+                    id: i.clone(),
+                    name: req(v, "name", K::Name, lang)?,
+                    description: v.opt("description"),
+                })
+            },
         )
     }));
     let (i, n) = (id.to_string(), name.to_string());
     items.push(MenuItem::danger(t(lang, K::DeleteSecurityGroup), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteSecurityGroup), n.clone(), OsAction::SecurityGroupDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteSecurityGroup),
+            n.clone(),
+            OsAction::SecurityGroupDelete { id: i.clone() },
+        )
     }));
     items
 }
@@ -2217,18 +3253,38 @@ pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
         tr(K::AddRule),
         tr(K::AddRule),
         vec![
-            Field::select("direction", tr(K::Direction), options(&[("ingress", K::Ingress), ("egress", K::Egress)], lang)).value("ingress").required().help(tr(K::DirectionHelp)),
-            Field::select("ethertype", tr(K::EtherType), options_raw(&["IPv4", "IPv6"])).value("IPv4").required().help(tr(K::EtherTypeHelp)),
-            Field::select("protocol", tr(K::IpProtocol), options_raw(&["tcp", "udp", "icmp"])).help(tr(K::IpProtocolHelp)),
+            Field::select(
+                "direction",
+                tr(K::Direction),
+                options(&[("ingress", K::Ingress), ("egress", K::Egress)], lang),
+            )
+            .value("ingress")
+            .required()
+            .help(tr(K::DirectionHelp)),
+            Field::select("ethertype", tr(K::EtherType), options_raw(&["IPv4", "IPv6"]))
+                .value("IPv4")
+                .required()
+                .help(tr(K::EtherTypeHelp)),
+            Field::select("protocol", tr(K::IpProtocol), options_raw(&["tcp", "udp", "icmp"]))
+                .help(tr(K::IpProtocolHelp)),
             Field::number("port_min", tr(K::PortFrom), 0).help(tr(K::PortFromHelp)),
             Field::number("port_max", tr(K::PortTo), 0).help(tr(K::PortToHelp)),
-            Field::text("cidr", tr(K::RemoteCidr)).value("0.0.0.0/0").help(tr(K::RemoteCidrHelp)),
-            Field::select("remote_group", tr(K::RemoteGroup), Source::Set(ChoiceSet::SecurityGroupIds)).help(tr(K::RemoteGroupHelp)),
+            Field::text("cidr", tr(K::RemoteCidr))
+                .value("0.0.0.0/0")
+                .help(tr(K::RemoteCidrHelp)),
+            Field::select(
+                "remote_group",
+                tr(K::RemoteGroup),
+                Source::Set(ChoiceSet::SecurityGroupIds),
+            )
+            .help(tr(K::RemoteGroupHelp)),
             Field::text("description", tr(K::Description)).help(tr(K::RuleDescriptionHelp)),
         ],
         move |v| {
             let to_i32 = |k: &str, label: K| -> Result<Option<i32>, String> {
-                v.num(k).map(|o| o.map(|n| n as i32)).map_err(|_| t(lang, label).to_string())
+                v.num(k)
+                    .map(|o| o.map(|n| n as i32))
+                    .map_err(|_| t(lang, label).to_string())
             };
             Ok(OsAction::RuleCreate(RuleSpec {
                 security_group_id: g.clone(),
@@ -2238,7 +3294,11 @@ pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
                 port_min: to_i32("port_min", K::PortFrom)?,
                 port_max: to_i32("port_max", K::PortTo)?,
                 // A remote group wins over the default CIDR.
-                remote_ip_prefix: if v.opt("remote_group").is_some() { None } else { v.opt("cidr") },
+                remote_ip_prefix: if v.opt("remote_group").is_some() {
+                    None
+                } else {
+                    v.opt("cidr")
+                },
                 remote_group_id: v.opt("remote_group"),
                 description: v.opt("description"),
             }))
@@ -2248,9 +3308,17 @@ pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
 
 /// A security group rule's menu (*Delete Rule*).
 pub fn rule_items(lang: Lang, r: &RuleRow) -> Vec<MenuItem> {
-    let (i, label) = (r.id.clone(), format!("{} {} {} {}", r.direction, r.ethertype, r.protocol, r.port_range));
+    let (i, label) = (
+        r.id.clone(),
+        format!("{} {} {} {}", r.direction, r.ethertype, r.protocol, r.port_range),
+    );
     vec![MenuItem::danger(t(lang, K::DeleteRule), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteRule), label.clone(), OsAction::RuleDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteRule),
+            label.clone(),
+            OsAction::RuleDelete { id: i.clone() },
+        )
     })]
 }
 
@@ -2291,7 +3359,9 @@ pub fn admin_allocate_ip_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let fields = vec![
         Field::select("pool", tr(K::Pool), Source::Set(ChoiceSet::ExternalNetworks)).required(),
-        Field::select("project_id", tr(K::Project), Source::Set(ChoiceSet::AllProjects)).required().empty_label(tr(K::SelectProject)),
+        Field::select("project_id", tr(K::Project), Source::Set(ChoiceSet::AllProjects))
+            .required()
+            .empty_label(tr(K::SelectProject)),
         Field::text("address", tr(K::FloatingIpAddressOptional)).help(tr(K::FloatingIpAddressHelp)),
         Field::text("description", tr(K::Description)),
     ];
@@ -2313,20 +3383,41 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
     if f.fixed_ip.is_some() {
         let (i, ip) = (f.id.clone(), f.ip.clone());
         items.push(MenuItem::danger(t(lang, K::Disassociate), move || {
-            Dialog::confirm(lang, t(lang, K::Disassociate), ip.clone(), OsAction::FloatingIpDisassociate { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::Disassociate),
+                ip.clone(),
+                OsAction::FloatingIpDisassociate { id: i.clone() },
+            )
         }));
     } else if let Some(owner) = project_id {
         // The owner's instance ports (Neutron needs the port and the floating
         // IP in one project), not the session project's, and only those the
         // IP's pool reaches through a router, as Horizon (roadmap 89).
-        let (i, ip, owner) = (f.id.clone(), f.ip.clone(), crate::model::associable_port_key(owner, &f.pool_id));
+        let (i, ip, owner) = (
+            f.id.clone(),
+            f.ip.clone(),
+            crate::model::associable_port_key(owner, &f.pool_id),
+        );
         items.push(MenuItem::dialog(t(lang, K::Associate), move || {
             let i = i.clone();
             let mut d = Dialog::form(
                 t(lang, K::Associate),
                 t(lang, K::Associate),
-                vec![Field::select("port", t(lang, K::PortToAssociate), Source::Of(ChoiceSet::AllAssociablePorts, owner.clone())).required()],
-                move |v| Ok(OsAction::FloatingIpAssociate { id: i.clone(), port_id: req(v, "port", K::PortToAssociate, lang)? }),
+                vec![
+                    Field::select(
+                        "port",
+                        t(lang, K::PortToAssociate),
+                        Source::Of(ChoiceSet::AllAssociablePorts, owner.clone()),
+                    )
+                    .required(),
+                ],
+                move |v| {
+                    Ok(OsAction::FloatingIpAssociate {
+                        id: i.clone(),
+                        port_id: req(v, "port", K::PortToAssociate, lang)?,
+                    })
+                },
             );
             d.intro = vec![ip.clone()];
             d
@@ -2334,7 +3425,12 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
     }
     let (i, ip) = (f.id.clone(), f.ip.clone());
     items.push(MenuItem::danger(t(lang, K::ReleaseIp), move || {
-        Dialog::confirm(lang, t(lang, K::ReleaseIp), ip.clone(), OsAction::FloatingIpRelease { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::ReleaseIp),
+            ip.clone(),
+            OsAction::FloatingIpRelease { id: i.clone() },
+        )
     }));
     items
 }
@@ -2345,7 +3441,9 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
 
 /// A required whole number, named in the error.
 fn num_req(v: &Values, k: &str, label: K, lang: Lang) -> Result<i64, String> {
-    v.num(k).map_err(|_| format!("{}: ?", t(lang, label)))?.ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
+    v.num(k)
+        .map_err(|_| format!("{}: ?", t(lang, label)))?
+        .ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
 }
 
 /// Admin › Flavors' *Create Flavor*, Horizon's two steps: *Flavor Information*
@@ -2366,30 +3464,64 @@ fn flavor_form(lang: Lang, old: Option<&FlavorRow>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let num = |n: i64| n.to_string();
     let mut fields = vec![
-        Field::text("name", tr(K::Name)).value(old.map(|f| f.name.clone()).unwrap_or_default()).required(),
-        Field::text("flavor_id", tr(K::FlavorId)).value("auto").help(tr(K::FlavorIdHelp)),
+        Field::text("name", tr(K::Name))
+            .value(old.map(|f| f.name.clone()).unwrap_or_default())
+            .required(),
+        Field::text("flavor_id", tr(K::FlavorId))
+            .value("auto")
+            .help(tr(K::FlavorIdHelp)),
         // Sizes are a few digits each: three a line, two lines (the user found
         // eight full-width one-liners too long a step).
-        Field::number("vcpus", tr(K::Vcpus), 1).value(old.map(|f| num(f.vcpus)).unwrap_or_default()).required().short(),
-        Field::number("ram", tr(K::RamMb), 1).value(old.map(|f| num(f.ram_mb)).unwrap_or_default()).required().short(),
-        Field::number("disk", tr(K::RootDiskGb), 0).value(old.map_or("0".into(), |f| num(f.disk_gb))).required().short(),
-        Field::number("ephemeral", tr(K::EphemeralDiskGb), 0).value(old.map_or("0".into(), |f| num(f.ephemeral_gb))).short(),
-        Field::number("swap", tr(K::SwapDiskMb), 0).value(old.map_or("0".into(), |f| num(f.swap_mb))).short(),
-        Field::text("rxtx", tr(K::RxtxFactor)).value(old.and_then(|f| f.rxtx_factor).map_or("1.0".into(), |r| r.to_string())).short(),
-        Field::multi("projects", tr(K::Projects), Source::Set(ChoiceSet::AllProjects))
-            .value(old.map(|f| f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().join(",")).unwrap_or_default()),
+        Field::number("vcpus", tr(K::Vcpus), 1)
+            .value(old.map(|f| num(f.vcpus)).unwrap_or_default())
+            .required()
+            .short(),
+        Field::number("ram", tr(K::RamMb), 1)
+            .value(old.map(|f| num(f.ram_mb)).unwrap_or_default())
+            .required()
+            .short(),
+        Field::number("disk", tr(K::RootDiskGb), 0)
+            .value(old.map_or("0".into(), |f| num(f.disk_gb)))
+            .required()
+            .short(),
+        Field::number("ephemeral", tr(K::EphemeralDiskGb), 0)
+            .value(old.map_or("0".into(), |f| num(f.ephemeral_gb)))
+            .short(),
+        Field::number("swap", tr(K::SwapDiskMb), 0)
+            .value(old.map_or("0".into(), |f| num(f.swap_mb)))
+            .short(),
+        Field::text("rxtx", tr(K::RxtxFactor))
+            .value(old.and_then(|f| f.rxtx_factor).map_or("1.0".into(), |r| r.to_string()))
+            .short(),
+        Field::multi("projects", tr(K::Projects), Source::Set(ChoiceSet::AllProjects)).value(
+            old.map(|f| f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().join(","))
+                .unwrap_or_default(),
+        ),
     ];
     // The ID stays: Horizon's edit has no ID field.
     let kept = old.map(|f| (f.id.clone(), f.extra_specs.clone()));
     if kept.is_some() {
         fields.retain(|f| f.name != "flavor_id");
     }
-    let info: &[&'static str] = if kept.is_some() { &["name", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"] } else { &["name", "flavor_id", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"] };
-    let (title, submit) = if kept.is_some() { (tr(K::EditFlavor), tr(K::Save)) } else { (tr(K::CreateFlavor), tr(K::CreateFlavor)) };
+    let info: &[&'static str] = if kept.is_some() {
+        &["name", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"]
+    } else {
+        &["name", "flavor_id", "vcpus", "ram", "disk", "ephemeral", "swap", "rxtx"]
+    };
+    let (title, submit) = if kept.is_some() {
+        (tr(K::EditFlavor), tr(K::Save))
+    } else {
+        (tr(K::CreateFlavor), tr(K::CreateFlavor))
+    };
     let mut d = Dialog::form(title, submit, fields, move |v| {
         let rxtx_factor = match v.opt("rxtx") {
             None => None,
-            Some(x) => Some(x.parse::<f64>().ok().filter(|f| *f > 0.0).ok_or_else(|| format!("{}: ?", t(lang, K::RxtxFactor)))?),
+            Some(x) => Some(
+                x.parse::<f64>()
+                    .ok()
+                    .filter(|f| *f > 0.0)
+                    .ok_or_else(|| format!("{}: ?", t(lang, K::RxtxFactor)))?,
+            ),
         };
         let spec = FlavorSpec {
             name: req(v, "name", K::Name, lang)?,
@@ -2397,13 +3529,22 @@ fn flavor_form(lang: Lang, old: Option<&FlavorRow>) -> Dialog {
             vcpus: num_req(v, "vcpus", K::Vcpus, lang)?,
             ram_mb: num_req(v, "ram", K::RamMb, lang)?,
             disk_gb: num_req(v, "disk", K::RootDiskGb, lang)?,
-            ephemeral_gb: v.num("ephemeral").map_err(|_| format!("{}: ?", t(lang, K::EphemeralDiskGb)))?.unwrap_or(0),
-            swap_mb: v.num("swap").map_err(|_| format!("{}: ?", t(lang, K::SwapDiskMb)))?.unwrap_or(0),
+            ephemeral_gb: v
+                .num("ephemeral")
+                .map_err(|_| format!("{}: ?", t(lang, K::EphemeralDiskGb)))?
+                .unwrap_or(0),
+            swap_mb: v
+                .num("swap")
+                .map_err(|_| format!("{}: ?", t(lang, K::SwapDiskMb)))?
+                .unwrap_or(0),
             rxtx_factor,
             projects: v.list("projects"),
         };
         Ok(match &kept {
-            Some((_, extra_specs)) => OsAction::FlavorReplace { spec: Box::new(spec), extra_specs: extra_specs.clone() },
+            Some((_, extra_specs)) => OsAction::FlavorReplace {
+                spec: Box::new(spec),
+                extra_specs: extra_specs.clone(),
+            },
             None => OsAction::FlavorCreate(Box::new(spec)),
         })
     })
@@ -2431,21 +3572,39 @@ fn admin_flavor_menu(lang: Lang, f: &FlavorRow, edit: bool) -> Vec<MenuItem> {
     let mut items = Vec::new();
     if edit {
         let row = f.clone();
-        items.push(MenuItem::dialog(t(lang, K::EditFlavor), move || edit_flavor_dialog(lang, &row)));
+        items.push(MenuItem::dialog(t(lang, K::EditFlavor), move || {
+            edit_flavor_dialog(lang, &row)
+        }));
     }
     let i = f.id.clone();
-    items.push(metadata_item(lang, "OS::Nova::Flavor", &f.extra_specs, move |new, old| {
-        let (set, unset) = metadata_changes(old, &new);
-        OsAction::FlavorSetExtraSpecs { id: i.clone(), set, unset }
-    }));
+    items.push(metadata_item(
+        lang,
+        "OS::Nova::Flavor",
+        &f.extra_specs,
+        move |new, old| {
+            let (set, unset) = metadata_changes(old, &new);
+            OsAction::FlavorSetExtraSpecs {
+                id: i.clone(),
+                set,
+                unset,
+            }
+        },
+    ));
     if !f.public {
-        let (i, current) = (f.id.clone(), f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>());
+        let (i, current) = (
+            f.id.clone(),
+            f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
+        );
         items.push(MenuItem::dialog(t(lang, K::ModifyAccess), move || {
             let (i, current) = (i.clone(), current.clone());
             Dialog::form(
                 t(lang, K::ModifyAccess),
                 t(lang, K::Save),
-                vec![Field::multi("projects", t(lang, K::Projects), Source::Set(ChoiceSet::AllProjects)).value(current.join(",")).help(t(lang, K::FlavorAccess))],
+                vec![
+                    Field::multi("projects", t(lang, K::Projects), Source::Set(ChoiceSet::AllProjects))
+                        .value(current.join(","))
+                        .help(t(lang, K::FlavorAccess)),
+                ],
                 move |v| {
                     let new = v.list("projects");
                     let add: Vec<String> = new.iter().filter(|p| !current.contains(p)).cloned().collect();
@@ -2453,13 +3612,24 @@ fn admin_flavor_menu(lang: Lang, f: &FlavorRow, edit: bool) -> Vec<MenuItem> {
                     if add.is_empty() && remove.is_empty() {
                         return Err(t(lang, K::NothingChanged).to_string());
                     }
-                    Ok(OsAction::FlavorSetAccess { id: i.clone(), add, remove })
+                    Ok(OsAction::FlavorSetAccess {
+                        id: i.clone(),
+                        add,
+                        remove,
+                    })
                 },
             )
         }));
     }
     let (i, n) = (f.id.clone(), f.name.clone());
-    items.push(MenuItem::danger(t(lang, K::DeleteFlavor), move || Dialog::confirm(lang, t(lang, K::DeleteFlavor), n.clone(), OsAction::FlavorDelete { id: i.clone() })));
+    items.push(MenuItem::danger(t(lang, K::DeleteFlavor), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteFlavor),
+            n.clone(),
+            OsAction::FlavorDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -2473,9 +3643,16 @@ pub fn create_aggregate_dialog(lang: Lang) -> Dialog {
         Field::multi("hosts", tr(K::Hosts), Source::Set(ChoiceSet::AllComputeHosts)),
     ];
     Dialog::form(tr(K::CreateAggregate), tr(K::CreateAggregate), fields, move |v| {
-        Ok(OsAction::AggregateCreate { name: req(v, "name", K::Name, lang)?, zone: v.opt("zone"), hosts: v.list("hosts") })
+        Ok(OsAction::AggregateCreate {
+            name: req(v, "name", K::Name, lang)?,
+            zone: v.opt("zone"),
+            hosts: v.list("hosts"),
+        })
     })
-    .wizard(vec![Step::new(tr(K::CreateAggregate), &["name", "zone"]), Step::new(tr(K::ManageHosts), &["hosts"])])
+    .wizard(vec![
+        Step::new(tr(K::CreateAggregate), &["name", "zone"]),
+        Step::new(tr(K::ManageHosts), &["hosts"]),
+    ])
 }
 
 /// Admin › Host Aggregates' row menu, Horizon's: *Edit Host Aggregate*,
@@ -2487,8 +3664,19 @@ pub fn aggregate_items(lang: Lang, a: &AggregateRow) -> Vec<MenuItem> {
         Dialog::form(
             t(lang, K::EditAggregate),
             t(lang, K::Save),
-            vec![Field::text("name", t(lang, K::Name)).value(n.clone()).required(), Field::text("zone", t(lang, K::AvailabilityZone)).value(z.clone()).help(t(lang, K::AggregateZoneHelp))],
-            move |v| Ok(OsAction::AggregateUpdate { id: i.clone(), name: req(v, "name", K::Name, lang)?, zone: v.opt("zone") }),
+            vec![
+                Field::text("name", t(lang, K::Name)).value(n.clone()).required(),
+                Field::text("zone", t(lang, K::AvailabilityZone))
+                    .value(z.clone())
+                    .help(t(lang, K::AggregateZoneHelp)),
+            ],
+            move |v| {
+                Ok(OsAction::AggregateUpdate {
+                    id: i.clone(),
+                    name: req(v, "name", K::Name, lang)?,
+                    zone: v.opt("zone"),
+                })
+            },
         )
     })];
     let (i, current) = (a.id.clone(), a.hosts.clone());
@@ -2497,7 +3685,10 @@ pub fn aggregate_items(lang: Lang, a: &AggregateRow) -> Vec<MenuItem> {
         Dialog::form(
             t(lang, K::ManageHosts),
             t(lang, K::Save),
-            vec![Field::multi("hosts", t(lang, K::Hosts), Source::Set(ChoiceSet::AllComputeHosts)).value(current.join(","))],
+            vec![
+                Field::multi("hosts", t(lang, K::Hosts), Source::Set(ChoiceSet::AllComputeHosts))
+                    .value(current.join(",")),
+            ],
             move |v| {
                 let new = v.list("hosts");
                 let add: Vec<String> = new.iter().filter(|h| !current.contains(h)).cloned().collect();
@@ -2505,35 +3696,73 @@ pub fn aggregate_items(lang: Lang, a: &AggregateRow) -> Vec<MenuItem> {
                 if add.is_empty() && remove.is_empty() {
                     return Err(t(lang, K::NothingChanged).to_string());
                 }
-                Ok(OsAction::AggregateSetHosts { id: i.clone(), add, remove })
+                Ok(OsAction::AggregateSetHosts {
+                    id: i.clone(),
+                    add,
+                    remove,
+                })
             },
         )
     }));
     // The zone is its own field (*Edit Host Aggregate*), though Nova keeps it as metadata.
-    let editable: Vec<_> = a.metadata.iter().filter(|(k, _)| k != "availability_zone").cloned().collect();
+    let editable: Vec<_> = a
+        .metadata
+        .iter()
+        .filter(|(k, _)| k != "availability_zone")
+        .cloned()
+        .collect();
     let i = a.id.clone();
-    items.push(metadata_item(lang, "OS::Nova::Aggregate", &editable, move |new, old| {
-        let (set, unset) = metadata_changes(old, &new);
-        OsAction::AggregateSetMetadata { id: i.clone(), set, unset }
-    }));
+    items.push(metadata_item(
+        lang,
+        "OS::Nova::Aggregate",
+        &editable,
+        move |new, old| {
+            let (set, unset) = metadata_changes(old, &new);
+            OsAction::AggregateSetMetadata {
+                id: i.clone(),
+                set,
+                unset,
+            }
+        },
+    ));
     let (i, n) = (a.id.clone(), a.name.clone());
     items.push(MenuItem::danger(t(lang, K::DeleteAggregate), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteAggregate), n.clone(), OsAction::AggregateDelete { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteAggregate),
+            n.clone(),
+            OsAction::AggregateDelete { id: i.clone() },
+        )
     }));
     items
 }
 
 /// Admin › Volumes' and Snapshots' *Update Status*: Horizon's choices less the
 /// current status, labelled like the status pills.
-fn reset_status_item(lang: Lang, title: K, statuses: &'static [&'static str], current: &str, name: &str, make: impl Fn(String) -> OsAction + Send + Sync + 'static) -> MenuItem {
-    let choices: Vec<(String, String)> = statuses.iter().filter(|s| !s.eq_ignore_ascii_case(current)).map(|s| (s.to_string(), crate::i18n::resource_status(lang, s))).collect();
+fn reset_status_item(
+    lang: Lang,
+    title: K,
+    statuses: &'static [&'static str],
+    current: &str,
+    name: &str,
+    make: impl Fn(String) -> OsAction + Send + Sync + 'static,
+) -> MenuItem {
+    let choices: Vec<(String, String)> = statuses
+        .iter()
+        .filter(|s| !s.eq_ignore_ascii_case(current))
+        .map(|s| (s.to_string(), crate::i18n::resource_status(lang, s)))
+        .collect();
     let (n, make) = (name.to_string(), std::sync::Arc::new(make));
     MenuItem::dialog(t(lang, title), move || {
         let make = make.clone();
         let mut d = Dialog::form(
             t(lang, title),
             t(lang, title),
-            vec![Field::select("status", t(lang, K::Status), Source::Static(choices.clone())).required().help(t(lang, K::ResetStatusHelp))],
+            vec![
+                Field::select("status", t(lang, K::Status), Source::Static(choices.clone()))
+                    .required()
+                    .help(t(lang, K::ResetStatusHelp)),
+            ],
             move |v| Ok(make(req(v, "status", K::Status, lang)?)),
         );
         d.intro = vec![n.clone()];
@@ -2546,7 +3775,14 @@ fn reset_status_item(lang: Lang, title: K, statuses: &'static [&'static str], cu
 /// *Unmanage Volume* and *Delete Volume*, both destructive.
 pub fn admin_volume_items(lang: Lang, v: &Volume, host: Option<&str>) -> Vec<MenuItem> {
     let i = v.id.clone();
-    let mut items = vec![reset_status_item(lang, K::UpdateVolumeStatus, VOLUME_STATUSES, &v.status, &v.name, move |status| OsAction::VolumeResetStatus { id: i.clone(), status })];
+    let mut items = vec![reset_status_item(
+        lang,
+        K::UpdateVolumeStatus,
+        VOLUME_STATUSES,
+        &v.status,
+        &v.name,
+        move |status| OsAction::VolumeResetStatus { id: i.clone(), status },
+    )];
     let (i, n, from) = (v.id.clone(), v.name.clone(), host.unwrap_or("-").to_string());
     items.push(MenuItem::dialog(t(lang, K::MigrateVolume), move || {
         let i = i.clone();
@@ -2555,24 +3791,55 @@ pub fn admin_volume_items(lang: Lang, v: &Volume, host: Option<&str>) -> Vec<Men
             t(lang, K::MigrateVolume),
             vec![
                 // Cinder refuses migrating to the pool the volume is on.
-                Field::select("host", t(lang, K::DestinationHost), Source::Except(ChoiceSet::CinderPools, from.clone())).required(),
+                Field::select(
+                    "host",
+                    t(lang, K::DestinationHost),
+                    Source::Except(ChoiceSet::CinderPools, from.clone()),
+                )
+                .required(),
                 Field::check("force", t(lang, K::ForceHostCopy), false).help(t(lang, K::ForceHostCopyHelp)),
             ],
-            move |v| Ok(OsAction::VolumeMigrate { id: i.clone(), host: req(v, "host", K::DestinationHost, lang)?, force_host_copy: v.flag("force") }),
+            move |v| {
+                Ok(OsAction::VolumeMigrate {
+                    id: i.clone(),
+                    host: req(v, "host", K::DestinationHost, lang)?,
+                    force_host_copy: v.flag("force"),
+                })
+            },
         );
         d.intro = vec![n.clone(), format!("{}: {from}", t(lang, K::CurrentHost))];
         d
     }));
     let i = v.id.clone();
-    items.push(metadata_item(lang, "OS::Cinder::Volume", &v.metadata, move |metadata, _| OsAction::VolumeSetMetadata { id: i.clone(), metadata }));
+    items.push(metadata_item(
+        lang,
+        "OS::Cinder::Volume",
+        &v.metadata,
+        move |metadata, _| OsAction::VolumeSetMetadata {
+            id: i.clone(),
+            metadata,
+        },
+    ));
     let (i, n) = (v.id.clone(), v.name.clone());
     items.push(MenuItem::danger(t(lang, K::UnmanageVolume), move || {
-        let mut d = Dialog::confirm(lang, t(lang, K::UnmanageVolume), n.clone(), OsAction::VolumeUnmanage { id: i.clone() });
+        let mut d = Dialog::confirm(
+            lang,
+            t(lang, K::UnmanageVolume),
+            n.clone(),
+            OsAction::VolumeUnmanage { id: i.clone() },
+        );
         d.intro.push(t(lang, K::UnmanageHelp).to_string());
         d
     }));
     let (i, n) = (v.id.clone(), v.name.clone());
-    items.push(MenuItem::danger(t(lang, K::DeleteVolume), move || Dialog::confirm(lang, t(lang, K::DeleteVolume), n.clone(), OsAction::VolumeDelete { id: i.clone() })));
+    items.push(MenuItem::danger(t(lang, K::DeleteVolume), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteVolume),
+            n.clone(),
+            OsAction::VolumeDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -2580,11 +3847,33 @@ pub fn admin_volume_items(lang: Lang, v: &Volume, host: Option<&str>) -> Vec<Men
 /// *Delete Volume Snapshot*.
 pub fn admin_snapshot_items(lang: Lang, s: &Snapshot) -> Vec<MenuItem> {
     let i = s.id.clone();
-    let mut items = vec![reset_status_item(lang, K::UpdateSnapshotStatus, SNAPSHOT_STATUSES, &s.status, &s.name, move |status| OsAction::SnapshotResetStatus { id: i.clone(), status })];
+    let mut items = vec![reset_status_item(
+        lang,
+        K::UpdateSnapshotStatus,
+        SNAPSHOT_STATUSES,
+        &s.status,
+        &s.name,
+        move |status| OsAction::SnapshotResetStatus { id: i.clone(), status },
+    )];
     let i = s.id.clone();
-    items.push(metadata_item(lang, "OS::Cinder::Snapshot", &s.metadata, move |metadata, _| OsAction::SnapshotSetMetadata { id: i.clone(), metadata }));
+    items.push(metadata_item(
+        lang,
+        "OS::Cinder::Snapshot",
+        &s.metadata,
+        move |metadata, _| OsAction::SnapshotSetMetadata {
+            id: i.clone(),
+            metadata,
+        },
+    ));
     let (i, n) = (s.id.clone(), s.name.clone());
-    items.push(MenuItem::danger(t(lang, K::DeleteSnapshot), move || Dialog::confirm(lang, t(lang, K::DeleteSnapshot), n.clone(), OsAction::SnapshotDelete { id: i.clone() })));
+    items.push(MenuItem::danger(t(lang, K::DeleteSnapshot), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteSnapshot),
+            n.clone(),
+            OsAction::SnapshotDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -2598,8 +3887,12 @@ pub fn manage_volume_dialog(lang: Lang) -> Dialog {
         tr(K::ManageVolume),
         tr(K::ManageVolume),
         vec![
-            Field::text("identifier", tr(K::Identifier)).required().help(tr(K::IdentifierHelp)),
-            Field::select("id_type", tr(K::IdentifierType), id_type).value("source-name").required(),
+            Field::text("identifier", tr(K::Identifier))
+                .required()
+                .help(tr(K::IdentifierHelp)),
+            Field::select("id_type", tr(K::IdentifierType), id_type)
+                .value("source-name")
+                .required(),
             Field::text("host", tr(K::Host)).required().help(tr(K::VolumeHostHelp)),
             Field::text("name", tr(K::Name)),
             Field::area("description", tr(K::Description)),
@@ -2638,9 +3931,18 @@ fn type_fields(lang: Lang, name: &str, description: &str, public: bool) -> Vec<F
 
 /// Admin › Volume Types' *Create Volume Type*.
 pub fn create_volume_type_dialog(lang: Lang) -> Dialog {
-    Dialog::form(t(lang, K::CreateVolumeType), t(lang, K::CreateVolumeType), type_fields(lang, "", "", true), move |v| {
-        Ok(OsAction::VolumeTypeCreate { name: req(v, "name", K::Name, lang)?, description: v.opt("description"), public: v.flag("public") })
-    })
+    Dialog::form(
+        t(lang, K::CreateVolumeType),
+        t(lang, K::CreateVolumeType),
+        type_fields(lang, "", "", true),
+        move |v| {
+            Ok(OsAction::VolumeTypeCreate {
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+                public: v.flag("public"),
+            })
+        },
+    )
 }
 
 /// Admin › Volume Types' row menu, Horizon's: *View Extra Specs*, *Manage QoS
@@ -2648,64 +3950,143 @@ pub fn create_volume_type_dialog(lang: Lang) -> Dialog {
 /// then *Delete Encryption* (when encrypted) and *Delete Volume Type*.
 pub fn volume_type_items(lang: Lang, ty: &VolumeTypeRow) -> Vec<MenuItem> {
     let i = ty.id.clone();
-    let mut items = vec![pairs_item(lang, K::ViewExtraSpecs, K::ExtraSpecs, K::ExtraSpecsHelp, None, &ty.extra_specs, move |new, old| {
-        let (set, unset) = metadata_changes(old, &new);
-        OsAction::VolumeTypeSetExtraSpecs { id: i.clone(), set, unset }
-    })];
+    let mut items = vec![pairs_item(
+        lang,
+        K::ViewExtraSpecs,
+        K::ExtraSpecs,
+        K::ExtraSpecsHelp,
+        None,
+        &ty.extra_specs,
+        move |new, old| {
+            let (set, unset) = metadata_changes(old, &new);
+            OsAction::VolumeTypeSetExtraSpecs {
+                id: i.clone(),
+                set,
+                unset,
+            }
+        },
+    )];
     let (i, n, current) = (ty.id.clone(), ty.name.clone(), ty.qos.as_ref().map(|q| q.id.clone()));
     items.push(MenuItem::dialog(t(lang, K::ManageQosAssociation), move || {
         let (i, current) = (i.clone(), current.clone());
         let mut d = Dialog::form(
             t(lang, K::ManageQosAssociation),
             t(lang, K::Save),
-            vec![Field::select("qos", t(lang, K::QosSpec), Source::Set(ChoiceSet::QosSpecs)).value(current.clone().unwrap_or_default())],
+            vec![
+                Field::select("qos", t(lang, K::QosSpec), Source::Set(ChoiceSet::QosSpecs))
+                    .value(current.clone().unwrap_or_default()),
+            ],
             move |v| {
                 let qos_id = v.opt("qos");
                 if qos_id == current {
                     return Err(t(lang, K::NothingChanged).to_string());
                 }
-                Ok(OsAction::VolumeTypeSetQos { id: i.clone(), qos_id, current_qos_id: current.clone() })
+                Ok(OsAction::VolumeTypeSetQos {
+                    id: i.clone(),
+                    qos_id,
+                    current_qos_id: current.clone(),
+                })
             },
         );
         d.intro = vec![n.clone()];
         d
     }));
-    let (i, n, desc, public) = (ty.id.clone(), ty.name.clone(), ty.description.clone().unwrap_or_default(), ty.public);
+    let (i, n, desc, public) = (
+        ty.id.clone(),
+        ty.name.clone(),
+        ty.description.clone().unwrap_or_default(),
+        ty.public,
+    );
     items.push(MenuItem::dialog(t(lang, K::EditVolumeType), move || {
         let i = i.clone();
-        Dialog::form(t(lang, K::EditVolumeType), t(lang, K::Save), type_fields(lang, &n, &desc, public), move |v| {
-            Ok(OsAction::VolumeTypeUpdate { id: i.clone(), name: req(v, "name", K::Name, lang)?, description: v.opt("description"), public: v.flag("public") })
-        })
+        Dialog::form(
+            t(lang, K::EditVolumeType),
+            t(lang, K::Save),
+            type_fields(lang, &n, &desc, public),
+            move |v| {
+                Ok(OsAction::VolumeTypeUpdate {
+                    id: i.clone(),
+                    name: req(v, "name", K::Name, lang)?,
+                    description: v.opt("description"),
+                    public: v.flag("public"),
+                })
+            },
+        )
     }));
     let (i, n, enc) = (ty.id.clone(), ty.name.clone(), ty.encryption.clone());
-    let title = if enc.is_some() { K::UpdateEncryption } else { K::CreateEncryption };
-    items.push(MenuItem::dialog(t(lang, title), move || encryption_dialog(lang, title, &i, &n, enc.as_ref())));
+    let title = if enc.is_some() {
+        K::UpdateEncryption
+    } else {
+        K::CreateEncryption
+    };
+    items.push(MenuItem::dialog(t(lang, title), move || {
+        encryption_dialog(lang, title, &i, &n, enc.as_ref())
+    }));
     if ty.encrypted {
         let (i, n) = (ty.id.clone(), ty.name.clone());
-        items.push(MenuItem::danger(t(lang, K::DeleteEncryption), move || Dialog::confirm(lang, t(lang, K::DeleteEncryption), n.clone(), OsAction::VolumeTypeEncryptionDelete { id: i.clone() })));
+        items.push(MenuItem::danger(t(lang, K::DeleteEncryption), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteEncryption),
+                n.clone(),
+                OsAction::VolumeTypeEncryptionDelete { id: i.clone() },
+            )
+        }));
     }
     let (i, n) = (ty.id.clone(), ty.name.clone());
-    items.push(MenuItem::danger(t(lang, K::DeleteVolumeType), move || Dialog::confirm(lang, t(lang, K::DeleteVolumeType), n.clone(), OsAction::VolumeTypeDelete { id: i.clone() })));
+    items.push(MenuItem::danger(t(lang, K::DeleteVolumeType), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteVolumeType),
+            n.clone(),
+            OsAction::VolumeTypeDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
 /// *Create* / *Update Encryption* of a volume type, prefilled from `current`.
 fn encryption_dialog(lang: Lang, title: K, id: &str, name: &str, current: Option<&EncryptionSpec>) -> Dialog {
     let (i, update) = (id.to_string(), current.is_some());
-    let c = current.cloned().unwrap_or(EncryptionSpec { provider: String::new(), control_location: "front-end".into(), cipher: None, key_size: None });
+    let c = current.cloned().unwrap_or(EncryptionSpec {
+        provider: String::new(),
+        control_location: "front-end".into(),
+        cipher: None,
+        key_size: None,
+    });
     let mut d = Dialog::form(
         t(lang, title),
         t(lang, K::Save),
         vec![
-            Field::text("provider", t(lang, K::Provider)).value(c.provider).required().help(t(lang, K::EncryptionProviderHelp)),
-            Field::select("control_location", t(lang, K::ControlLocation), options_raw(CONTROL_LOCATIONS)).value(c.control_location).required().help(t(lang, K::ControlLocationHelp)),
+            Field::text("provider", t(lang, K::Provider))
+                .value(c.provider)
+                .required()
+                .help(t(lang, K::EncryptionProviderHelp)),
+            Field::select(
+                "control_location",
+                t(lang, K::ControlLocation),
+                options_raw(CONTROL_LOCATIONS),
+            )
+            .value(c.control_location)
+            .required()
+            .help(t(lang, K::ControlLocationHelp)),
             Field::text("cipher", t(lang, K::Cipher)).value(c.cipher.unwrap_or_default()),
-            Field::number("key_size", t(lang, K::KeySize), 1).value(c.key_size.map(|k| k.to_string()).unwrap_or_default()),
+            Field::number("key_size", t(lang, K::KeySize), 1)
+                .value(c.key_size.map(|k| k.to_string()).unwrap_or_default()),
         ],
         move |v| {
             let key_size = num_u32(v, "key_size", K::KeySize, lang)?;
-            let spec = EncryptionSpec { provider: req(v, "provider", K::Provider, lang)?, control_location: req(v, "control_location", K::ControlLocation, lang)?, cipher: v.opt("cipher"), key_size };
-            Ok(OsAction::VolumeTypeEncryptionSet { id: i.clone(), spec, update })
+            let spec = EncryptionSpec {
+                provider: req(v, "provider", K::Provider, lang)?,
+                control_location: req(v, "control_location", K::ControlLocation, lang)?,
+                cipher: v.opt("cipher"),
+                key_size,
+            };
+            Ok(OsAction::VolumeTypeEncryptionSet {
+                id: i.clone(),
+                spec,
+                update,
+            })
         },
     );
     d.intro = vec![name.to_string()];
@@ -2719,11 +4100,18 @@ pub fn create_qos_spec_dialog(lang: Lang) -> Dialog {
         t(lang, K::CreateQosSpec),
         vec![
             Field::text("name", t(lang, K::Name)).required(),
-            Field::select("consumer", t(lang, K::Consumer), options_raw(QOS_CONSUMERS)).value("back-end").required().help(t(lang, K::QosConsumerHelp)),
+            Field::select("consumer", t(lang, K::Consumer), options_raw(QOS_CONSUMERS))
+                .value("back-end")
+                .required()
+                .help(t(lang, K::QosConsumerHelp)),
             Field::key_values("specs", t(lang, K::Specs), &[]),
         ],
         move |v| {
-            Ok(OsAction::QosSpecCreate { name: req(v, "name", K::Name, lang)?, consumer: req(v, "consumer", K::Consumer, lang)?, specs: validate_metadata(&v.pairs("specs"))? })
+            Ok(OsAction::QosSpecCreate {
+                name: req(v, "name", K::Name, lang)?,
+                consumer: req(v, "consumer", K::Consumer, lang)?,
+                specs: validate_metadata(&v.pairs("specs"))?,
+            })
         },
     )
 }
@@ -2732,57 +4120,127 @@ pub fn create_qos_spec_dialog(lang: Lang) -> Dialog {
 /// Consumer*, *Delete QoS Spec*.
 pub fn qos_spec_items(lang: Lang, q: &QosSpecRow) -> Vec<MenuItem> {
     let i = q.id.clone();
-    let mut items = vec![pairs_item(lang, K::ManageSpecs, K::Specs, K::MetadataHelp, None, &q.specs, move |new, old| {
-        let (set, unset) = metadata_changes(old, &new);
-        OsAction::QosSpecSetSpecs { id: i.clone(), set, unset }
-    })];
+    let mut items = vec![pairs_item(
+        lang,
+        K::ManageSpecs,
+        K::Specs,
+        K::MetadataHelp,
+        None,
+        &q.specs,
+        move |new, old| {
+            let (set, unset) = metadata_changes(old, &new);
+            OsAction::QosSpecSetSpecs {
+                id: i.clone(),
+                set,
+                unset,
+            }
+        },
+    )];
     let (i, n, current) = (q.id.clone(), q.name.clone(), q.consumer.clone());
     items.push(MenuItem::dialog(t(lang, K::EditConsumer), move || {
         let (i, current) = (i.clone(), current.clone());
         let mut d = Dialog::form(
             t(lang, K::EditConsumer),
             t(lang, K::Save),
-            vec![Field::select("consumer", t(lang, K::Consumer), options_raw(QOS_CONSUMERS)).value(current.clone()).required().help(t(lang, K::QosConsumerHelp))],
+            vec![
+                Field::select("consumer", t(lang, K::Consumer), options_raw(QOS_CONSUMERS))
+                    .value(current.clone())
+                    .required()
+                    .help(t(lang, K::QosConsumerHelp)),
+            ],
             move |v| {
                 let consumer = req(v, "consumer", K::Consumer, lang)?;
                 if consumer == current {
                     return Err(t(lang, K::NothingChanged).to_string());
                 }
-                Ok(OsAction::QosSpecSetConsumer { id: i.clone(), consumer })
+                Ok(OsAction::QosSpecSetConsumer {
+                    id: i.clone(),
+                    consumer,
+                })
             },
         );
         d.intro = vec![n.clone()];
         d
     }));
     let (i, n) = (q.id.clone(), q.name.clone());
-    items.push(MenuItem::danger(t(lang, K::DeleteQosSpec), move || Dialog::confirm(lang, t(lang, K::DeleteQosSpec), n.clone(), OsAction::QosSpecDelete { id: i.clone() })));
+    items.push(MenuItem::danger(t(lang, K::DeleteQosSpec), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteQosSpec),
+            n.clone(),
+            OsAction::QosSpecDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
 /// Admin › Group Types' *Create Group Type*.
 pub fn create_group_type_dialog(lang: Lang) -> Dialog {
-    Dialog::form(t(lang, K::CreateGroupType), t(lang, K::CreateGroupType), type_fields(lang, "", "", true), move |v| {
-        Ok(OsAction::GroupTypeCreate { name: req(v, "name", K::Name, lang)?, description: v.opt("description"), public: v.flag("public") })
-    })
+    Dialog::form(
+        t(lang, K::CreateGroupType),
+        t(lang, K::CreateGroupType),
+        type_fields(lang, "", "", true),
+        move |v| {
+            Ok(OsAction::GroupTypeCreate {
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+                public: v.flag("public"),
+            })
+        },
+    )
 }
 
 /// Admin › Group Types' row menu, Horizon's: *View Specs*, *Edit Group Type*,
 /// *Delete Group Type*.
 pub fn group_type_items(lang: Lang, g: &GroupTypeRow) -> Vec<MenuItem> {
     let i = g.id.clone();
-    let mut items = vec![pairs_item(lang, K::ViewSpecs, K::Specs, K::MetadataHelp, None, &g.specs, move |new, old| {
-        let (set, unset) = metadata_changes(old, &new);
-        OsAction::GroupTypeSetSpecs { id: i.clone(), set, unset }
-    })];
-    let (i, n, desc, public) = (g.id.clone(), g.name.clone(), g.description.clone().unwrap_or_default(), g.public);
+    let mut items = vec![pairs_item(
+        lang,
+        K::ViewSpecs,
+        K::Specs,
+        K::MetadataHelp,
+        None,
+        &g.specs,
+        move |new, old| {
+            let (set, unset) = metadata_changes(old, &new);
+            OsAction::GroupTypeSetSpecs {
+                id: i.clone(),
+                set,
+                unset,
+            }
+        },
+    )];
+    let (i, n, desc, public) = (
+        g.id.clone(),
+        g.name.clone(),
+        g.description.clone().unwrap_or_default(),
+        g.public,
+    );
     items.push(MenuItem::dialog(t(lang, K::EditGroupType), move || {
         let i = i.clone();
-        Dialog::form(t(lang, K::EditGroupType), t(lang, K::Save), type_fields(lang, &n, &desc, public), move |v| {
-            Ok(OsAction::GroupTypeUpdate { id: i.clone(), name: req(v, "name", K::Name, lang)?, description: v.opt("description"), public: v.flag("public") })
-        })
+        Dialog::form(
+            t(lang, K::EditGroupType),
+            t(lang, K::Save),
+            type_fields(lang, &n, &desc, public),
+            move |v| {
+                Ok(OsAction::GroupTypeUpdate {
+                    id: i.clone(),
+                    name: req(v, "name", K::Name, lang)?,
+                    description: v.opt("description"),
+                    public: v.flag("public"),
+                })
+            },
+        )
     }));
     let (i, n) = (g.id.clone(), g.name.clone());
-    items.push(MenuItem::danger(t(lang, K::DeleteGroupType), move || Dialog::confirm(lang, t(lang, K::DeleteGroupType), n.clone(), OsAction::GroupTypeDelete { id: i.clone() })));
+    items.push(MenuItem::danger(t(lang, K::DeleteGroupType), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteGroupType),
+            n.clone(),
+            OsAction::GroupTypeDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -2797,15 +4255,23 @@ pub fn import_namespace_dialog(lang: Lang) -> Dialog {
         t(lang, K::ImportNamespace),
         t(lang, K::ImportNamespace),
         vec![
-            Field::area("definition", t(lang, K::NamespaceDefinition)).required().from_file(MAX_NAMESPACE_BYTES).help(t(lang, K::NamespaceDefinitionHelp)),
+            Field::area("definition", t(lang, K::NamespaceDefinition))
+                .required()
+                .from_file(MAX_NAMESPACE_BYTES)
+                .help(t(lang, K::NamespaceDefinitionHelp)),
             Field::check("public", t(lang, K::Public), false),
             Field::check("protected", t(lang, K::Protected), false),
         ],
         move |v| {
             let definition = req(v, "definition", K::NamespaceDefinition, lang)?;
             // Checked here too, so a typo is caught before the request.
-            serde_json::from_str::<serde_json::Value>(&definition).map_err(|e| format!("{}: {e}", t(lang, K::NamespaceDefinition)))?;
-            Ok(OsAction::MetadefNamespaceImport { definition, public: v.flag("public"), protected: v.flag("protected") })
+            serde_json::from_str::<serde_json::Value>(&definition)
+                .map_err(|e| format!("{}: {e}", t(lang, K::NamespaceDefinition)))?;
+            Ok(OsAction::MetadefNamespaceImport {
+                definition,
+                public: v.flag("public"),
+                protected: v.flag("protected"),
+            })
         },
     )
 }
@@ -2815,7 +4281,11 @@ pub fn import_namespace_dialog(lang: Lang) -> Dialog {
 /// Horizon hides it).
 pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
     let ns = n.namespace.clone();
-    let display = if n.name != n.namespace { n.name.clone() } else { String::new() };
+    let display = if n.name != n.namespace {
+        n.name.clone()
+    } else {
+        String::new()
+    };
     let (desc, public, protected) = (n.description.clone().unwrap_or_default(), n.public, n.protected);
     let mut items = vec![MenuItem::dialog(t(lang, K::EditNamespace), move || {
         let id = ns.clone();
@@ -2829,7 +4299,13 @@ pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
                 Field::check("protected", t(lang, K::Protected), protected),
             ],
             move |v| {
-                Ok(OsAction::MetadefNamespaceUpdate { id: id.clone(), display_name: v.opt("display_name"), description: v.opt("description"), public: v.flag("public"), protected: v.flag("protected") })
+                Ok(OsAction::MetadefNamespaceUpdate {
+                    id: id.clone(),
+                    display_name: v.opt("display_name"),
+                    description: v.opt("description"),
+                    public: v.flag("public"),
+                    protected: v.flag("protected"),
+                })
             },
         );
         d.intro = vec![ns.clone()];
@@ -2842,24 +4318,47 @@ pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
             t(lang, K::UpdateAssociations),
             t(lang, K::Save),
             vec![
-                Field::multi("types", t(lang, K::ResourceTypes), Source::Set(ChoiceSet::MetadefResourceTypes)).value(current.join(",")),
+                Field::multi(
+                    "types",
+                    t(lang, K::ResourceTypes),
+                    Source::Set(ChoiceSet::MetadefResourceTypes),
+                )
+                .value(current.join(",")),
                 // Horizon's per-type *Prefix* (roadmap 89): resource type → prefix.
                 Field::key_values("prefixes", t(lang, K::Prefixes), &old).help(t(lang, K::PrefixesHelp)),
             ],
             move |v| {
                 let (new, prefixes) = (v.list("types"), v.pairs("prefixes"));
-                let prefix_of = |list: &[(String, String)], ty: &str| list.iter().find(|(t, _)| t == ty).map(|(_, p)| p.trim().to_string()).unwrap_or_default();
+                let prefix_of = |list: &[(String, String)], ty: &str| {
+                    list.iter()
+                        .find(|(t, _)| t == ty)
+                        .map(|(_, p)| p.trim().to_string())
+                        .unwrap_or_default()
+                };
                 if let Some((ty, _)) = prefixes.iter().find(|(ty, _)| !new.contains(ty)) {
                     return Err(format!("{}: {ty}", t(lang, K::PrefixNotAssociated)));
                 }
                 // A kept type whose prefix changed is removed and added again.
                 let changed = |ty: &&String| current.contains(ty) && prefix_of(&prefixes, ty) != prefix_of(&old, ty);
-                let add_type_ids: Vec<String> = new.iter().filter(|x| !current.contains(x) || changed(x)).cloned().collect();
-                let remove_type_ids: Vec<String> = current.iter().filter(|x| !new.contains(x) || changed(x)).cloned().collect();
+                let add_type_ids: Vec<String> = new
+                    .iter()
+                    .filter(|x| !current.contains(x) || changed(x))
+                    .cloned()
+                    .collect();
+                let remove_type_ids: Vec<String> = current
+                    .iter()
+                    .filter(|x| !new.contains(x) || changed(x))
+                    .cloned()
+                    .collect();
                 if add_type_ids.is_empty() && remove_type_ids.is_empty() {
                     return Err(t(lang, K::NothingChanged).to_string());
                 }
-                Ok(OsAction::MetadefNamespaceSetTypes { id: id.clone(), add_type_ids, remove_type_ids, prefixes })
+                Ok(OsAction::MetadefNamespaceSetTypes {
+                    id: id.clone(),
+                    add_type_ids,
+                    remove_type_ids,
+                    prefixes,
+                })
             },
         );
         d.intro = vec![ns.clone()];
@@ -2867,7 +4366,14 @@ pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
     }));
     if !n.protected {
         let (i, name) = (n.namespace.clone(), n.name.clone());
-        items.push(MenuItem::danger(t(lang, K::DeleteNamespace), move || Dialog::confirm(lang, t(lang, K::DeleteNamespace), name.clone(), OsAction::MetadefNamespaceDelete { id: i.clone() })));
+        items.push(MenuItem::danger(t(lang, K::DeleteNamespace), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteNamespace),
+                name.clone(),
+                OsAction::MetadefNamespaceDelete { id: i.clone() },
+            )
+        }));
     }
     items
 }
@@ -2886,14 +4392,29 @@ pub fn compute_service_items(lang: Lang, s: &HostService) -> Vec<MenuItem> {
                 t(lang, K::DisableService),
                 t(lang, K::DisableService),
                 vec![Field::text("reason", t(lang, K::DisableReason))],
-                move |v| Ok(OsAction::ComputeServiceSet { id: i.clone(), enabled: false, reason: v.opt("reason") }),
+                move |v| {
+                    Ok(OsAction::ComputeServiceSet {
+                        id: i.clone(),
+                        enabled: false,
+                        reason: v.opt("reason"),
+                    })
+                },
             );
             d.intro = vec![host.clone()];
             d
         })]
     } else {
         vec![MenuItem::dialog(t(lang, K::EnableService), move || {
-            Dialog::simple(lang, t(lang, K::EnableService), host.clone(), OsAction::ComputeServiceSet { id: i.clone(), enabled: true, reason: None })
+            Dialog::simple(
+                lang,
+                t(lang, K::EnableService),
+                host.clone(),
+                OsAction::ComputeServiceSet {
+                    id: i.clone(),
+                    enabled: true,
+                    reason: None,
+                },
+            )
         })]
     }
 }
@@ -2906,13 +4427,30 @@ fn migrate_item(lang: Lang, id: &str, name: &str, from: &str) -> MenuItem {
     MenuItem::dialog(t(lang, K::MigrateInstance), move || {
         let i = i.clone();
         if !needs::MIGRATE_HOST.met(&caps()) {
-            return Dialog::simple(lang, t(lang, K::MigrateInstance), n.clone(), OsAction::ServerMigrate { id: i, host: None });
+            return Dialog::simple(
+                lang,
+                t(lang, K::MigrateInstance),
+                n.clone(),
+                OsAction::ServerMigrate { id: i, host: None },
+            );
         }
         let mut d = Dialog::form(
             t(lang, K::MigrateInstance),
             t(lang, K::MigrateInstance),
-            vec![Field::select("host", t(lang, K::NewHost), Source::Except(ChoiceSet::ComputeHosts, from.clone())).help(t(lang, K::NewHostHelp))],
-            move |v| Ok(OsAction::ServerMigrate { id: i.clone(), host: v.opt("host") }),
+            vec![
+                Field::select(
+                    "host",
+                    t(lang, K::NewHost),
+                    Source::Except(ChoiceSet::ComputeHosts, from.clone()),
+                )
+                .help(t(lang, K::NewHostHelp)),
+            ],
+            move |v| {
+                Ok(OsAction::ServerMigrate {
+                    id: i.clone(),
+                    host: v.opt("host"),
+                })
+            },
         );
         d.intro = vec![n.clone()];
         d
@@ -2925,12 +4463,20 @@ fn live_migrate_item(lang: Lang, id: &str, name: &str, from: &str) -> MenuItem {
     let (i, n, from) = (id.to_string(), name.to_string(), from.to_string());
     MenuItem::dialog(t(lang, K::LiveMigrateInstance), move || {
         let i = i.clone();
-        let block = options(&[("auto", K::BlockMigrationAuto), ("true", K::Yes), ("false", K::No)], lang);
+        let block = options(
+            &[("auto", K::BlockMigrationAuto), ("true", K::Yes), ("false", K::No)],
+            lang,
+        );
         let mut d = Dialog::form(
             t(lang, K::LiveMigrateInstance),
             t(lang, K::LiveMigrateInstance),
             vec![
-                Field::select("host", t(lang, K::NewHost), Source::Except(ChoiceSet::ComputeHosts, from.clone())).help(t(lang, K::NewHostHelp)),
+                Field::select(
+                    "host",
+                    t(lang, K::NewHost),
+                    Source::Except(ChoiceSet::ComputeHosts, from.clone()),
+                )
+                .help(t(lang, K::NewHostHelp)),
                 Field::select("block", t(lang, K::BlockMigration), block).value("auto"),
             ],
             move |v| {
@@ -2939,7 +4485,11 @@ fn live_migrate_item(lang: Lang, id: &str, name: &str, from: &str) -> MenuItem {
                     "false" => Some(false),
                     _ => None,
                 };
-                Ok(OsAction::ServerLiveMigrate { id: i.clone(), host: v.opt("host"), block_migration })
+                Ok(OsAction::ServerLiveMigrate {
+                    id: i.clone(),
+                    host: v.opt("host"),
+                    block_migration,
+                })
             },
         );
         d.intro = vec![n.clone()];
@@ -2961,7 +4511,24 @@ pub fn admin_instance_items(lang: Lang, inst: &Instance, host: Option<&str>) -> 
         .filter(|op| {
             matches!(
                 op,
-                ConfirmResize | RevertResize | Snapshot | Edit | UpdateMetadata | Pause | Unpause | Suspend | Resume | Shelve | Unshelve | Lock | Unlock | SoftReboot | HardReboot | ShutOff | Start | Delete
+                ConfirmResize
+                    | RevertResize
+                    | Snapshot
+                    | Edit
+                    | UpdateMetadata
+                    | Pause
+                    | Unpause
+                    | Suspend
+                    | Resume
+                    | Shelve
+                    | Unshelve
+                    | Lock
+                    | Unlock
+                    | SoftReboot
+                    | HardReboot
+                    | ShutOff
+                    | Start
+                    | Delete
             )
         })
         .collect();
@@ -2988,22 +4555,42 @@ pub fn admin_instance_items(lang: Lang, inst: &Instance, host: Option<&str>) -> 
 fn subport_fields(lang: Lang, optional: bool) -> Vec<Field> {
     let tr = |k| t(lang, k).to_string();
     let port = Field::select("subport", tr(K::Subport), Source::Set(ChoiceSet::FreePorts));
-    let vlan: fn(&Vals) -> bool = |v| v.get("segmentation_type").map(String::as_str) != Some("inherit") && v.get("subport").is_some_and(|p| !p.is_empty());
+    let vlan: fn(&Vals) -> bool = |v| {
+        v.get("segmentation_type").map(String::as_str) != Some("inherit")
+            && v.get("subport").is_some_and(|p| !p.is_empty())
+    };
     vec![
-        if optional { port.help(tr(K::SubportOptionalHelp)) } else { port.required() },
-        Field::select("segmentation_type", tr(K::SegmentationType), options_raw(&["vlan", "inherit"])).value("vlan"),
-        Field::number("segmentation_id", tr(K::SegmentationId), 1).help(tr(K::VlanHelp)).show_if(vlan),
+        if optional {
+            port.help(tr(K::SubportOptionalHelp))
+        } else {
+            port.required()
+        },
+        Field::select(
+            "segmentation_type",
+            tr(K::SegmentationType),
+            options_raw(&["vlan", "inherit"]),
+        )
+        .value("vlan"),
+        Field::number("segmentation_id", tr(K::SegmentationId), 1)
+            .help(tr(K::VlanHelp))
+            .show_if(vlan),
     ]
 }
 
 fn subport_spec(v: &Values, lang: Lang) -> Result<Option<SubportSpec>, String> {
-    let Some(port_id) = v.opt("subport") else { return Ok(None) };
+    let Some(port_id) = v.opt("subport") else {
+        return Ok(None);
+    };
     let kind = v.opt("segmentation_type").unwrap_or_else(|| "vlan".into());
     let id = match v.num("segmentation_id").map_err(|_| t(lang, K::VlanHelp).to_string())? {
         Some(n) if kind == "vlan" => Some(u16::try_from(n).map_err(|_| t(lang, K::VlanHelp).to_string())?),
         _ => None,
     };
-    let spec = SubportSpec { port_id, segmentation_type: kind, segmentation_id: id };
+    let spec = SubportSpec {
+        port_id,
+        segmentation_type: kind,
+        segmentation_id: id,
+    };
     spec.body().map_err(|_| t(lang, K::VlanHelp).to_string())?;
     Ok(Some(spec))
 }
@@ -3024,24 +4611,44 @@ pub fn create_trunk_dialog(lang: Lang) -> Dialog {
         if sub.as_ref().is_some_and(|s| s.port_id == parent) {
             return Err(t(lang, K::SubportNotParent).to_string());
         }
-        Ok(OsAction::TrunkCreate { name: v.get("name"), description: v.opt("description"), port_id: parent, admin_up: v.flag("admin_up"), subports: sub.into_iter().collect() })
+        Ok(OsAction::TrunkCreate {
+            name: v.get("name"),
+            description: v.opt("description"),
+            port_id: parent,
+            admin_up: v.flag("admin_up"),
+            subports: sub.into_iter().collect(),
+        })
     })
 }
 
 /// *Add Sub-port* to a trunk.
 pub fn add_subport_dialog(lang: Lang, trunk_id: &str) -> Dialog {
     let id = trunk_id.to_string();
-    Dialog::form(t(lang, K::AddSubport), t(lang, K::AddSubport), subport_fields(lang, false), move |v| {
-        let sub = subport_spec(v, lang)?.ok_or_else(|| format!("{}: {}", t(lang, K::Subport), t(lang, K::RequiredField)))?;
-        Ok(OsAction::TrunkAddSubports { id: id.clone(), subports: vec![sub] })
-    })
+    Dialog::form(
+        t(lang, K::AddSubport),
+        t(lang, K::AddSubport),
+        subport_fields(lang, false),
+        move |v| {
+            let sub = subport_spec(v, lang)?
+                .ok_or_else(|| format!("{}: {}", t(lang, K::Subport), t(lang, K::RequiredField)))?;
+            Ok(OsAction::TrunkAddSubports {
+                id: id.clone(),
+                subports: vec![sub],
+            })
+        },
+    )
 }
 
 /// A trunk's menu: add sub-port, edit, delete.
 pub fn trunk_items(lang: Lang, tk: &TrunkRow) -> Vec<MenuItem> {
     let i = tk.id.clone();
     let add = MenuItem::dialog(t(lang, K::AddSubport), move || add_subport_dialog(lang, &i));
-    let (i, n, d, up) = (tk.id.clone(), tk.name.clone(), tk.description.clone().unwrap_or_default(), tk.admin_up);
+    let (i, n, d, up) = (
+        tk.id.clone(),
+        tk.name.clone(),
+        tk.description.clone().unwrap_or_default(),
+        tk.admin_up,
+    );
     let edit = MenuItem::dialog(t(lang, K::EditTrunk), move || {
         let i = i.clone();
         Dialog::form(
@@ -3052,20 +4659,48 @@ pub fn trunk_items(lang: Lang, tk: &TrunkRow) -> Vec<MenuItem> {
                 Field::text("description", t(lang, K::Description)).value(d.clone()),
                 Field::check("admin_up", t(lang, K::EnableAdminState), up),
             ],
-            move |v| Ok(OsAction::TrunkUpdate { id: i.clone(), name: v.get("name"), description: v.get("description"), admin_up: v.flag("admin_up") }),
+            move |v| {
+                Ok(OsAction::TrunkUpdate {
+                    id: i.clone(),
+                    name: v.get("name"),
+                    description: v.get("description"),
+                    admin_up: v.flag("admin_up"),
+                })
+            },
         )
     });
     let (i, n) = (tk.id.clone(), tk.name.clone());
-    let delete = MenuItem::danger(t(lang, K::DeleteTrunk), move || Dialog::confirm(lang, t(lang, K::DeleteTrunk), n.clone(), OsAction::TrunkDelete { id: i.clone() }));
+    let delete = MenuItem::danger(t(lang, K::DeleteTrunk), move || {
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteTrunk),
+            n.clone(),
+            OsAction::TrunkDelete { id: i.clone() },
+        )
+    });
     vec![add, edit, delete]
 }
 
 /// A trunk sub-port's menu (*Remove Sub-port*).
 pub fn subport_items(lang: Lang, trunk_id: &str, sp: &Subport) -> Vec<MenuItem> {
     let (i, port) = (trunk_id.to_string(), sp.port_id.clone());
-    let what = format!("{} (VLAN {})", sp.port_name, sp.segmentation_id.map(|n| n.to_string()).unwrap_or_else(|| sp.segmentation_type.clone()));
+    let what = format!(
+        "{} (VLAN {})",
+        sp.port_name,
+        sp.segmentation_id
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| sp.segmentation_type.clone())
+    );
     vec![MenuItem::danger(t(lang, K::RemoveSubport), move || {
-        Dialog::confirm(lang, t(lang, K::RemoveSubport), what.clone(), OsAction::TrunkRemoveSubports { id: i.clone(), port_ids: vec![port.clone()] })
+        Dialog::confirm(
+            lang,
+            t(lang, K::RemoveSubport),
+            what.clone(),
+            OsAction::TrunkRemoveSubports {
+                id: i.clone(),
+                port_ids: vec![port.clone()],
+            },
+        )
     })]
 }
 
@@ -3090,22 +4725,69 @@ pub fn firewall_rule_dialog(lang: Lang, rule: Option<&FirewallRuleRow>) -> Dialo
         Field::text("description", tr(K::Description)).value(val(|r| r.description.clone())),
         // One line: protocol, IP version, action; then source and destination, each
         // an address and (TCP / UDP only) a port on its own line.
-        Field::select("protocol", tr(K::Protocol), Source::Static(vec![("any".into(), tr(K::AnyValue)), ("tcp".into(), "TCP".into()), ("udp".into(), "UDP".into()), ("icmp".into(), "ICMP".into())]))
-            .value(r.as_ref().map(|r| r.protocol.clone().unwrap_or_else(|| "any".into())).unwrap_or_else(|| "tcp".into()))
+        Field::select(
+            "protocol",
+            tr(K::Protocol),
+            Source::Static(vec![
+                ("any".into(), tr(K::AnyValue)),
+                ("tcp".into(), "TCP".into()),
+                ("udp".into(), "UDP".into()),
+                ("icmp".into(), "ICMP".into()),
+            ]),
+        )
+        .value(
+            r.as_ref()
+                .map(|r| r.protocol.clone().unwrap_or_else(|| "any".into()))
+                .unwrap_or_else(|| "tcp".into()),
+        )
+        .required()
+        .short(),
+        Field::select("ip_version", tr(K::IpVersion), options_raw(&["4", "6"]))
+            .value(r.as_ref().map(|r| r.ip_version).unwrap_or(4).to_string())
             .required()
             .short(),
-        Field::select("ip_version", tr(K::IpVersion), options_raw(&["4", "6"])).value(r.as_ref().map(|r| r.ip_version).unwrap_or(4).to_string()).required().short(),
-        Field::select("action", tr(K::Action), options(&[("allow", K::FirewallAllow), ("deny", K::FirewallDeny), ("reject", K::FirewallReject)], lang))
-            .value(r.as_ref().map(|r| r.action.clone()).unwrap_or_else(|| "allow".into()))
-            .required()
-            .short(),
-        Field::text("source_ip", tr(K::SourceIp)).value(val(|r| r.source_ip.clone())).help(tr(K::FirewallAddressHelp)).half().new_line(),
-        Field::text("source_port", tr(K::SourcePort)).value(val(|r| r.source_port.clone())).help(tr(K::FirewallPortHelp)).show_if(firewall_ports_apply).half(),
-        Field::text("destination_ip", tr(K::DestinationIp)).value(val(|r| r.destination_ip.clone())).help(tr(K::FirewallAddressHelp)).half().new_line(),
-        Field::text("destination_port", tr(K::DestinationPort)).value(val(|r| r.destination_port.clone())).help(tr(K::FirewallPortHelp)).show_if(firewall_ports_apply).half(),
+        Field::select(
+            "action",
+            tr(K::Action),
+            options(
+                &[
+                    ("allow", K::FirewallAllow),
+                    ("deny", K::FirewallDeny),
+                    ("reject", K::FirewallReject),
+                ],
+                lang,
+            ),
+        )
+        .value(r.as_ref().map(|r| r.action.clone()).unwrap_or_else(|| "allow".into()))
+        .required()
+        .short(),
+        Field::text("source_ip", tr(K::SourceIp))
+            .value(val(|r| r.source_ip.clone()))
+            .help(tr(K::FirewallAddressHelp))
+            .half()
+            .new_line(),
+        Field::text("source_port", tr(K::SourcePort))
+            .value(val(|r| r.source_port.clone()))
+            .help(tr(K::FirewallPortHelp))
+            .show_if(firewall_ports_apply)
+            .half(),
+        Field::text("destination_ip", tr(K::DestinationIp))
+            .value(val(|r| r.destination_ip.clone()))
+            .help(tr(K::FirewallAddressHelp))
+            .half()
+            .new_line(),
+        Field::text("destination_port", tr(K::DestinationPort))
+            .value(val(|r| r.destination_port.clone()))
+            .help(tr(K::FirewallPortHelp))
+            .show_if(firewall_ports_apply)
+            .half(),
         Field::check("enabled", tr(K::EnabledCol), r.as_ref().is_none_or(|r| r.enabled)),
     ];
-    let (title, submit) = if r.is_some() { (K::EditRule, K::Save) } else { (K::AddRule, K::AddRule) };
+    let (title, submit) = if r.is_some() {
+        (K::EditRule, K::Save)
+    } else {
+        (K::AddRule, K::AddRule)
+    };
     let id = r.map(|r| r.id);
     Dialog::form(tr(title), tr(submit), fields, move |v| {
         let spec = FirewallRuleSpec {
@@ -3144,7 +4826,14 @@ pub fn firewall_rule_items(lang: Lang, r: &FirewallRuleRow) -> Vec<MenuItem> {
     let (i, n) = (r.id.clone(), r.name.clone());
     vec![
         MenuItem::dialog(t(lang, K::EditRule), move || firewall_rule_dialog(lang, Some(&rr))),
-        MenuItem::danger(t(lang, K::DeleteRule), move || Dialog::confirm(lang, t(lang, K::DeleteRule), n.clone(), OsAction::FirewallRuleDelete { id: i.clone() })),
+        MenuItem::danger(t(lang, K::DeleteRule), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteRule),
+                n.clone(),
+                OsAction::FirewallRuleDelete { id: i.clone() },
+            )
+        }),
     ]
 }
 
@@ -3174,22 +4863,36 @@ pub fn create_firewall_policy_dialog(lang: Lang) -> Dialog {
 pub fn insert_firewall_rule_dialog(lang: Lang, p: &FirewallPolicyRow) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let mut places = vec![(String::new(), tr(K::AtTheTop))];
-    places.extend(p.rules.iter().map(|r| (r.id.clone(), format!("{} {}", t(lang, K::InsertAfter), r.name))));
+    places.extend(
+        p.rules
+            .iter()
+            .map(|r| (r.id.clone(), format!("{} {}", t(lang, K::InsertAfter), r.name))),
+    );
     let last = p.rules.last().map(|r| r.id.clone()).unwrap_or_default();
     let have: Vec<String> = p.rules.iter().map(|r| r.id.clone()).collect();
     let id = p.id.clone();
     let fields = vec![
         Field::select("rule", tr(K::Rule), Source::Without(ChoiceSet::FirewallRules, have)).required(),
-        Field::select("after", tr(K::Position), Source::Static(places)).value(last).help(tr(K::InsertRuleHelp)),
+        Field::select("after", tr(K::Position), Source::Static(places))
+            .value(last)
+            .help(tr(K::InsertRuleHelp)),
     ];
     Dialog::form(tr(K::InsertRule), tr(K::InsertRule), fields, move |v| {
-        Ok(OsAction::FirewallPolicyInsertRule { id: id.clone(), rule_id: req(v, "rule", K::Rule, lang)?, before_id: None, after_id: v.opt("after") })
+        Ok(OsAction::FirewallPolicyInsertRule {
+            id: id.clone(),
+            rule_id: req(v, "rule", K::Rule, lang)?,
+            before_id: None,
+            after_id: v.opt("after"),
+        })
     })
 }
 
 /// *Remove Rule* of one rule (from the policy page's rule table).
 pub fn remove_firewall_rule_dialog(lang: Lang, policy_id: &str, rule: &Ref) -> Dialog {
-    let action = OsAction::FirewallPolicyRemoveRule { id: policy_id.to_string(), rule_id: rule.id.clone() };
+    let action = OsAction::FirewallPolicyRemoveRule {
+        id: policy_id.to_string(),
+        rule_id: rule.id.clone(),
+    };
     Dialog::confirm(lang, t(lang, K::RemoveRule), rule.name.clone(), action)
 }
 
@@ -3201,15 +4904,25 @@ pub fn firewall_policy_items(lang: Lang, p: &FirewallPolicyRow) -> Vec<MenuItem>
     let tr = move |k| t(lang, k).to_string();
     let mut items = Vec::new();
     let pp = p.clone();
-    items.push(MenuItem::dialog(tr(K::InsertRule), move || insert_firewall_rule_dialog(lang, &pp)));
+    items.push(MenuItem::dialog(tr(K::InsertRule), move || {
+        insert_firewall_rule_dialog(lang, &pp)
+    }));
     if !p.rules.is_empty() {
         let pp = p.clone();
         items.push(MenuItem::dialog(tr(K::RemoveRule), move || {
             let id = pp.id.clone();
             let rules = pp.rules.iter().map(|r| (r.id.clone(), r.name.clone())).collect();
-            Dialog::form(tr(K::RemoveRule), tr(K::RemoveRule), vec![Field::select("rule", tr(K::Rule), Source::Static(rules)).required()], move |v| {
-                Ok(OsAction::FirewallPolicyRemoveRule { id: id.clone(), rule_id: req(v, "rule", K::Rule, lang)? })
-            })
+            Dialog::form(
+                tr(K::RemoveRule),
+                tr(K::RemoveRule),
+                vec![Field::select("rule", tr(K::Rule), Source::Static(rules)).required()],
+                move |v| {
+                    Ok(OsAction::FirewallPolicyRemoveRule {
+                        id: id.clone(),
+                        rule_id: req(v, "rule", K::Rule, lang)?,
+                    })
+                },
+            )
         }));
     }
     if p.is_default() {
@@ -3225,11 +4938,23 @@ pub fn firewall_policy_items(lang: Lang, p: &FirewallPolicyRow) -> Vec<MenuItem>
             Field::check("audited", tr(K::Audited), pp.audited),
         ];
         Dialog::form(tr(K::EditPolicy), tr(K::Save), fields, move |v| {
-            Ok(OsAction::FirewallPolicyUpdate { id: id.clone(), name: req(v, "name", K::Name, lang)?, description: v.get("description"), audited: v.flag("audited") })
+            Ok(OsAction::FirewallPolicyUpdate {
+                id: id.clone(),
+                name: req(v, "name", K::Name, lang)?,
+                description: v.get("description"),
+                audited: v.flag("audited"),
+            })
         })
     }));
     let (i, n) = (p.id.clone(), p.name.clone());
-    items.push(MenuItem::danger(tr(K::DeletePolicy), move || Dialog::confirm(lang, tr(K::DeletePolicy), n.clone(), OsAction::FirewallPolicyDelete { id: i.clone() })));
+    items.push(MenuItem::danger(tr(K::DeletePolicy), move || {
+        Dialog::confirm(
+            lang,
+            tr(K::DeletePolicy),
+            n.clone(),
+            OsAction::FirewallPolicyDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -3237,7 +4962,11 @@ pub fn firewall_policy_items(lang: Lang, p: &FirewallPolicyRow) -> Vec<MenuItem>
 /// says which traffic each direction is: FWaaS sees it from the port's device,
 /// so on a router interface *ingress* is the subnet's traffic going out.
 fn firewall_policy_field(lang: Lang, name: &'static str, label: K, value: Option<&Ref>) -> Field {
-    let tip = if label == K::IngressPolicy { K::TipIngressPolicy } else { K::TipEgressPolicy };
+    let tip = if label == K::IngressPolicy {
+        K::TipIngressPolicy
+    } else {
+        K::TipEgressPolicy
+    };
     Field::select(name, t(lang, label), Source::Set(ChoiceSet::FirewallPolicies))
         .empty_label(t(lang, K::NoPolicy))
         .value(value.map(|p| p.id.clone()).unwrap_or_default())
@@ -3260,17 +4989,25 @@ pub fn create_firewall_group_dialog(lang: Lang) -> Dialog {
     let details = ["name", "description", "ingress", "egress", "admin_up"];
     // Two steps, the group first and then the ports it protects (optional: without
     // ports the group is INACTIVE until *Add Port*).
-    let steps = vec![Step::new(tr(K::FirewallGroup), &details).required(), Step::new(tr(K::Ports), &["ports"]).help(tr(K::FirewallPortsHelp))];
-    Dialog::form(tr(K::CreateFirewallGroup), tr(K::CreateFirewallGroup), fields, move |v| {
-        Ok(OsAction::FirewallGroupCreate {
-            name: v.get("name"),
-            description: v.get("description"),
-            ingress_policy_id: v.opt("ingress"),
-            egress_policy_id: v.opt("egress"),
-            port_ids: v.list("ports"),
-            admin_up: v.flag("admin_up"),
-        })
-    })
+    let steps = vec![
+        Step::new(tr(K::FirewallGroup), &details).required(),
+        Step::new(tr(K::Ports), &["ports"]).help(tr(K::FirewallPortsHelp)),
+    ];
+    Dialog::form(
+        tr(K::CreateFirewallGroup),
+        tr(K::CreateFirewallGroup),
+        fields,
+        move |v| {
+            Ok(OsAction::FirewallGroupCreate {
+                name: v.get("name"),
+                description: v.get("description"),
+                ingress_policy_id: v.opt("ingress"),
+                egress_policy_id: v.opt("egress"),
+                port_ids: v.list("ports"),
+                admin_up: v.flag("admin_up"),
+            })
+        },
+    )
     .wizard(steps)
     .sized(DialogSize::Large)
 }
@@ -3280,26 +5017,54 @@ pub fn create_firewall_group_dialog(lang: Lang) -> Dialog {
 pub fn add_firewall_port_dialog(lang: Lang, g: &FirewallGroupRow) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let (id, have): (String, Vec<String>) = (g.id.clone(), g.ports.iter().map(|p| p.port.id.clone()).collect());
-    let fields = vec![Field::pick_many("ports", tr(K::Ports), Source::Set(ChoiceSet::FirewallPorts)).required().help(tr(K::FirewallPortsHelp))];
+    let fields = vec![
+        Field::pick_many("ports", tr(K::Ports), Source::Set(ChoiceSet::FirewallPorts))
+            .required()
+            .help(tr(K::FirewallPortsHelp)),
+    ];
     Dialog::form(tr(K::AddPort), tr(K::AddPort), fields, move |v| {
         let added = v.list("ports");
         if added.is_empty() {
             return Err(format!("{}: {}", t(lang, K::Ports), t(lang, K::RequiredField)));
         }
-        Ok(OsAction::FirewallGroupSetPorts { id: id.clone(), port_ids: have.iter().cloned().chain(added.into_iter().filter(|p| !have.contains(p))).collect() })
+        Ok(OsAction::FirewallGroupSetPorts {
+            id: id.clone(),
+            port_ids: have
+                .iter()
+                .cloned()
+                .chain(added.into_iter().filter(|p| !have.contains(p)))
+                .collect(),
+        })
     })
 }
 
 /// *Remove Port* of one port: the group's list without it.
 pub fn remove_firewall_port_dialog(lang: Lang, g: &FirewallGroupRow, port: &FirewallPort) -> Dialog {
-    let rest = g.ports.iter().filter(|p| p.port.id != port.port.id).map(|p| p.port.id.clone()).collect();
+    let rest = g
+        .ports
+        .iter()
+        .filter(|p| p.port.id != port.port.id)
+        .map(|p| p.port.id.clone())
+        .collect();
     let what = firewall_port_label(port);
-    Dialog::confirm(lang, t(lang, K::RemovePort), what, OsAction::FirewallGroupSetPorts { id: g.id.clone(), port_ids: rest })
+    Dialog::confirm(
+        lang,
+        t(lang, K::RemovePort),
+        what,
+        OsAction::FirewallGroupSetPorts {
+            id: g.id.clone(),
+            port_ids: rest,
+        },
+    )
 }
 
 /// `device: IPs`, else the port's name.
 pub fn firewall_port_label(p: &FirewallPort) -> String {
-    let ips = if p.ips.is_empty() { String::new() } else { format!(" ({})", p.ips.join(", ")) };
+    let ips = if p.ips.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", p.ips.join(", "))
+    };
     match &p.device {
         Some(d) => format!("{}{ips}", d.name),
         None => format!("{}{ips}", p.port.name),
@@ -3339,22 +5104,43 @@ pub fn firewall_group_items(lang: Lang, g: &FirewallGroupRow) -> Vec<MenuItem> {
         items.push(edit);
     }
     let gg = g.clone();
-    items.push(MenuItem::dialog(tr(K::AddPort), move || add_firewall_port_dialog(lang, &gg)));
+    items.push(MenuItem::dialog(tr(K::AddPort), move || {
+        add_firewall_port_dialog(lang, &gg)
+    }));
     if !g.ports.is_empty() {
         let gg = g.clone();
         items.push(MenuItem::dialog(tr(K::RemovePort), move || {
             let id = gg.id.clone();
-            let ports: Vec<(String, String)> = gg.ports.iter().map(|p| (p.port.id.clone(), firewall_port_label(p))).collect();
+            let ports: Vec<(String, String)> = gg
+                .ports
+                .iter()
+                .map(|p| (p.port.id.clone(), firewall_port_label(p)))
+                .collect();
             let all: Vec<String> = ports.iter().map(|(i, _)| i.clone()).collect();
-            Dialog::form(tr(K::RemovePort), tr(K::RemovePort), vec![Field::select("port", tr(K::Port), Source::Static(ports)).required()], move |v| {
-                let gone = req(v, "port", K::Port, lang)?;
-                Ok(OsAction::FirewallGroupSetPorts { id: id.clone(), port_ids: all.iter().filter(|p| **p != gone).cloned().collect() })
-            })
+            Dialog::form(
+                tr(K::RemovePort),
+                tr(K::RemovePort),
+                vec![Field::select("port", tr(K::Port), Source::Static(ports)).required()],
+                move |v| {
+                    let gone = req(v, "port", K::Port, lang)?;
+                    Ok(OsAction::FirewallGroupSetPorts {
+                        id: id.clone(),
+                        port_ids: all.iter().filter(|p| **p != gone).cloned().collect(),
+                    })
+                },
+            )
         }));
     }
     if g.deletable() {
         let (i, n) = (g.id.clone(), g.name.clone());
-        items.push(MenuItem::danger(tr(K::DeleteFirewallGroup), move || Dialog::confirm(lang, tr(K::DeleteFirewallGroup), n.clone(), OsAction::FirewallGroupDelete { id: i.clone() })));
+        items.push(MenuItem::danger(tr(K::DeleteFirewallGroup), move || {
+            Dialog::confirm(
+                lang,
+                tr(K::DeleteFirewallGroup),
+                n.clone(),
+                OsAction::FirewallGroupDelete { id: i.clone() },
+            )
+        }));
     }
     items
 }
@@ -3373,7 +5159,13 @@ pub fn create_qos_policy_dialog(lang: Lang) -> Dialog {
             Field::text("description", t(lang, K::Description)),
             Field::check("shared", t(lang, K::Shared), false),
         ],
-        move |v| Ok(OsAction::QosPolicyCreate { name: req(v, "name", K::Name, lang)?, description: v.opt("description"), shared: v.flag("shared") }),
+        move |v| {
+            Ok(OsAction::QosPolicyCreate {
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+                shared: v.flag("shared"),
+            })
+        },
     )
 }
 
@@ -3395,14 +5187,29 @@ pub fn qos_policy_items(lang: Lang, p: &QosPolicyRow) -> Vec<MenuItem> {
                     t(lang, K::Save),
                     vec![
                         Field::text("name", t(lang, K::Name)).value(pp.name.clone()).required(),
-                        Field::text("description", t(lang, K::Description)).value(pp.description.clone().unwrap_or_default()),
+                        Field::text("description", t(lang, K::Description))
+                            .value(pp.description.clone().unwrap_or_default()),
                         Field::check("shared", t(lang, K::Shared), pp.shared),
                     ],
-                    move |v| Ok(OsAction::QosPolicyUpdate { id: id.clone(), name: req(v, "name", K::Name, lang)?, description: v.get("description"), shared: v.flag("shared") }),
+                    move |v| {
+                        Ok(OsAction::QosPolicyUpdate {
+                            id: id.clone(),
+                            name: req(v, "name", K::Name, lang)?,
+                            description: v.get("description"),
+                            shared: v.flag("shared"),
+                        })
+                    },
                 )
             })
         },
-        MenuItem::danger(t(lang, K::DeletePolicy), move || Dialog::confirm(lang, t(lang, K::DeletePolicy), n.clone(), OsAction::QosPolicyDelete { id: i.clone() })),
+        MenuItem::danger(t(lang, K::DeletePolicy), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeletePolicy),
+                n.clone(),
+                OsAction::QosPolicyDelete { id: i.clone() },
+            )
+        }),
     ]
 }
 
@@ -3423,7 +5230,12 @@ fn qos_kind_label(lang: Lang, kind: &str) -> String {
 /// `bandwidth_limit`, `dscp_marking`, `minimum_bandwidth`, `minimum_packet_rate`).
 pub fn qos_rule_dialog(lang: Lang, policy_id: &str, rule: Option<&QosRule>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    let kinds = Source::Static(QOS_RULE_TYPES.iter().map(|k| (k.to_string(), qos_kind_label(lang, k))).collect());
+    let kinds = Source::Static(
+        QOS_RULE_TYPES
+            .iter()
+            .map(|k| (k.to_string(), qos_kind_label(lang, k)))
+            .collect(),
+    );
     let num = |n: Option<i64>| n.map(|n| n.to_string()).unwrap_or_default();
     let kind = rule.map(|r| r.kind.clone()).unwrap_or_else(|| "bandwidth_limit".into());
     let mut fields = vec![];
@@ -3439,24 +5251,61 @@ pub fn qos_rule_dialog(lang: Lang, policy_id: &str, rule: Option<&QosRule>) -> D
         }
     };
     let directional: fn(&Vals) -> bool = |v| v.get("kind").is_some_and(|k| !QosRuleSpec::directions(k).is_empty());
-    let dir_options = |k: &str| options_raw(if k.is_empty() { &["egress", "ingress", "any"] } else { QosRuleSpec::directions(k) });
-    let direction = Field::select("direction", tr(K::Direction), dir_options(if rule.is_some() { &kind } else { "" }))
-        .value(rule.and_then(|r| r.direction.clone()).unwrap_or_else(|| "egress".into()));
+    let dir_options = |k: &str| {
+        options_raw(if k.is_empty() {
+            &["egress", "ingress", "any"]
+        } else {
+            QosRuleSpec::directions(k)
+        })
+    };
+    let direction = Field::select(
+        "direction",
+        tr(K::Direction),
+        dir_options(if rule.is_some() { &kind } else { "" }),
+    )
+    .value(
+        rule.and_then(|r| r.direction.clone())
+            .unwrap_or_else(|| "egress".into()),
+    );
     fields.push(match rule {
         Some(r) if QosRuleSpec::directions(&r.kind).is_empty() => direction.show_if(|_| false),
         Some(_) => direction,
         None => direction.show_if(directional).help(tr(K::AnyOnlyPacketRate)),
     });
     fields.extend([
-        is("bandwidth_limit")(Field::number("max_kbps", tr(K::MaxKbps), 1).value(num(rule.and_then(|r| r.max_kbps))).required()),
-        is("bandwidth_limit")(Field::number("max_burst_kbps", tr(K::MaxBurstKbps), 0).value(num(rule.and_then(|r| r.max_burst_kbps)))),
-        is("dscp_marking")(
-            Field::select("dscp_mark", tr(K::DscpMark), options_raw(&DSCP_MARKS.map(|m| m.to_string()).iter().map(String::as_str).collect::<Vec<_>>()))
-                .value(num(rule.and_then(|r| r.dscp_mark)))
+        is("bandwidth_limit")(
+            Field::number("max_kbps", tr(K::MaxKbps), 1)
+                .value(num(rule.and_then(|r| r.max_kbps)))
                 .required(),
         ),
-        is("minimum_bandwidth")(Field::number("min_kbps", tr(K::MinKbps), 1).value(num(rule.and_then(|r| r.min_kbps))).required()),
-        is("minimum_packet_rate")(Field::number("min_kpps", tr(K::MinKpps), 1).value(num(rule.and_then(|r| r.min_kpps))).required()),
+        is("bandwidth_limit")(
+            Field::number("max_burst_kbps", tr(K::MaxBurstKbps), 0).value(num(rule.and_then(|r| r.max_burst_kbps))),
+        ),
+        is("dscp_marking")(
+            Field::select(
+                "dscp_mark",
+                tr(K::DscpMark),
+                options_raw(
+                    &DSCP_MARKS
+                        .map(|m| m.to_string())
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
+                ),
+            )
+            .value(num(rule.and_then(|r| r.dscp_mark)))
+            .required(),
+        ),
+        is("minimum_bandwidth")(
+            Field::number("min_kbps", tr(K::MinKbps), 1)
+                .value(num(rule.and_then(|r| r.min_kbps)))
+                .required(),
+        ),
+        is("minimum_packet_rate")(
+            Field::number("min_kpps", tr(K::MinKpps), 1)
+                .value(num(rule.and_then(|r| r.min_kpps)))
+                .required(),
+        ),
     ]);
     let (pid, id) = (policy_id.to_string(), rule.map(|r| r.id.clone()));
     let fixed = rule.map(|r| r.kind.clone());
@@ -3465,18 +5314,29 @@ pub fn qos_rule_dialog(lang: Lang, policy_id: &str, rule: Option<&QosRule>) -> D
         let kind = fixed.clone().unwrap_or_else(|| v.get("kind"));
         let n = |k: &str, label| num_u32(v, k, label, lang);
         let spec = QosRuleSpec {
-            direction: v.opt("direction").filter(|_| !QosRuleSpec::directions(&kind).is_empty()),
+            direction: v
+                .opt("direction")
+                .filter(|_| !QosRuleSpec::directions(&kind).is_empty()),
             max_kbps: n("max_kbps", K::MaxKbps)?.filter(|_| kind == "bandwidth_limit"),
             max_burst_kbps: n("max_burst_kbps", K::MaxBurstKbps)?.filter(|_| kind == "bandwidth_limit"),
-            dscp_mark: n("dscp_mark", K::DscpMark)?.and_then(|m| u8::try_from(m).ok()).filter(|_| kind == "dscp_marking"),
+            dscp_mark: n("dscp_mark", K::DscpMark)?
+                .and_then(|m| u8::try_from(m).ok())
+                .filter(|_| kind == "dscp_marking"),
             min_kbps: n("min_kbps", K::MinKbps)?.filter(|_| kind == "minimum_bandwidth"),
             min_kpps: n("min_kpps", K::MinKpps)?.filter(|_| kind == "minimum_packet_rate"),
             kind,
         };
         spec.body().map_err(|e| invalid(lang, e))?;
         Ok(match &id {
-            Some(id) => OsAction::QosRuleUpdate { policy_id: pid.clone(), id: id.clone(), spec },
-            None => OsAction::QosRuleCreate { policy_id: pid.clone(), spec },
+            Some(id) => OsAction::QosRuleUpdate {
+                policy_id: pid.clone(),
+                id: id.clone(),
+                spec,
+            },
+            None => OsAction::QosRuleCreate {
+                policy_id: pid.clone(),
+                spec,
+            },
         })
     })
 }
@@ -3488,7 +5348,16 @@ pub fn qos_rule_items(lang: Lang, policy_id: &str, r: &QosRule) -> Vec<MenuItem>
     let (p, kind, id) = (policy_id.to_string(), r.kind.clone(), r.id.clone());
     let what = qos_kind_label(lang, &r.kind);
     let delete = MenuItem::danger(t(lang, K::DeleteRule), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteRule), what.clone(), OsAction::QosRuleDelete { policy_id: p.clone(), kind: kind.clone(), id: id.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteRule),
+            what.clone(),
+            OsAction::QosRuleDelete {
+                policy_id: p.clone(),
+                kind: kind.clone(),
+                id: id.clone(),
+            },
+        )
     });
     vec![edit, delete]
 }
@@ -3540,7 +5409,11 @@ fn listener_option_fields(
     let tr = |k| t(lang, k).to_string();
     let c = caps();
     let o = existing.cloned().unwrap_or_default();
-    let set = o != LbListenerOptions { allowed_cidrs: o.allowed_cidrs.clone().filter(|c| !c.is_empty()), ..Default::default() };
+    let set = o
+        != LbListenerOptions {
+            allowed_cidrs: o.allowed_cidrs.clone().filter(|c| !c.is_empty()),
+            ..Default::default()
+        };
     let mut adv = Field::check("lb_advanced", tr(K::LbAdvanced), set).help(tr(K::LbAdvancedHelp));
     if let Some((f, want)) = when {
         adv = adv.when(f, want);
@@ -3550,12 +5423,37 @@ fn listener_option_fields(
     if needs::LB_TIMEOUTS.met(&c) {
         for (name, label, help, value) in [
             // octavia-dashboard's order.
-            ("timeout_client_data", K::TimeoutClientData, K::TimeoutClientDataHelp, o.timeout_client_data),
-            ("timeout_tcp_inspect", K::TimeoutTcpInspect, K::TimeoutTcpInspectHelp, o.timeout_tcp_inspect),
-            ("timeout_member_connect", K::TimeoutMemberConnect, K::TimeoutMemberConnectHelp, o.timeout_member_connect),
-            ("timeout_member_data", K::TimeoutMemberData, K::TimeoutMemberDataHelp, o.timeout_member_data),
+            (
+                "timeout_client_data",
+                K::TimeoutClientData,
+                K::TimeoutClientDataHelp,
+                o.timeout_client_data,
+            ),
+            (
+                "timeout_tcp_inspect",
+                K::TimeoutTcpInspect,
+                K::TimeoutTcpInspectHelp,
+                o.timeout_tcp_inspect,
+            ),
+            (
+                "timeout_member_connect",
+                K::TimeoutMemberConnect,
+                K::TimeoutMemberConnectHelp,
+                o.timeout_member_connect,
+            ),
+            (
+                "timeout_member_data",
+                K::TimeoutMemberData,
+                K::TimeoutMemberDataHelp,
+                o.timeout_member_data,
+            ),
         ] {
-            fields.push(Field::number(name, tr(label), 0).value(ms(value)).help(tr(help)).when("lb_advanced", "true"));
+            fields.push(
+                Field::number(name, tr(label), 0)
+                    .value(ms(value))
+                    .help(tr(help))
+                    .when("lb_advanced", "true"),
+            );
         }
     }
     if let Some(cond) = headers_if {
@@ -3604,12 +5502,24 @@ fn listener_protocols() -> Source {
 /// 54), from `ChoiceSet::LbCertificates`. `tls_if`: when they show (the new
 /// listener's protocol); `None` on an edit, which only offers them for such a
 /// listener.
-fn listener_certificate_fields(lang: Lang, existing: Option<&LbListener>, tls_if: Option<fn(&Vals) -> bool>) -> Vec<Field> {
+fn listener_certificate_fields(
+    lang: Lang,
+    existing: Option<&LbListener>,
+    tls_if: Option<fn(&Vals) -> bool>,
+) -> Vec<Field> {
     let tr = |k| t(lang, k).to_string();
-    let mut cert = Field::select("certificate", tr(K::LbCertificate), Source::Set(ChoiceSet::LbCertificates))
-        .required()
-        .value(existing.and_then(|l| l.default_tls_container_ref.clone()).unwrap_or_default())
-        .help(tr(K::LbCertificateHelp));
+    let mut cert = Field::select(
+        "certificate",
+        tr(K::LbCertificate),
+        Source::Set(ChoiceSet::LbCertificates),
+    )
+    .required()
+    .value(
+        existing
+            .and_then(|l| l.default_tls_container_ref.clone())
+            .unwrap_or_default(),
+    )
+    .help(tr(K::LbCertificateHelp));
     let mut sni = Field::multi("sni", tr(K::SniCertificates), Source::Set(ChoiceSet::LbCertificates))
         .value(existing.map(|l| l.sni_container_refs.join(",")).unwrap_or_default())
         .help(tr(K::SniCertificatesHelp));
@@ -3659,7 +5569,12 @@ fn pool_tls_fields(lang: Lang, existing: Option<&LbPool>, when: Option<(&'static
     if !needs::LB_POOL_TLS.met(&c) {
         return vec![];
     }
-    let mut on = Field::check("tls_enabled", tr(K::PoolTlsEnabled), existing.is_some_and(|p| p.tls_enabled)).help(tr(K::PoolTlsEnabledHelp));
+    let mut on = Field::check(
+        "tls_enabled",
+        tr(K::PoolTlsEnabled),
+        existing.is_some_and(|p| p.tls_enabled),
+    )
+    .help(tr(K::PoolTlsEnabledHelp));
     if let Some((f, want)) = when {
         on = on.when(f, want);
     }
@@ -3677,7 +5592,12 @@ fn pool_tls_fields(lang: Lang, existing: Option<&LbPool>, when: Option<(&'static
 
 /// `(tls_enabled, tls_ciphers)` from [`pool_tls_fields`]; `None` when not offered.
 fn pool_tls_of(v: &Values) -> Option<(bool, Option<String>)> {
-    v.0.contains_key("tls_enabled").then(|| (v.flag("tls_enabled"), v.opt("tls_ciphers").filter(|_| v.flag("tls_enabled"))))
+    v.0.contains_key("tls_enabled").then(|| {
+        (
+            v.flag("tls_enabled"),
+            v.opt("tls_ciphers").filter(|_| v.flag("tls_enabled")),
+        )
+    })
 }
 
 /// Moves a listener's port between 80 and 443 when its protocol changes to or
@@ -3713,7 +5633,9 @@ fn monitor_spec(v: &Values, lang: Lang, kind: String) -> Result<LbMonitorSpec, S
     let retries = |k: &str, label| -> Result<Option<u8>, String> {
         match v.num(k).map_err(|_| format!("{}: 1-10", t(lang, label)))? {
             None => Ok(None),
-            Some(n) => u8::try_from(n).map(Some).map_err(|_| format!("{}: 1-10", t(lang, label))),
+            Some(n) => u8::try_from(n)
+                .map(Some)
+                .map_err(|_| format!("{}: 1-10", t(lang, label))),
         }
     };
     Ok(LbMonitorSpec {
@@ -3740,14 +5662,28 @@ fn monitor_fields(lang: Lang, when: Option<(&'static str, &'static str)>, m: Opt
     let num = |n: Option<i64>, d: &str| n.map(|n| n.to_string()).unwrap_or_else(|| d.to_string());
     let mut out = vec![];
     if m.is_none() {
-        out.push(w(Field::select("monitor_type", tr(K::Type), options_raw(&LB_MONITOR_TYPES)).value("HTTP").required()));
+        out.push(w(Field::select(
+            "monitor_type",
+            tr(K::Type),
+            options_raw(&LB_MONITOR_TYPES),
+        )
+        .value("HTTP")
+        .required()));
     }
     out.extend([
         w(Field::text("monitor_name", tr(K::Name)).value(m.map(|m| m.name.clone()).unwrap_or_default())),
-        w(Field::number("delay", tr(K::DelaySeconds), 1).value(num(m.and_then(|m| m.delay), "5")).required()),
-        w(Field::number("timeout", tr(K::TimeoutSeconds), 1).value(num(m.and_then(|m| m.timeout), "5")).help(tr(K::TimeoutHelp)).required()),
-        w(Field::number("max_retries", tr(K::MaxRetries), 1).value(num(m.and_then(|m| m.max_retries), "3")).required()),
-        w(Field::number("max_retries_down", tr(K::MaxRetriesDown), 1).value(num(m.and_then(|m| m.max_retries_down), "3"))),
+        w(Field::number("delay", tr(K::DelaySeconds), 1)
+            .value(num(m.and_then(|m| m.delay), "5"))
+            .required()),
+        w(Field::number("timeout", tr(K::TimeoutSeconds), 1)
+            .value(num(m.and_then(|m| m.timeout), "5"))
+            .help(tr(K::TimeoutHelp))
+            .required()),
+        w(Field::number("max_retries", tr(K::MaxRetries), 1)
+            .value(num(m.and_then(|m| m.max_retries), "3"))
+            .required()),
+        w(Field::number("max_retries_down", tr(K::MaxRetriesDown), 1)
+            .value(num(m.and_then(|m| m.max_retries_down), "3"))),
     ]);
     // Edit: the type is fixed, so the HTTP fields follow the monitor's own type.
     let is_http = m.map(|m| m.kind.starts_with("HTTP"));
@@ -3757,9 +5693,15 @@ fn monitor_fields(lang: Lang, when: Option<(&'static str, &'static str)>, m: Opt
         None => w(f).show_if(http),
     };
     out.extend([
-        hf(Field::select("http_method", tr(K::HttpMethod), options_raw(&LB_HTTP_METHODS)).value(m.and_then(|m| m.http_method.clone()).unwrap_or_else(|| "GET".into()))),
-        hf(Field::text("url_path", tr(K::UrlPath)).value(m.and_then(|m| m.url_path.clone()).unwrap_or_else(|| "/".into()))),
-        hf(Field::text("expected_codes", tr(K::ExpectedCodes)).value(m.and_then(|m| m.expected_codes.clone()).unwrap_or_else(|| "200".into())).help(tr(K::ExpectedCodesHelp))),
+        hf(
+            Field::select("http_method", tr(K::HttpMethod), options_raw(&LB_HTTP_METHODS))
+                .value(m.and_then(|m| m.http_method.clone()).unwrap_or_else(|| "GET".into())),
+        ),
+        hf(Field::text("url_path", tr(K::UrlPath))
+            .value(m.and_then(|m| m.url_path.clone()).unwrap_or_else(|| "/".into()))),
+        hf(Field::text("expected_codes", tr(K::ExpectedCodes))
+            .value(m.and_then(|m| m.expected_codes.clone()).unwrap_or_else(|| "200".into()))
+            .help(tr(K::ExpectedCodesHelp))),
     ]);
     // A new monitor; an edit has its own *Enable Admin State* box (roadmap 54).
     if m.is_none() {
@@ -3774,7 +5716,10 @@ fn monitor_fields(lang: Lang, when: Option<(&'static str, &'static str)>, m: Opt
 pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let listener: fn(&Vals) -> bool = |v| v.get("with_listener").map(String::as_str) == Some("true");
-    let pool: fn(&Vals) -> bool = |v| v.get("with_listener").map(String::as_str) == Some("true") && v.get("with_pool").map(String::as_str) == Some("true");
+    let pool: fn(&Vals) -> bool = |v| {
+        v.get("with_listener").map(String::as_str) == Some("true")
+            && v.get("with_pool").map(String::as_str) == Some("true")
+    };
     let mut fields = vec![
         Field::text("name", tr(K::Name)),
         Field::text("description", tr(K::Description)),
@@ -3782,25 +5727,53 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
         Field::text("vip_address", tr(K::IpAddress)).help(tr(K::VipAddressHelp)),
         Field::select("flavor", tr(K::Flavor), Source::Set(ChoiceSet::LbFlavors)),
         // octavia-dashboard's details step (roadmap 54); empty = the cloud's default.
-        Field::select("lb_az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::LbAvailabilityZones)),
+        Field::select(
+            "lb_az",
+            tr(K::AvailabilityZone),
+            Source::Set(ChoiceSet::LbAvailabilityZones),
+        ),
         Field::check("lb_admin_up", tr(K::EnableAdminState), true),
         Field::yes_no("with_listener", tr(K::CreateListener), true),
-        Field::select("listener_protocol", tr(K::Protocol), listener_protocols()).value("HTTP").required().when("with_listener", "true"),
-        Field::number("listener_port", tr(K::Port), 1).value("80").required().when("with_listener", "true"),
+        Field::select("listener_protocol", tr(K::Protocol), listener_protocols())
+            .value("HTTP")
+            .required()
+            .when("with_listener", "true"),
+        Field::number("listener_port", tr(K::Port), 1)
+            .value("80")
+            .required()
+            .when("with_listener", "true"),
     ];
     // Right after the port, as in octavia-dashboard's listener form (roadmap 54).
-    fields.extend(listener_certificate_fields(lang, None, Some(wizard_tls)).into_iter().map(|f| f.when("with_listener", "true")));
+    fields.extend(
+        listener_certificate_fields(lang, None, Some(wizard_tls))
+            .into_iter()
+            .map(|f| f.when("with_listener", "true")),
+    );
     fields.extend([
         Field::text("listener_name", tr(K::Name)).when("with_listener", "true"),
-        Field::number("connection_limit", tr(K::ConnectionLimit), 1).help(tr(K::UnlimitedWhenEmpty)).when("with_listener", "true"),
+        Field::number("connection_limit", tr(K::ConnectionLimit), 1)
+            .help(tr(K::UnlimitedWhenEmpty))
+            .when("with_listener", "true"),
         Field::check("listener_admin_up", tr(K::EnableAdminState), true).when("with_listener", "true"),
     ]);
-    fields.extend(listener_option_fields(lang, None, Some(wizard_headers), Some(wizard_tls), Some(("with_listener", "true"))));
+    fields.extend(listener_option_fields(
+        lang,
+        None,
+        Some(wizard_headers),
+        Some(wizard_tls),
+        Some(("with_listener", "true")),
+    ));
     fields.extend([
         Field::yes_no("with_pool", tr(K::CreatePool), true).when("with_listener", "true"),
         // Octavia's single-call create rejects an unnamed default pool.
-        Field::text("pool_name", tr(K::Name)).value("pool-1").required().when("with_pool", "true"),
-        Field::select("algorithm", tr(K::Algorithm), options_raw(&LB_ALGORITHMS)).value("ROUND_ROBIN").required().when("with_pool", "true"),
+        Field::text("pool_name", tr(K::Name))
+            .value("pool-1")
+            .required()
+            .when("with_pool", "true"),
+        Field::select("algorithm", tr(K::Algorithm), options_raw(&LB_ALGORITHMS))
+            .value("ROUND_ROBIN")
+            .required()
+            .when("with_pool", "true"),
         Field::select("persistence", tr(K::SessionPersistence), options_raw(&LB_PERSISTENCE)).when("with_pool", "true"),
         Field::text("cookie_name", tr(K::CookieName)).when("persistence", "APP_COOKIE"),
         Field::check("pool_admin_up", tr(K::EnableAdminState), true).when("with_pool", "true"),
@@ -3811,7 +5784,20 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
     fields.extend(pool_tls_fields(lang, None, Some(("with_pool", "true"))));
     fields.extend(monitor_fields(lang, Some(("with_monitor", "true")), None));
     let steps = vec![
-        Step::new(tr(K::LoadBalancer), &["name", "description", "vip_subnet", "vip_address", "flavor", "lb_az", "lb_admin_up"]).help(tr(K::LbDetailsHelp)).required(),
+        Step::new(
+            tr(K::LoadBalancer),
+            &[
+                "name",
+                "description",
+                "vip_subnet",
+                "vip_address",
+                "flavor",
+                "lb_az",
+                "lb_admin_up",
+            ],
+        )
+        .help(tr(K::LbDetailsHelp))
+        .required(),
         Step::new(
             tr(K::Listener),
             &[
@@ -3834,11 +5820,39 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
             ],
         )
         .help(tr(K::ListenerHelp)),
-        Step::new(tr(K::Pool), &["with_pool", "pool_name", "algorithm", "persistence", "cookie_name", "pool_admin_up", "tls_enabled", "tls_ciphers"]).help(tr(K::PoolHelp)).enabled_if(listener),
-        Step::new(tr(K::Members), &["members"]).help(tr(K::MembersHelp)).enabled_if(pool),
+        Step::new(
+            tr(K::Pool),
+            &[
+                "with_pool",
+                "pool_name",
+                "algorithm",
+                "persistence",
+                "cookie_name",
+                "pool_admin_up",
+                "tls_enabled",
+                "tls_ciphers",
+            ],
+        )
+        .help(tr(K::PoolHelp))
+        .enabled_if(listener),
+        Step::new(tr(K::Members), &["members"])
+            .help(tr(K::MembersHelp))
+            .enabled_if(pool),
         Step::new(
             tr(K::HealthMonitor),
-            &["with_monitor", "monitor_type", "monitor_name", "delay", "timeout", "max_retries", "max_retries_down", "http_method", "url_path", "expected_codes", "monitor_admin_up"],
+            &[
+                "with_monitor",
+                "monitor_type",
+                "monitor_name",
+                "delay",
+                "timeout",
+                "max_retries",
+                "max_retries_down",
+                "http_method",
+                "url_path",
+                "expected_codes",
+                "monitor_admin_up",
+            ],
         )
         .help(tr(K::MonitorHelp))
         .enabled_if(pool),
@@ -3852,11 +5866,16 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
                 name: v.opt("listener_name"),
                 description: None,
                 protocol: protocol.clone(),
-                port: u16_of(v, "listener_port", K::Port, lang)?.ok_or_else(|| format!("{}: {}", t(lang, K::Port), t(lang, K::RequiredField)))?,
+                port: u16_of(v, "listener_port", K::Port, lang)?
+                    .ok_or_else(|| format!("{}: {}", t(lang, K::Port), t(lang, K::RequiredField)))?,
                 connection_limit: u32_of(v, "connection_limit", K::ConnectionLimit, lang)?,
                 options: listener_options_of(v, lang)?.unwrap_or_default(),
                 default_tls_container_ref: v.opt("certificate").filter(|_| protocol == LB_TLS_PROTOCOL),
-                sni_container_refs: if protocol == LB_TLS_PROTOCOL { v.list("sni") } else { vec![] },
+                sni_container_refs: if protocol == LB_TLS_PROTOCOL {
+                    v.list("sni")
+                } else {
+                    vec![]
+                },
                 admin_up: admin_up_of(v, "listener_admin_up"),
             })
         } else {
@@ -3875,8 +5894,16 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
             tls_ciphers,
             admin_up: admin_up_of(v, "pool_admin_up"),
         });
-        let members = if with_pool { member_specs(&v.get("members")).map_err(|e| invalid(lang, e))? } else { vec![] };
-        let monitor = if with_pool && v.flag("with_monitor") { Some(monitor_spec(v, lang, v.get("monitor_type"))?) } else { None };
+        let members = if with_pool {
+            member_specs(&v.get("members")).map_err(|e| invalid(lang, e))?
+        } else {
+            vec![]
+        };
+        let monitor = if with_pool && v.flag("with_monitor") {
+            Some(monitor_spec(v, lang, v.get("monitor_type"))?)
+        } else {
+            None
+        };
         let spec = LbCreateSpec {
             name: v.opt("name"),
             description: v.opt("description"),
@@ -3910,7 +5937,12 @@ pub fn load_balancer_detail_items(lang: Lang, d: &LoadBalancerDetail) -> Vec<Men
 
 fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDetail>) -> Vec<MenuItem> {
     let mut items = Vec::new();
-    let (i, n, desc, up) = (l.id.clone(), l.name.clone(), l.description.clone().unwrap_or_default(), l.admin_up);
+    let (i, n, desc, up) = (
+        l.id.clone(),
+        l.name.clone(),
+        l.description.clone().unwrap_or_default(),
+        l.admin_up,
+    );
     items.push(MenuItem::dialog(t(lang, K::EditLoadBalancer), move || {
         let i = i.clone();
         Dialog::form(
@@ -3921,7 +5953,14 @@ fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDe
                 Field::text("description", t(lang, K::Description)).value(desc.clone()),
                 Field::check("admin_up", t(lang, K::EnableAdminState), up),
             ],
-            move |v| Ok(OsAction::LoadBalancerUpdate { id: i.clone(), name: v.get("name"), description: v.get("description"), admin_up: v.flag("admin_up") }),
+            move |v| {
+                Ok(OsAction::LoadBalancerUpdate {
+                    id: i.clone(),
+                    name: v.get("name"),
+                    description: v.get("description"),
+                    admin_up: v.flag("admin_up"),
+                })
+            },
         )
     }));
     if let Some(d) = d {
@@ -3929,7 +5968,12 @@ fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDe
             (Some(fip), _) => {
                 let ip = d.floating_ip.clone().unwrap_or_default();
                 items.push(MenuItem::danger(t(lang, K::DisassociateFloatingIp), move || {
-                    Dialog::confirm(lang, t(lang, K::DisassociateFloatingIp), ip.clone(), OsAction::FloatingIpDisassociate { id: fip.clone() })
+                    Dialog::confirm(
+                        lang,
+                        t(lang, K::DisassociateFloatingIp),
+                        ip.clone(),
+                        OsAction::FloatingIpDisassociate { id: fip.clone() },
+                    )
                 }));
             }
             (None, Some(port)) => {
@@ -3938,8 +5982,16 @@ fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDe
                     Dialog::form(
                         t(lang, K::AssociateFloatingIp),
                         t(lang, K::Associate),
-                        vec![Field::select("fip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps)).required()],
-                        move |v| Ok(OsAction::FloatingIpAssociate { id: req(v, "fip", K::FloatingIp, lang)?, port_id: port.clone() }),
+                        vec![
+                            Field::select("fip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps))
+                                .required(),
+                        ],
+                        move |v| {
+                            Ok(OsAction::FloatingIpAssociate {
+                                id: req(v, "fip", K::FloatingIp, lang)?,
+                                port_id: port.clone(),
+                            })
+                        },
                     )
                 }));
             }
@@ -3948,7 +6000,15 @@ fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDe
     }
     let (i, n) = (l.id.clone(), l.name.clone());
     items.push(MenuItem::danger(t(lang, K::DeleteLoadBalancer), move || {
-        let mut d = Dialog::confirm(lang, t(lang, K::DeleteLoadBalancer), n.clone(), OsAction::LoadBalancerDelete { id: i.clone(), cascade: true });
+        let mut d = Dialog::confirm(
+            lang,
+            t(lang, K::DeleteLoadBalancer),
+            n.clone(),
+            OsAction::LoadBalancerDelete {
+                id: i.clone(),
+                cascade: true,
+            },
+        );
         d.intro.insert(1, t(lang, K::LbCascade).into());
         d
     }));
@@ -3964,10 +6024,17 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
     let tr = |k| t(lang, k).to_string();
     let pools = refs_of(&d.pools, |p| (p.id.clone(), p.name.clone()));
     let lb = d.row.id.clone();
-    let limit = existing.and_then(|l| l.connection_limit).map(|n| n.to_string()).unwrap_or_default();
+    let limit = existing
+        .and_then(|l| l.connection_limit)
+        .map(|n| n.to_string())
+        .unwrap_or_default();
     let mut fields = vec![];
     if existing.is_none() {
-        fields.push(Field::select("protocol", tr(K::Protocol), listener_protocols()).value("HTTP").required());
+        fields.push(
+            Field::select("protocol", tr(K::Protocol), listener_protocols())
+                .value("HTTP")
+                .required(),
+        );
         fields.push(Field::number("port", tr(K::Port), 1).value("80").required());
     }
     match existing {
@@ -3977,22 +6044,45 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
     }
     fields.extend([
         Field::text("name", tr(K::Name)).value(existing.map(|l| l.name.clone()).unwrap_or_default()),
-        Field::text("description", tr(K::Description)).value(existing.and_then(|l| l.description.clone()).unwrap_or_default()),
-        Field::number("connection_limit", tr(K::ConnectionLimit), 1).value(limit).help(tr(K::UnlimitedWhenEmpty)),
-        Field::select("default_pool", tr(K::DefaultPool), static_refs(&pools))
-            .value(existing.and_then(|l| l.default_pool.as_ref().map(|p| p.id.clone())).unwrap_or_default()),
+        Field::text("description", tr(K::Description))
+            .value(existing.and_then(|l| l.description.clone()).unwrap_or_default()),
+        Field::number("connection_limit", tr(K::ConnectionLimit), 1)
+            .value(limit)
+            .help(tr(K::UnlimitedWhenEmpty)),
+        Field::select("default_pool", tr(K::DefaultPool), static_refs(&pools)).value(
+            existing
+                .and_then(|l| l.default_pool.as_ref().map(|p| p.id.clone()))
+                .unwrap_or_default(),
+        ),
     ]);
     // Also on a new listener (roadmap 54).
-    fields.push(Field::check("admin_up", tr(K::EnableAdminState), existing.is_none_or(|l| l.admin_up)));
+    fields.push(Field::check(
+        "admin_up",
+        tr(K::EnableAdminState),
+        existing.is_none_or(|l| l.admin_up),
+    ));
     type Cond = Option<fn(&Vals) -> bool>;
     let always: fn(&Vals) -> bool = |_| true;
     let (headers_if, ciphers_if): (Cond, Cond) = match existing {
         None => (Some(dialog_headers), Some(dialog_tls)),
-        Some(l) => (lb_inserts_headers(&l.protocol).then_some(always), (l.protocol == LB_TLS_PROTOCOL).then_some(always)),
+        Some(l) => (
+            lb_inserts_headers(&l.protocol).then_some(always),
+            (l.protocol == LB_TLS_PROTOCOL).then_some(always),
+        ),
     };
-    fields.extend(listener_option_fields(lang, existing.map(|l| &l.options), headers_if, ciphers_if, None));
+    fields.extend(listener_option_fields(
+        lang,
+        existing.map(|l| &l.options),
+        headers_if,
+        ciphers_if,
+        None,
+    ));
     let id = existing.map(|l| (l.id.clone(), l.protocol.clone()));
-    let title = tr(if existing.is_some() { K::EditListener } else { K::CreateListener });
+    let title = tr(if existing.is_some() {
+        K::EditListener
+    } else {
+        K::CreateListener
+    });
     Dialog::form(title.clone(), title, fields, move |v| {
         let connection_limit = u32_of(v, "connection_limit", K::ConnectionLimit, lang)?;
         let options = listener_options_of(v, lang)?;
@@ -4022,11 +6112,19 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
                     connection_limit,
                     options: options.unwrap_or_default(),
                     default_tls_container_ref: v.opt("certificate").filter(|_| v.get("protocol") == LB_TLS_PROTOCOL),
-                    sni_container_refs: if v.get("protocol") == LB_TLS_PROTOCOL { v.list("sni") } else { vec![] },
+                    sni_container_refs: if v.get("protocol") == LB_TLS_PROTOCOL {
+                        v.list("sni")
+                    } else {
+                        vec![]
+                    },
                     admin_up: v.flag("admin_up"),
                 };
                 spec.check().map_err(|e| invalid(lang, e))?;
-                OsAction::ListenerCreate { loadbalancer_id: lb.clone(), spec, default_pool_id: v.opt("default_pool") }
+                OsAction::ListenerCreate {
+                    loadbalancer_id: lb.clone(),
+                    spec,
+                    default_pool_id: v.opt("default_pool"),
+                }
             }
         })
     })
@@ -4037,22 +6135,48 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
 /// listener that has none.
 pub fn pool_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbPool>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    let free: Vec<_> = d.listeners.iter().filter(|l| l.default_pool.is_none()).map(|l| (l.id.clone(), format!("{} ({} {})", l.name, l.protocol, l.port.unwrap_or(0)))).collect();
+    let free: Vec<_> = d
+        .listeners
+        .iter()
+        .filter(|l| l.default_pool.is_none())
+        .map(|l| {
+            (
+                l.id.clone(),
+                format!("{} ({} {})", l.name, l.protocol, l.port.unwrap_or(0)),
+            )
+        })
+        .collect();
     let lb = d.row.id.clone();
     let mut fields = vec![Field::text("name", tr(K::Name)).value(existing.map(|p| p.name.clone()).unwrap_or_default())];
-    fields.push(Field::text("description", tr(K::Description)).value(existing.and_then(|p| p.description.clone()).unwrap_or_default()));
+    fields.push(
+        Field::text("description", tr(K::Description))
+            .value(existing.and_then(|p| p.description.clone()).unwrap_or_default()),
+    );
     if existing.is_none() {
         fields.push(Field::select("listener", tr(K::Listener), static_refs(&free)).help(tr(K::PoolListenerHelp)));
-        fields.push(Field::select("protocol", tr(K::Protocol), options_raw(&LB_PROTOCOLS)).value("HTTP").required());
+        fields.push(
+            Field::select("protocol", tr(K::Protocol), options_raw(&LB_PROTOCOLS))
+                .value("HTTP")
+                .required(),
+        );
     }
     fields.extend([
-        Field::select("algorithm", tr(K::Algorithm), options_raw(&LB_ALGORITHMS)).value(existing.map_or("ROUND_ROBIN".into(), |p| p.algorithm.clone())).required(),
-        Field::select("persistence", tr(K::SessionPersistence), options_raw(&LB_PERSISTENCE)).value(existing.and_then(|p| p.persistence_type.clone()).unwrap_or_default()),
-        Field::text("cookie_name", tr(K::CookieName)).value(existing.and_then(|p| p.cookie_name.clone()).unwrap_or_default()).when("persistence", "APP_COOKIE"),
+        Field::select("algorithm", tr(K::Algorithm), options_raw(&LB_ALGORITHMS))
+            .value(existing.map_or("ROUND_ROBIN".into(), |p| p.algorithm.clone()))
+            .required(),
+        Field::select("persistence", tr(K::SessionPersistence), options_raw(&LB_PERSISTENCE))
+            .value(existing.and_then(|p| p.persistence_type.clone()).unwrap_or_default()),
+        Field::text("cookie_name", tr(K::CookieName))
+            .value(existing.and_then(|p| p.cookie_name.clone()).unwrap_or_default())
+            .when("persistence", "APP_COOKIE"),
     ]);
     fields.extend(pool_tls_fields(lang, existing, None));
     // Also on a new pool (roadmap 54).
-    fields.push(Field::check("admin_up", tr(K::EnableAdminState), existing.is_none_or(|p| p.admin_up)));
+    fields.push(Field::check(
+        "admin_up",
+        tr(K::EnableAdminState),
+        existing.is_none_or(|p| p.admin_up),
+    ));
     let id = existing.map(|p| (p.id.clone(), p.protocol.clone()));
     let title = tr(if existing.is_some() { K::EditPool } else { K::CreatePool });
     Dialog::form(title.clone(), title, fields, move |v| {
@@ -4088,7 +6212,11 @@ pub fn pool_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbPool>
                     admin_up: v.flag("admin_up"),
                 };
                 spec.check().map_err(|e| invalid(lang, e))?;
-                OsAction::PoolCreate { loadbalancer_id: lb.clone(), listener_id: v.opt("listener"), spec }
+                OsAction::PoolCreate {
+                    loadbalancer_id: lb.clone(),
+                    listener_id: v.opt("listener"),
+                    spec,
+                }
             }
         })
     })
@@ -4102,24 +6230,61 @@ pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMem
     let pools = refs_of(&d.pools, |p| (p.id.clone(), p.name.clone()));
     let mut fields = vec![];
     if existing.is_none() {
-        fields.push(Field::select("pool", tr(K::Pool), static_refs(&pools)).value(pools.first().map(|p| p.0.clone()).unwrap_or_default()).required());
+        fields.push(
+            Field::select("pool", tr(K::Pool), static_refs(&pools))
+                .value(pools.first().map(|p| p.0.clone()).unwrap_or_default())
+                .required(),
+        );
         let sources = [("instance", K::Instance), ("external", K::ExternalAddress)];
-        fields.push(Field::select("source", tr(K::MemberSource), options(&sources, lang)).value("instance").required());
-        fields.push(Field::select("target", tr(K::IpAddress), Source::Set(ChoiceSet::LbMemberTargets)).required().when("source", "instance"));
-        fields.push(Field::text("address", tr(K::IpAddress)).required().when("source", "external"));
-        fields.push(Field::select("subnet", tr(K::Subnet), Source::Set(ChoiceSet::LbMemberSubnets)).required().when("source", "external"));
+        fields.push(
+            Field::select("source", tr(K::MemberSource), options(&sources, lang))
+                .value("instance")
+                .required(),
+        );
+        fields.push(
+            Field::select("target", tr(K::IpAddress), Source::Set(ChoiceSet::LbMemberTargets))
+                .required()
+                .when("source", "instance"),
+        );
+        fields.push(
+            Field::text("address", tr(K::IpAddress))
+                .required()
+                .when("source", "external"),
+        );
+        fields.push(
+            Field::select("subnet", tr(K::Subnet), Source::Set(ChoiceSet::LbMemberSubnets))
+                .required()
+                .when("source", "external"),
+        );
         fields.push(Field::number("port", tr(K::MemberPort), 1).value("80").required());
     }
     fields.extend([
-        Field::text("name", tr(K::Name)).value(existing.map(|m| if m.name == m.id { String::new() } else { m.name.clone() }).unwrap_or_default()),
-        Field::number("weight", tr(K::Weight), 0).value(existing.and_then(|m| m.weight).unwrap_or(1).to_string()).required(),
+        Field::text("name", tr(K::Name)).value(
+            existing
+                .map(|m| if m.name == m.id { String::new() } else { m.name.clone() })
+                .unwrap_or_default(),
+        ),
+        Field::number("weight", tr(K::Weight), 0)
+            .value(existing.and_then(|m| m.weight).unwrap_or(1).to_string())
+            .required(),
         Field::check("backup", tr(K::Backup), existing.is_some_and(|m| m.backup)),
-        Field::text("monitor_address", tr(K::MonitorAddress)).value(existing.and_then(|m| m.monitor_address.clone()).unwrap_or_default()).help(tr(K::MonitorAddressHelp)),
-        Field::number("monitor_port", tr(K::MonitorPort), 1).value(existing.and_then(|m| m.monitor_port).map(|p| p.to_string()).unwrap_or_default()),
+        Field::text("monitor_address", tr(K::MonitorAddress))
+            .value(existing.and_then(|m| m.monitor_address.clone()).unwrap_or_default())
+            .help(tr(K::MonitorAddressHelp)),
+        Field::number("monitor_port", tr(K::MonitorPort), 1).value(
+            existing
+                .and_then(|m| m.monitor_port)
+                .map(|p| p.to_string())
+                .unwrap_or_default(),
+        ),
         Field::check("admin_up", tr(K::EnableAdminState), existing.is_none_or(|m| m.admin_up)),
     ]);
     let ids = existing.map(|m| (m.pool.id.clone(), m.id.clone()));
-    let title = tr(if existing.is_some() { K::EditMember } else { K::AddMember });
+    let title = tr(if existing.is_some() {
+        K::EditMember
+    } else {
+        K::AddMember
+    });
     Dialog::form(title.clone(), title, fields, move |v| {
         let weight = u16_of(v, "weight", K::Weight, lang)?.unwrap_or(1);
         let monitor_port = u16_of(v, "monitor_port", K::MonitorPort, lang)?;
@@ -4139,7 +6304,10 @@ pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMem
                     (req(v, "address", K::IpAddress, lang)?, v.opt("subnet"))
                 } else {
                     let target = req(v, "target", K::IpAddress, lang)?;
-                    target.split_once('@').map(|(a, s)| (a.to_string(), Some(s.to_string()))).unwrap_or((target.clone(), None))
+                    target
+                        .split_once('@')
+                        .map(|(a, s)| (a.to_string(), Some(s.to_string())))
+                        .unwrap_or((target.clone(), None))
                 };
                 let spec = LbMemberSpec {
                     name: v.opt("name"),
@@ -4153,7 +6321,10 @@ pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMem
                     admin_up: v.flag("admin_up"),
                 };
                 spec.check().map_err(|e| invalid(lang, e))?;
-                OsAction::MemberCreate { pool_id: req(v, "pool", K::Pool, lang)?, spec }
+                OsAction::MemberCreate {
+                    pool_id: req(v, "pool", K::Pool, lang)?,
+                    spec,
+                }
             }
         })
     })
@@ -4168,10 +6339,18 @@ pub fn pool_members_dialog(lang: Lang, d: &LoadBalancerDetail, pool: &LbPool) ->
     let rows: Vec<MemberRow> = current.iter().map(MemberRow::from_member).collect();
     let pool_id = pool.id.clone();
     let fields = vec![Field::member_rows("members", tr(K::Members), &rows, None, current).help(tr(K::MembersHelp))];
-    let mut dialog = Dialog::form(format!("{}: {}", tr(K::EditMembers), pool.name), tr(K::EditMembers), fields, move |v| {
-        let members = member_specs(&v.get("members")).map_err(|e| invalid(lang, e))?;
-        Ok(OsAction::PoolSetMembers { pool_id: pool_id.clone(), members })
-    })
+    let mut dialog = Dialog::form(
+        format!("{}: {}", tr(K::EditMembers), pool.name),
+        tr(K::EditMembers),
+        fields,
+        move |v| {
+            let members = member_specs(&v.get("members")).map_err(|e| invalid(lang, e))?;
+            Ok(OsAction::PoolSetMembers {
+                pool_id: pool_id.clone(),
+                members,
+            })
+        },
+    )
     .sized(DialogSize::Large);
     dialog.intro = vec![tr(K::EditMembersIntro)];
     dialog.danger = true;
@@ -4181,28 +6360,48 @@ pub fn pool_members_dialog(lang: Lang, d: &LoadBalancerDetail, pool: &LbPool) ->
 /// *Create Health Monitor* (for a pool without one) / *Edit Health Monitor*.
 pub fn monitor_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMonitor>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    let free: Vec<_> = d.pools.iter().filter(|p| p.monitor.is_none()).map(|p| (p.id.clone(), p.name.clone())).collect();
+    let free: Vec<_> = d
+        .pools
+        .iter()
+        .filter(|p| p.monitor.is_none())
+        .map(|p| (p.id.clone(), p.name.clone()))
+        .collect();
     let mut fields = vec![];
     if existing.is_none() {
-        fields.push(Field::select("pool", tr(K::Pool), static_refs(&free)).value(free.first().map(|p| p.0.clone()).unwrap_or_default()).required());
+        fields.push(
+            Field::select("pool", tr(K::Pool), static_refs(&free))
+                .value(free.first().map(|p| p.0.clone()).unwrap_or_default())
+                .required(),
+        );
     }
     fields.extend(monitor_fields(lang, None, existing));
     if let Some(m) = existing {
         fields.push(Field::check("admin_up", tr(K::EnableAdminState), m.admin_up));
     }
     let edit = existing.map(|m| (m.id.clone(), m.kind.clone()));
-    let title = tr(if existing.is_some() { K::EditHealthMonitor } else { K::CreateHealthMonitor });
+    let title = tr(if existing.is_some() {
+        K::EditHealthMonitor
+    } else {
+        K::CreateHealthMonitor
+    });
     Dialog::form(title.clone(), title, fields, move |v| {
         Ok(match &edit {
             Some((id, kind)) => {
                 let spec = monitor_spec(v, lang, kind.clone())?;
                 spec.check().map_err(|e| invalid(lang, e))?;
-                OsAction::MonitorUpdate { id: id.clone(), spec, admin_up: v.flag("admin_up") }
+                OsAction::MonitorUpdate {
+                    id: id.clone(),
+                    spec,
+                    admin_up: v.flag("admin_up"),
+                }
             }
             None => {
                 let spec = monitor_spec(v, lang, v.get("monitor_type"))?;
                 spec.check().map_err(|e| invalid(lang, e))?;
-                OsAction::MonitorCreate { pool_id: req(v, "pool", K::Pool, lang)?, spec }
+                OsAction::MonitorCreate {
+                    pool_id: req(v, "pool", K::Pool, lang)?,
+                    spec,
+                }
             }
         })
     })
@@ -4214,7 +6413,14 @@ pub fn listener_items(lang: Lang, d: &LoadBalancerDetail, l: &LbListener) -> Vec
     let (i, n) = (l.id.clone(), l.name.clone());
     vec![
         MenuItem::dialog(t(lang, K::EditListener), move || listener_dialog(lang, &dd, Some(&ll))),
-        MenuItem::danger(t(lang, K::DeleteListener), move || Dialog::confirm(lang, t(lang, K::DeleteListener), n.clone(), OsAction::ListenerDelete { id: i.clone() })),
+        MenuItem::danger(t(lang, K::DeleteListener), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteListener),
+                n.clone(),
+                OsAction::ListenerDelete { id: i.clone() },
+            )
+        }),
     ]
 }
 
@@ -4228,7 +6434,14 @@ pub fn pool_items(lang: Lang, d: &LoadBalancerDetail, p: &LbPool) -> Vec<MenuIte
             let (dd, pp) = (d.clone(), p.clone());
             move || pool_members_dialog(lang, &dd, &pp)
         }),
-        MenuItem::danger(t(lang, K::DeletePool), move || Dialog::confirm(lang, t(lang, K::DeletePool), n.clone(), OsAction::PoolDelete { id: i.clone() })),
+        MenuItem::danger(t(lang, K::DeletePool), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeletePool),
+                n.clone(),
+                OsAction::PoolDelete { id: i.clone() },
+            )
+        }),
     ]
 }
 
@@ -4240,7 +6453,15 @@ pub fn member_items(lang: Lang, d: &LoadBalancerDetail, m: &LbMember) -> Vec<Men
     vec![
         MenuItem::dialog(t(lang, K::EditMember), move || member_dialog(lang, &dd, Some(&mm))),
         MenuItem::danger(t(lang, K::DeleteMember), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteMember), what.clone(), OsAction::MemberDelete { pool_id: pool.clone(), id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteMember),
+                what.clone(),
+                OsAction::MemberDelete {
+                    pool_id: pool.clone(),
+                    id: i.clone(),
+                },
+            )
         }),
     ]
 }
@@ -4250,9 +6471,16 @@ pub fn monitor_items(lang: Lang, d: &LoadBalancerDetail, m: &LbMonitor) -> Vec<M
     let (dd, mm) = (d.clone(), m.clone());
     let (i, n) = (m.id.clone(), m.name.clone());
     vec![
-        MenuItem::dialog(t(lang, K::EditHealthMonitor), move || monitor_dialog(lang, &dd, Some(&mm))),
+        MenuItem::dialog(t(lang, K::EditHealthMonitor), move || {
+            monitor_dialog(lang, &dd, Some(&mm))
+        }),
         MenuItem::danger(t(lang, K::DeleteHealthMonitor), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteHealthMonitor), n.clone(), OsAction::MonitorDelete { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteHealthMonitor),
+                n.clone(),
+                OsAction::MonitorDelete { id: i.clone() },
+            )
         }),
     ]
 }
@@ -4260,7 +6488,16 @@ pub fn monitor_items(lang: Lang, d: &LoadBalancerDetail, m: &LbMonitor) -> Vec<M
 /// Listeners that can take L7 policies: Octavia applies them to HTTP and
 /// `TERMINATED_HTTPS` listeners only (roadmap 54).
 pub fn l7_listeners(d: &LoadBalancerDetail) -> Vec<(String, String)> {
-    d.listeners.iter().filter(|l| lb_inserts_headers(&l.protocol)).map(|l| (l.id.clone(), format!("{} ({} {})", l.name, l.protocol, l.port.unwrap_or(0)))).collect()
+    d.listeners
+        .iter()
+        .filter(|l| lb_inserts_headers(&l.protocol))
+        .map(|l| {
+            (
+                l.id.clone(),
+                format!("{} ({} {})", l.name, l.protocol, l.port.unwrap_or(0)),
+            )
+        })
+        .collect()
 }
 
 /// *Create L7 Policy* / *Edit L7 Policy* (roadmap 54), as octavia-dashboard
@@ -4274,21 +6511,39 @@ pub fn l7_policy_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&Lb
     }
     fields.extend([
         Field::text("name", tr(K::Name)).value(existing.map(|p| p.name.clone()).unwrap_or_default()),
-        Field::text("description", tr(K::Description)).value(existing.and_then(|p| p.description.clone()).unwrap_or_default()),
-        Field::select("action", tr(K::Action), options_raw(&LB_L7_ACTIONS)).value(existing.map_or("REDIRECT_TO_POOL".into(), |p| p.action.clone())).required(),
+        Field::text("description", tr(K::Description))
+            .value(existing.and_then(|p| p.description.clone()).unwrap_or_default()),
+        Field::select("action", tr(K::Action), options_raw(&LB_L7_ACTIONS))
+            .value(existing.map_or("REDIRECT_TO_POOL".into(), |p| p.action.clone()))
+            .required(),
         Field::select("redirect_pool", tr(K::RedirectPool), static_refs(&pools))
-            .value(existing.and_then(|p| p.redirect_pool.as_ref().map(|r| r.id.clone())).unwrap_or_default())
+            .value(
+                existing
+                    .and_then(|p| p.redirect_pool.as_ref().map(|r| r.id.clone()))
+                    .unwrap_or_default(),
+            )
             .required()
             .when("action", "REDIRECT_TO_POOL"),
         Field::text("redirect_url", tr(K::RedirectUrl))
             .value(existing.and_then(|p| p.redirect_url.clone()).unwrap_or_default())
             .required()
             .when("action", "REDIRECT_TO_URL"),
-        Field::number("position", tr(K::Position), 1).value(existing.and_then(|p| p.position).map(|n| n.to_string()).unwrap_or_default()).help(tr(K::L7PositionHelp)),
+        Field::number("position", tr(K::Position), 1)
+            .value(
+                existing
+                    .and_then(|p| p.position)
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+            )
+            .help(tr(K::L7PositionHelp)),
         Field::check("admin_up", tr(K::EnableAdminState), existing.is_none_or(|p| p.admin_up)),
     ]);
     let id = existing.map(|p| p.id.clone());
-    let title = tr(if existing.is_some() { K::EditL7Policy } else { K::CreateL7Policy });
+    let title = tr(if existing.is_some() {
+        K::EditL7Policy
+    } else {
+        K::CreateL7Policy
+    });
     Dialog::form(title.clone(), title, fields, move |v| {
         let spec = LbL7PolicySpec {
             name: v.opt("name"),
@@ -4302,31 +6557,55 @@ pub fn l7_policy_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&Lb
         spec.check().map_err(|e| invalid(lang, e))?;
         Ok(match &id {
             Some(id) => OsAction::L7PolicyUpdate { id: id.clone(), spec },
-            None => OsAction::L7PolicyCreate { listener_id: req(v, "listener", K::Listener, lang)?, spec },
+            None => OsAction::L7PolicyCreate {
+                listener_id: req(v, "listener", K::Listener, lang)?,
+                spec,
+            },
         })
     })
 }
 
 /// *Add L7 Rule* / *Edit L7 Rule* (roadmap 54). `policy`: the policy it goes
 /// to (from the policy's menu, or an edit); `None` offers a choice.
-pub fn l7_rule_dialog(lang: Lang, d: &LoadBalancerDetail, policy: Option<&LbL7Policy>, existing: Option<&LbL7Rule>) -> Dialog {
+pub fn l7_rule_dialog(
+    lang: Lang,
+    d: &LoadBalancerDetail,
+    policy: Option<&LbL7Policy>,
+    existing: Option<&LbL7Rule>,
+) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let mut fields = vec![];
     if policy.is_none() {
-        let policies = refs_of(&d.l7policies, |p| (p.id.clone(), format!("{} ({})", p.name, p.listener.name)));
+        let policies = refs_of(&d.l7policies, |p| {
+            (p.id.clone(), format!("{} ({})", p.name, p.listener.name))
+        });
         fields.push(Field::select("policy", tr(K::L7Policy), static_refs(&policies)).required());
     }
     let keyed: fn(&Vals) -> bool = |v| matches!(v.get("rule_type").map(String::as_str), Some("HEADER" | "COOKIE"));
     fields.extend([
-        Field::select("rule_type", tr(K::RuleType), options_raw(&LB_L7_RULE_TYPES)).value(existing.map_or("PATH".into(), |r| r.rule_type.clone())).required(),
-        Field::select("compare_type", tr(K::CompareType), options_raw(&LB_L7_COMPARE_TYPES)).value(existing.map_or("STARTS_WITH".into(), |r| r.compare_type.clone())).required(),
-        Field::text("key", tr(K::L7Key)).value(existing.and_then(|r| r.key.clone()).unwrap_or_default()).help(tr(K::L7KeyHelp)).required().show_if(keyed),
-        Field::text("value", tr(K::Value)).value(existing.map(|r| r.value.clone()).unwrap_or_default()).required(),
+        Field::select("rule_type", tr(K::RuleType), options_raw(&LB_L7_RULE_TYPES))
+            .value(existing.map_or("PATH".into(), |r| r.rule_type.clone()))
+            .required(),
+        Field::select("compare_type", tr(K::CompareType), options_raw(&LB_L7_COMPARE_TYPES))
+            .value(existing.map_or("STARTS_WITH".into(), |r| r.compare_type.clone()))
+            .required(),
+        Field::text("key", tr(K::L7Key))
+            .value(existing.and_then(|r| r.key.clone()).unwrap_or_default())
+            .help(tr(K::L7KeyHelp))
+            .required()
+            .show_if(keyed),
+        Field::text("value", tr(K::Value))
+            .value(existing.map(|r| r.value.clone()).unwrap_or_default())
+            .required(),
         Field::check("invert", tr(K::Invert), existing.is_some_and(|r| r.invert)).help(tr(K::InvertHelp)),
         Field::check("admin_up", tr(K::EnableAdminState), existing.is_none_or(|r| r.admin_up)),
     ]);
     let (policy_id, id) = (policy.map(|p| p.id.clone()), existing.map(|r| r.id.clone()));
-    let title = tr(if existing.is_some() { K::EditL7Rule } else { K::AddL7Rule });
+    let title = tr(if existing.is_some() {
+        K::EditL7Rule
+    } else {
+        K::AddL7Rule
+    });
     Dialog::form(title.clone(), title, fields, move |v| {
         let rule_type = req(v, "rule_type", K::RuleType, lang)?;
         let keyed = matches!(rule_type.as_str(), "HEADER" | "COOKIE");
@@ -4344,7 +6623,11 @@ pub fn l7_rule_dialog(lang: Lang, d: &LoadBalancerDetail, policy: Option<&LbL7Po
             None => req(v, "policy", K::L7Policy, lang)?,
         };
         Ok(match &id {
-            Some(id) => OsAction::L7RuleUpdate { policy_id, id: id.clone(), spec },
+            Some(id) => OsAction::L7RuleUpdate {
+                policy_id,
+                id: id.clone(),
+                spec,
+            },
             None => OsAction::L7RuleCreate { policy_id, spec },
         })
     })
@@ -4356,19 +6639,42 @@ pub fn l7_policy_items(lang: Lang, d: &LoadBalancerDetail, p: &LbL7Policy) -> Ve
     let (i, n) = (p.id.clone(), p.name.clone());
     vec![
         MenuItem::dialog(t(lang, K::EditL7Policy), move || l7_policy_dialog(lang, &d1, Some(&p1))),
-        MenuItem::dialog(t(lang, K::AddL7Rule), move || l7_rule_dialog(lang, &d2, Some(&p2), None)),
-        MenuItem::danger(t(lang, K::DeleteL7Policy), move || Dialog::confirm(lang, t(lang, K::DeleteL7Policy), n.clone(), OsAction::L7PolicyDelete { id: i.clone() })),
+        MenuItem::dialog(t(lang, K::AddL7Rule), move || {
+            l7_rule_dialog(lang, &d2, Some(&p2), None)
+        }),
+        MenuItem::danger(t(lang, K::DeleteL7Policy), move || {
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteL7Policy),
+                n.clone(),
+                OsAction::L7PolicyDelete { id: i.clone() },
+            )
+        }),
     ]
 }
 
 /// An L7 rule's menu (`p`: its policy).
 pub fn l7_rule_items(lang: Lang, d: &LoadBalancerDetail, p: &LbL7Policy, r: &LbL7Rule) -> Vec<MenuItem> {
     let (dd, pp, rr) = (d.clone(), p.clone(), r.clone());
-    let (pid, id, label) = (p.id.clone(), r.id.clone(), format!("{} {} {}", r.rule_type, r.compare_type, r.value));
+    let (pid, id, label) = (
+        p.id.clone(),
+        r.id.clone(),
+        format!("{} {} {}", r.rule_type, r.compare_type, r.value),
+    );
     vec![
-        MenuItem::dialog(t(lang, K::EditL7Rule), move || l7_rule_dialog(lang, &dd, Some(&pp), Some(&rr))),
+        MenuItem::dialog(t(lang, K::EditL7Rule), move || {
+            l7_rule_dialog(lang, &dd, Some(&pp), Some(&rr))
+        }),
         MenuItem::danger(t(lang, K::DeleteL7Rule), move || {
-            Dialog::confirm(lang, t(lang, K::DeleteL7Rule), label.clone(), OsAction::L7RuleDelete { policy_id: pid.clone(), id: id.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::DeleteL7Rule),
+                label.clone(),
+                OsAction::L7RuleDelete {
+                    policy_id: pid.clone(),
+                    id: id.clone(),
+                },
+            )
         }),
     ]
 }
@@ -4380,19 +6686,37 @@ pub fn port_forwarding_dialog(lang: Lang, floating_ip_id: &str, rule: Option<&Po
     let ranges = needs::PORT_FORWARDING_RANGES.met(&caps());
     let port_help = tr(if ranges { K::PortOrRangeHelp } else { K::PortHelp });
     let fields = vec![
-        Field::select("protocol", tr(K::Protocol), options_raw(&["tcp", "udp"])).value(rule.map_or("tcp".into(), |r| r.protocol.clone())).required(),
-        Field::select("internal", tr(K::InternalIpAddress), Source::Set(ChoiceSet::ForwardablePorts))
-            .value(rule.map(|r| format!("{}/{}", r.internal_port_id, r.internal_ip)).unwrap_or_default())
+        Field::select("protocol", tr(K::Protocol), options_raw(&["tcp", "udp"]))
+            .value(rule.map_or("tcp".into(), |r| r.protocol.clone()))
             .required(),
-        Field::text("internal_port", tr(K::InternalPort)).value(rule.map(|r| r.internal.clone()).unwrap_or_default()).help(port_help.clone()).required(),
-        Field::text("external_port", tr(K::ExternalPort)).value(rule.map(|r| r.external.clone()).unwrap_or_default()).help(port_help).required(),
-        Field::text("description", tr(K::Description)).value(rule.and_then(|r| r.description.clone()).unwrap_or_default()),
+        Field::select(
+            "internal",
+            tr(K::InternalIpAddress),
+            Source::Set(ChoiceSet::ForwardablePorts),
+        )
+        .value(
+            rule.map(|r| format!("{}/{}", r.internal_port_id, r.internal_ip))
+                .unwrap_or_default(),
+        )
+        .required(),
+        Field::text("internal_port", tr(K::InternalPort))
+            .value(rule.map(|r| r.internal.clone()).unwrap_or_default())
+            .help(port_help.clone())
+            .required(),
+        Field::text("external_port", tr(K::ExternalPort))
+            .value(rule.map(|r| r.external.clone()).unwrap_or_default())
+            .help(port_help)
+            .required(),
+        Field::text("description", tr(K::Description))
+            .value(rule.and_then(|r| r.description.clone()).unwrap_or_default()),
     ];
     let (fip, id) = (floating_ip_id.to_string(), rule.map(|r| r.id.clone()));
     let title = tr(if rule.is_some() { K::EditRule } else { K::AddRule });
     Dialog::form(title.clone(), title, fields, move |v| {
         let internal = req(v, "internal", K::InternalIpAddress, lang)?;
-        let (port_id, ip) = internal.split_once('/').ok_or_else(|| t(lang, K::InternalIpAddress).to_string())?;
+        let (port_id, ip) = internal
+            .split_once('/')
+            .ok_or_else(|| t(lang, K::InternalIpAddress).to_string())?;
         let spec = PortForwardingSpec {
             floating_ip_id: fip.clone(),
             protocol: req(v, "protocol", K::Protocol, lang)?,
@@ -4403,7 +6727,8 @@ pub fn port_forwarding_dialog(lang: Lang, floating_ip_id: &str, rule: Option<&Po
             description: v.opt("description"),
             ranges,
         };
-        spec.ports().map_err(|_| t(lang, if ranges { K::PortOrRangeHelp } else { K::PortHelp }).to_string())?;
+        spec.ports()
+            .map_err(|_| t(lang, if ranges { K::PortOrRangeHelp } else { K::PortHelp }).to_string())?;
         Ok(match &id {
             Some(id) => OsAction::PortForwardingUpdate { id: id.clone(), spec },
             None => OsAction::PortForwardingCreate(spec),
@@ -4414,11 +6739,27 @@ pub fn port_forwarding_dialog(lang: Lang, floating_ip_id: &str, rule: Option<&Po
 /// A port forwarding's menu (edit, delete).
 pub fn port_forwarding_items(lang: Lang, floating_ip_id: &str, r: &PortForwardingRow) -> Vec<MenuItem> {
     let (f, rule) = (floating_ip_id.to_string(), r.clone());
-    let edit = MenuItem::dialog(t(lang, K::EditRule), move || port_forwarding_dialog(lang, &f, Some(&rule)));
+    let edit = MenuItem::dialog(t(lang, K::EditRule), move || {
+        port_forwarding_dialog(lang, &f, Some(&rule))
+    });
     let (f, id) = (floating_ip_id.to_string(), r.id.clone());
-    let what = format!("{} {} → {}:{}", r.protocol.to_uppercase(), r.external, r.internal_ip, r.internal);
+    let what = format!(
+        "{} {} → {}:{}",
+        r.protocol.to_uppercase(),
+        r.external,
+        r.internal_ip,
+        r.internal
+    );
     let delete = MenuItem::danger(t(lang, K::DeleteRule), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteRule), what.clone(), OsAction::PortForwardingDelete { floating_ip_id: f.clone(), id: id.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteRule),
+            what.clone(),
+            OsAction::PortForwardingDelete {
+                floating_ip_id: f.clone(),
+                id: id.clone(),
+            },
+        )
     });
     vec![edit, delete]
 }
@@ -4429,7 +6770,12 @@ pub fn floating_ip_items(lang: Lang, f: &FloatingIpRow) -> Vec<MenuItem> {
     if f.fixed_ip.is_some() {
         let (i, ip) = (f.id.clone(), f.ip.clone());
         items.push(MenuItem::danger(t(lang, K::Disassociate), move || {
-            Dialog::confirm(lang, t(lang, K::Disassociate), ip.clone(), OsAction::FloatingIpDisassociate { id: i.clone() })
+            Dialog::confirm(
+                lang,
+                t(lang, K::Disassociate),
+                ip.clone(),
+                OsAction::FloatingIpDisassociate { id: i.clone() },
+            )
         }));
     } else {
         let i = f.id.clone();
@@ -4438,18 +6784,38 @@ pub fn floating_ip_items(lang: Lang, f: &FloatingIpRow) -> Vec<MenuItem> {
             Dialog::form(
                 t(lang, K::Associate),
                 t(lang, K::Associate),
-                vec![Field::select("port", t(lang, K::PortToAssociate), Source::Set(ChoiceSet::AssociablePorts)).required()],
-                move |v| Ok(OsAction::FloatingIpAssociate { id: i.clone(), port_id: req(v, "port", K::PortToAssociate, lang)? }),
+                vec![
+                    Field::select(
+                        "port",
+                        t(lang, K::PortToAssociate),
+                        Source::Set(ChoiceSet::AssociablePorts),
+                    )
+                    .required(),
+                ],
+                move |v| {
+                    Ok(OsAction::FloatingIpAssociate {
+                        id: i.clone(),
+                        port_id: req(v, "port", K::PortToAssociate, lang)?,
+                    })
+                },
             )
         }));
     }
     // In the dropdown: Associate / Disassociate stays the main button.
     if needs::PORT_FORWARDING.met(&caps()) {
-        items.push(MenuItem::link(t(lang, K::PortForwardingRules), format!("/project/floating_ips/{}?tab=forwarding", f.id)));
+        items.push(MenuItem::link(
+            t(lang, K::PortForwardingRules),
+            format!("/project/floating_ips/{}?tab=forwarding", f.id),
+        ));
     }
     let (i, ip) = (f.id.clone(), f.ip.clone());
     items.push(MenuItem::danger(t(lang, K::ReleaseIp), move || {
-        Dialog::confirm(lang, t(lang, K::ReleaseIp), ip.clone(), OsAction::FloatingIpRelease { id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::ReleaseIp),
+            ip.clone(),
+            OsAction::FloatingIpRelease { id: i.clone() },
+        )
     }));
     items
 }
@@ -4514,7 +6880,11 @@ pub fn quota_label(lang: Lang, s: QuotaService, key: &str) -> String {
         (KeyManager, "consumers") => K::Consumers,
         (KeyManager, "cas") => K::QCertificateAuthorities,
         (Volume, _) => {
-            let per_type = [("volumes_", K::Volumes), ("gigabytes_", K::QGigabytes), ("snapshots_", K::VolumeSnapshots)];
+            let per_type = [
+                ("volumes_", K::Volumes),
+                ("gigabytes_", K::QGigabytes),
+                ("snapshots_", K::VolumeSnapshots),
+            ];
             return match per_type.iter().find_map(|(p, k)| key.strip_prefix(p).map(|ty| (k, ty))) {
                 Some((k, ty)) => format!("{} ({ty})", t(lang, *k)),
                 None => key.to_string(),
@@ -4531,15 +6901,31 @@ pub fn quota_label(lang: Lang, s: QuotaService, key: &str) -> String {
 /// message instead.
 pub fn edit_quotas_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
     let project_id = card.project_id.clone();
-    let title = format!("{}: {}", t(lang, K::EditQuotas), t(lang, quota_service_label(card.service)));
-    quotas_form(lang, card, title, move |service, values| OsAction::QuotaUpdate { service, project_id: project_id.clone(), values }).forbidden(t(lang, K::QuotaForbidden))
+    let title = format!(
+        "{}: {}",
+        t(lang, K::EditQuotas),
+        t(lang, quota_service_label(card.service))
+    );
+    quotas_form(lang, card, title, move |service, values| OsAction::QuotaUpdate {
+        service,
+        project_id: project_id.clone(),
+        values,
+    })
+    .forbidden(t(lang, K::QuotaForbidden))
 }
 
 /// Admin › Defaults' *Update Defaults* (roadmap 85): the same form over the
 /// `default` quota class of Compute or Volume.
 pub fn update_defaults_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
-    let title = format!("{}: {}", t(lang, K::UpdateDefaults), t(lang, quota_service_label(card.service)));
-    let mut d = quotas_form(lang, card, title, |service, values| OsAction::DefaultQuotaUpdate { service, values });
+    let title = format!(
+        "{}: {}",
+        t(lang, K::UpdateDefaults),
+        t(lang, quota_service_label(card.service))
+    );
+    let mut d = quotas_form(lang, card, title, |service, values| OsAction::DefaultQuotaUpdate {
+        service,
+        values,
+    });
     // Defaults have no usage: Project's "can't be below what is used" doesn't apply.
     d.intro = vec![t(lang, K::DefaultQuotaHelp).into()];
     d
@@ -4547,16 +6933,33 @@ pub fn update_defaults_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
 
 /// One number per limit `card` shows (`-1` unlimited); `make` gets the changed
 /// ones only, and an unchanged form is refused.
-fn quotas_form(lang: Lang, card: &QuotaCard, title: String, make: impl Fn(QuotaService, std::collections::BTreeMap<String, i64>) -> OsAction + Send + Sync + 'static) -> Dialog {
+fn quotas_form(
+    lang: Lang,
+    card: &QuotaCard,
+    title: String,
+    make: impl Fn(QuotaService, std::collections::BTreeMap<String, i64>) -> OsAction + Send + Sync + 'static,
+) -> Dialog {
     let service = card.service;
-    let editable: Vec<&'static str> = service.keys().iter().copied().filter(|k| card.rows.iter().any(|r| r.key == *k)).collect();
+    let editable: Vec<&'static str> = service
+        .keys()
+        .iter()
+        .copied()
+        .filter(|k| card.rows.iter().any(|r| r.key == *k))
+        .collect();
     let fields = editable
         .iter()
         .map(|k| {
             let row = card.rows.iter().find(|r| r.key == *k).expect("filtered above");
             let mut label = quota_label(lang, service, k);
             if service.unit(k) != QuotaUnit::Count {
-                label = format!("{label} ({})", if service.unit(k) == QuotaUnit::Mib { "MiB" } else { "GiB" });
+                label = format!(
+                    "{label} ({})",
+                    if service.unit(k) == QuotaUnit::Mib {
+                        "MiB"
+                    } else {
+                        "GiB"
+                    }
+                );
             }
             Field::number(k, label, -1).value(row.limit.unwrap_or(-1).to_string())
         })
@@ -4600,14 +7003,38 @@ fn alarm_gnocchi(v: &Vals) -> bool {
 }
 /// Types with one metric name and a resource type.
 fn alarm_metric(v: &Vals) -> bool {
-    matches!(alarm_type(v), "gnocchi_resources_threshold" | "gnocchi_aggregation_by_resources_threshold")
+    matches!(
+        alarm_type(v),
+        "gnocchi_resources_threshold" | "gnocchi_aggregation_by_resources_threshold"
+    )
 }
 
 /// The fields' types: `(field, types it belongs to, visibility while creating)`.
 type AlarmFieldTypes = (&'static [&'static str], fn(&Vals) -> bool);
-const COMPARES: AlarmFieldTypes = (&["prometheus", "gnocchi_resources_threshold", "gnocchi_aggregation_by_metrics_threshold", "gnocchi_aggregation_by_resources_threshold"], alarm_compares);
-const GNOCCHI: AlarmFieldTypes = (&["gnocchi_resources_threshold", "gnocchi_aggregation_by_metrics_threshold", "gnocchi_aggregation_by_resources_threshold"], alarm_gnocchi);
-const METRIC: AlarmFieldTypes = (&["gnocchi_resources_threshold", "gnocchi_aggregation_by_resources_threshold"], alarm_metric);
+const COMPARES: AlarmFieldTypes = (
+    &[
+        "prometheus",
+        "gnocchi_resources_threshold",
+        "gnocchi_aggregation_by_metrics_threshold",
+        "gnocchi_aggregation_by_resources_threshold",
+    ],
+    alarm_compares,
+);
+const GNOCCHI: AlarmFieldTypes = (
+    &[
+        "gnocchi_resources_threshold",
+        "gnocchi_aggregation_by_metrics_threshold",
+        "gnocchi_aggregation_by_resources_threshold",
+    ],
+    alarm_gnocchi,
+);
+const METRIC: AlarmFieldTypes = (
+    &[
+        "gnocchi_resources_threshold",
+        "gnocchi_aggregation_by_resources_threshold",
+    ],
+    alarm_metric,
+);
 
 /// *Create Alarm* (`spec` = `None`) and *Edit Alarm*. The fields follow the
 /// type; on edit the type is fixed and only its fields are shown. Aodh's PUT
@@ -4647,12 +7074,20 @@ pub fn alarm_dialog(lang: Lang, edit: Option<(&str, &AlarmSpec)>) -> Dialog {
             ("prometheus", K::AlarmTypePrometheus),
             ("gnocchi_resources_threshold", K::AlarmTypeGnocchiResource),
             ("gnocchi_aggregation_by_metrics_threshold", K::AlarmTypeGnocchiMetrics),
-            ("gnocchi_aggregation_by_resources_threshold", K::AlarmTypeGnocchiResources),
+            (
+                "gnocchi_aggregation_by_resources_threshold",
+                K::AlarmTypeGnocchiResources,
+            ),
             ("event", K::AlarmTypeEvent),
         ],
         lang,
     );
-    let comparisons = Source::Static(ALARM_COMPARISONS.iter().map(|c| (c.to_string(), format!("{} ({c})", comparison_symbol(c)))).collect());
+    let comparisons = Source::Static(
+        ALARM_COMPARISONS
+            .iter()
+            .map(|c| (c.to_string(), format!("{} ({c})", comparison_symbol(c))))
+            .collect(),
+    );
     // An aggregation Gnocchi defines but the list doesn't have stays selectable.
     let mut aggregations: Vec<&str> = ALARM_AGGREGATIONS.to_vec();
     if !base.aggregation.is_empty() && !aggregations.contains(&base.aggregation.as_str()) {
@@ -4660,38 +7095,154 @@ pub fn alarm_dialog(lang: Lang, edit: Option<(&str, &AlarmSpec)>) -> Dialog {
     }
     let lines = |v: &[String]| v.join("\n");
     let mut fields = vec![
-        Field::text("name", tr(K::Name)).value(base.name.clone()).required().help(tr(K::AlarmNameHelp)),
-        Field::text("description", tr(K::Description)).value(base.description.clone()).help(tr(K::AlarmDescriptionHelp)),
+        Field::text("name", tr(K::Name))
+            .value(base.name.clone())
+            .required()
+            .help(tr(K::AlarmNameHelp)),
+        Field::text("description", tr(K::Description))
+            .value(base.description.clone())
+            .help(tr(K::AlarmDescriptionHelp)),
     ];
     if fixed.is_none() {
-        fields.push(Field::select("type", tr(K::Type), types).value(base.alarm_type.clone()).required().help(tr(K::AlarmTypeHelp)).tip(tr(K::TipAlarmType)));
+        fields.push(
+            Field::select("type", tr(K::Type), types)
+                .value(base.alarm_type.clone())
+                .required()
+                .help(tr(K::AlarmTypeHelp))
+                .tip(tr(K::TipAlarmType)),
+        );
     }
     fields.extend(
         [
-            only("prometheus", Field::area("promql", tr(K::Query)).value(base.query.clone()).required().help(tr(K::PromqlHelp)).tip(tr(K::TipPromql))),
-            of(METRIC, Field::text("metric", tr(K::Metric)).value(base.metric.clone()).required().help(tr(K::AlarmMetricHelp)).tip(tr(K::TipMetric))),
-            only("gnocchi_aggregation_by_metrics_threshold", Field::area("metrics", tr(K::MetricIds)).value(lines(&base.metrics)).required().help(tr(K::MetricIdsHelp)).tip(tr(K::TipMetricIds))),
-            of(METRIC, Field::text("resource_type", tr(K::ResourceType)).value(base.resource_type.clone()).required().help(tr(K::AlarmResourceTypeHelp)).tip(tr(K::TipResourceType))),
-            only("gnocchi_resources_threshold", Field::text("resource_id", tr(K::ResourceId)).value(base.resource_id.clone()).required().help(tr(K::AlarmResourceIdHelp)).tip(tr(K::TipResourceId))),
-            only("gnocchi_aggregation_by_resources_threshold", Field::area("search", tr(K::Query)).value(base.query.clone()).required().help(tr(K::GnocchiSearchHelp)).tip(tr(K::TipGnocchiSearch))),
-            of(GNOCCHI, Field::select("aggregation", tr(K::Aggregation), options_raw(&aggregations)).value(base.aggregation.clone()).required().help(tr(K::AggregationHelp)).tip(tr(K::TipAggregation))),
-            of(COMPARES, Field::select("comparison", tr(K::Comparison), comparisons).value(base.comparison.clone()).required().help(tr(K::ComparisonHelp))),
-            of(COMPARES, Field::text("threshold", tr(K::Threshold)).value(base.threshold.map(|t| t.to_string()).unwrap_or_default()).required().help(tr(K::ThresholdHelp)).tip(tr(K::TipThreshold))),
-            of(GNOCCHI, Field::number("granularity", tr(K::GranularitySeconds), 1).value(num(base.granularity)).required().help(tr(K::GranularityHelp)).tip(tr(K::TipGranularity))),
-            of(GNOCCHI, Field::number("evaluation_periods", tr(K::EvaluationPeriods), 1).value(num(base.evaluation_periods)).required().help(tr(K::EvaluationPeriodsHelp)).tip(tr(K::TipEvaluationPeriods))),
-            only("event", Field::text("event_type", tr(K::EventType)).value(base.event_type.clone()).help(tr(K::EventTypeHelp)).tip(tr(K::TipEventType))),
-            only("event", Field::area("event_query", tr(K::Query)).value(lines(&base.event_query)).help(tr(K::EventQueryHelp)).tip(tr(K::TipEventQuery))),
+            only(
+                "prometheus",
+                Field::area("promql", tr(K::Query))
+                    .value(base.query.clone())
+                    .required()
+                    .help(tr(K::PromqlHelp))
+                    .tip(tr(K::TipPromql)),
+            ),
+            of(
+                METRIC,
+                Field::text("metric", tr(K::Metric))
+                    .value(base.metric.clone())
+                    .required()
+                    .help(tr(K::AlarmMetricHelp))
+                    .tip(tr(K::TipMetric)),
+            ),
+            only(
+                "gnocchi_aggregation_by_metrics_threshold",
+                Field::area("metrics", tr(K::MetricIds))
+                    .value(lines(&base.metrics))
+                    .required()
+                    .help(tr(K::MetricIdsHelp))
+                    .tip(tr(K::TipMetricIds)),
+            ),
+            of(
+                METRIC,
+                Field::text("resource_type", tr(K::ResourceType))
+                    .value(base.resource_type.clone())
+                    .required()
+                    .help(tr(K::AlarmResourceTypeHelp))
+                    .tip(tr(K::TipResourceType)),
+            ),
+            only(
+                "gnocchi_resources_threshold",
+                Field::text("resource_id", tr(K::ResourceId))
+                    .value(base.resource_id.clone())
+                    .required()
+                    .help(tr(K::AlarmResourceIdHelp))
+                    .tip(tr(K::TipResourceId)),
+            ),
+            only(
+                "gnocchi_aggregation_by_resources_threshold",
+                Field::area("search", tr(K::Query))
+                    .value(base.query.clone())
+                    .required()
+                    .help(tr(K::GnocchiSearchHelp))
+                    .tip(tr(K::TipGnocchiSearch)),
+            ),
+            of(
+                GNOCCHI,
+                Field::select("aggregation", tr(K::Aggregation), options_raw(&aggregations))
+                    .value(base.aggregation.clone())
+                    .required()
+                    .help(tr(K::AggregationHelp))
+                    .tip(tr(K::TipAggregation)),
+            ),
+            of(
+                COMPARES,
+                Field::select("comparison", tr(K::Comparison), comparisons)
+                    .value(base.comparison.clone())
+                    .required()
+                    .help(tr(K::ComparisonHelp)),
+            ),
+            of(
+                COMPARES,
+                Field::text("threshold", tr(K::Threshold))
+                    .value(base.threshold.map(|t| t.to_string()).unwrap_or_default())
+                    .required()
+                    .help(tr(K::ThresholdHelp))
+                    .tip(tr(K::TipThreshold)),
+            ),
+            of(
+                GNOCCHI,
+                Field::number("granularity", tr(K::GranularitySeconds), 1)
+                    .value(num(base.granularity))
+                    .required()
+                    .help(tr(K::GranularityHelp))
+                    .tip(tr(K::TipGranularity)),
+            ),
+            of(
+                GNOCCHI,
+                Field::number("evaluation_periods", tr(K::EvaluationPeriods), 1)
+                    .value(num(base.evaluation_periods))
+                    .required()
+                    .help(tr(K::EvaluationPeriodsHelp))
+                    .tip(tr(K::TipEvaluationPeriods)),
+            ),
+            only(
+                "event",
+                Field::text("event_type", tr(K::EventType))
+                    .value(base.event_type.clone())
+                    .help(tr(K::EventTypeHelp))
+                    .tip(tr(K::TipEventType)),
+            ),
+            only(
+                "event",
+                Field::area("event_query", tr(K::Query))
+                    .value(lines(&base.event_query))
+                    .help(tr(K::EventQueryHelp))
+                    .tip(tr(K::TipEventQuery)),
+            ),
         ]
         .into_iter()
         .flatten(),
     );
-    let severities = options(&[("low", K::SeverityLow), ("moderate", K::SeverityModerate), ("critical", K::SeverityCritical)], lang);
+    let severities = options(
+        &[
+            ("low", K::SeverityLow),
+            ("moderate", K::SeverityModerate),
+            ("critical", K::SeverityCritical),
+        ],
+        lang,
+    );
     fields.extend([
-        Field::select("severity", tr(K::Severity), severities).value(base.severity.clone()).required().help(tr(K::SeverityHelp)),
+        Field::select("severity", tr(K::Severity), severities)
+            .value(base.severity.clone())
+            .required()
+            .help(tr(K::SeverityHelp)),
         Field::check("enabled", tr(K::EnabledCol), base.enabled).help(tr(K::AlarmEnabledHelp)),
-        Field::area("alarm_actions", tr(K::OnAlarm)).value(lines(&base.alarm_actions)).help(tr(K::AlarmActionsHelp)).tip(tr(K::TipAlarmActions)),
-        Field::area("ok_actions", tr(K::OnOk)).value(lines(&base.ok_actions)).help(tr(K::OkActionsHelp)),
-        Field::area("insufficient_data_actions", tr(K::OnInsufficientData)).value(lines(&base.insufficient_data_actions)).help(tr(K::InsufficientDataActionsHelp)),
+        Field::area("alarm_actions", tr(K::OnAlarm))
+            .value(lines(&base.alarm_actions))
+            .help(tr(K::AlarmActionsHelp))
+            .tip(tr(K::TipAlarmActions)),
+        Field::area("ok_actions", tr(K::OnOk))
+            .value(lines(&base.ok_actions))
+            .help(tr(K::OkActionsHelp)),
+        Field::area("insufficient_data_actions", tr(K::OnInsufficientData))
+            .value(lines(&base.insufficient_data_actions))
+            .help(tr(K::InsufficientDataActionsHelp)),
         Field::check("repeat_actions", tr(K::RepeatActions), base.repeat_actions).help(tr(K::RepeatActionsHelp)),
     ]);
     let id = edit.map(|(id, _)| id.to_string());
@@ -4703,7 +7254,11 @@ pub fn alarm_dialog(lang: Lang, edit: Option<(&str, &AlarmSpec)>) -> Dialog {
         // Spanish users type decimal commas.
         let threshold = match v.opt("threshold") {
             None => None,
-            Some(x) => Some(x.replace(',', ".").parse::<f64>().map_err(|_| bad(format!("{}: ?", t(lang, K::Threshold))))?),
+            Some(x) => Some(
+                x.replace(',', ".")
+                    .parse::<f64>()
+                    .map_err(|_| bad(format!("{}: ?", t(lang, K::Threshold))))?,
+            ),
         };
         let query = match alarm_type.as_str() {
             "prometheus" => v.get("promql"),
@@ -4746,7 +7301,9 @@ pub fn alarm_dialog(lang: Lang, edit: Option<(&str, &AlarmSpec)>) -> Dialog {
 /// An alarm's menu (list row and detail page): *Edit Alarm*.
 pub fn alarm_items(lang: Lang, a: &AlarmRow) -> Vec<MenuItem> {
     let (id, spec) = (a.id.clone(), a.spec.clone());
-    vec![MenuItem::dialog(t(lang, K::EditAlarm), move || alarm_dialog(lang, Some((&id, &spec))))]
+    vec![MenuItem::dialog(t(lang, K::EditAlarm), move || {
+        alarm_dialog(lang, Some((&id, &spec)))
+    })]
 }
 
 #[cfg(test)]
@@ -4756,24 +7313,49 @@ mod tests {
     use std::collections::HashMap;
 
     fn vals(pairs: &[(&str, &str)]) -> Values {
-        Values(pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<_, _>>())
+        Values(
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<HashMap<_, _>>(),
+        )
     }
 
     fn source_values(d: &Dialog) -> Vec<String> {
         let f = d.fields.iter().find(|f| f.name == "source").unwrap();
-        let Kind::Select(Source::Static(opts)) = &f.kind else { panic!() };
+        let Kind::Select(Source::Static(opts)) = &f.kind else {
+            panic!()
+        };
         opts.iter().map(|(v, _)| v.clone()).collect()
     }
 
     #[test]
     fn create_image_offers_file_only_when_uploads_are_enabled() {
         use crate::prefs::{ImagePrefs, ImageUpload};
-        let with = |upload, url: bool| ImagePrefs { upload, allow_location: url, ..Default::default() };
+        let with = |upload, url: bool| ImagePrefs {
+            upload,
+            allow_location: url,
+            ..Default::default()
+        };
         let d = |p: &ImagePrefs, web_download| create_image_form(Lang::EnUs, p, false, web_download, false);
-        assert_eq!(source_values(&d(&with(ImageUpload::Off, false), true)), ["none"], "nothing changes until an operator enables it");
-        assert_eq!(source_values(&d(&with(ImageUpload::Proxy, false), true)), ["file", "none"]);
-        assert_eq!(source_values(&d(&with(ImageUpload::Direct, true), true)), ["url", "file", "none"]);
-        assert_eq!(source_values(&d(&with(ImageUpload::Proxy, true), false)), ["file", "none"], "Glance has no web-download");
+        assert_eq!(
+            source_values(&d(&with(ImageUpload::Off, false), true)),
+            ["none"],
+            "nothing changes until an operator enables it"
+        );
+        assert_eq!(
+            source_values(&d(&with(ImageUpload::Proxy, false), true)),
+            ["file", "none"]
+        );
+        assert_eq!(
+            source_values(&d(&with(ImageUpload::Direct, true), true)),
+            ["url", "file", "none"]
+        );
+        assert_eq!(
+            source_values(&d(&with(ImageUpload::Proxy, true), false)),
+            ["file", "none"],
+            "Glance has no web-download"
+        );
     }
 
     #[test]
@@ -4782,24 +7364,38 @@ mod tests {
         let meta = d.fields.iter().find(|f| f.name == "metadata").unwrap();
         assert_eq!(meta.catalog, Some("OS::Glance::Image"));
         for key in ["description", "architecture", "kernel_id", "ramdisk_id"] {
-            assert!(meta.catalog_skip.contains(&key), "{key} has its own field: offering it would be a repeated key");
+            assert!(
+                meta.catalog_skip.contains(&key),
+                "{key} has its own field: offering it would be a repeated key"
+            );
         }
     }
 
     #[test]
     fn admin_create_image_picks_the_owner() {
         let names = |d: &Dialog| d.fields.iter().map(|f| f.name).take(3).collect::<Vec<_>>();
-        assert_eq!(names(&create_image_form(Lang::EnUs, &Default::default(), false, true, false)), ["name", "description", "source"]);
+        assert_eq!(
+            names(&create_image_form(Lang::EnUs, &Default::default(), false, true, false)),
+            ["name", "description", "source"]
+        );
         let d = create_image_form(Lang::EnUs, &Default::default(), true, true, true);
         assert_eq!(names(&d), ["name", "description", "owner"], "roadmap 89");
         assert!(d.steps[0].fields.contains(&"owner"), "on the details step");
-        let base = [("name", "deb"), ("source", "none"), ("disk_format", "qcow2"), ("visibility", "private")];
+        let base = [
+            ("name", "deb"),
+            ("source", "none"),
+            ("disk_format", "qcow2"),
+            ("visibility", "private"),
+        ];
         let build = |extra: &[(&str, &str)]| {
             let all: Vec<(&str, &str)> = base.iter().chain(extra).copied().collect();
             (d.build)(&vals(&all)).unwrap()
         };
         assert!(matches!(build(&[("owner", "p9")]), OsAction::ImageCreate(s) if s.owner.as_deref() == Some("p9")));
-        assert!(matches!(build(&[("owner", "")]), OsAction::ImageCreate(s) if s.owner.is_none()), "empty: the session's project");
+        assert!(
+            matches!(build(&[("owner", "")]), OsAction::ImageCreate(s) if s.owner.is_none()),
+            "empty: the session's project"
+        );
     }
 
     #[test]
@@ -4813,34 +7409,87 @@ mod tests {
         all.sort();
         assert_eq!(in_steps, all, "every field is on exactly one step");
         let half: Vec<_> = d.fields.iter().filter(|f| f.half).map(|f| f.name).collect();
-        assert_eq!(half, ["source", "url", "file", "disk_format", "architecture", "min_disk", "min_ram", "visibility", "protected"], "pairs share a line");
+        assert_eq!(
+            half,
+            [
+                "source",
+                "url",
+                "file",
+                "disk_format",
+                "architecture",
+                "min_disk",
+                "min_ram",
+                "visibility",
+                "protected"
+            ],
+            "pairs share a line"
+        );
     }
 
     #[test]
     fn create_image_from_a_file_carries_its_size_and_respects_the_limit() {
         use crate::prefs::{ImagePrefs, ImageUpload};
-        let prefs = ImagePrefs { upload: ImageUpload::Proxy, max_upload_gb: 1, ..Default::default() };
+        let prefs = ImagePrefs {
+            upload: ImageUpload::Proxy,
+            max_upload_gb: 1,
+            ..Default::default()
+        };
         let d = create_image_form(Lang::EnUs, &prefs, false, true, false);
-        let picked = |size: u64| Picked { name: "debian.qcow2".into(), size }.encode();
+        let picked = |size: u64| {
+            Picked {
+                name: "debian.qcow2".into(),
+                size,
+            }
+            .encode()
+        };
         let base = |file: &str| {
-            vec![("name", "Debian".to_string()), ("source", "file".into()), ("file", file.to_string()), ("disk_format", "qcow2".into()), ("visibility", "private".into()), ("min_disk", "0".into()), ("min_ram", "0".into())]
+            vec![
+                ("name", "Debian".to_string()),
+                ("source", "file".into()),
+                ("file", file.to_string()),
+                ("disk_format", "qcow2".into()),
+                ("visibility", "private".into()),
+                ("min_disk", "0".into()),
+                ("min_ram", "0".into()),
+            ]
         };
         let build = |file: &str| {
             let owned = base(file);
             let pairs: Vec<(&str, &str)> = owned.iter().map(|(k, v)| (*k, v.as_str())).collect();
             (d.build)(&vals(&pairs))
         };
-        let Ok(OsAction::ImageCreate(spec)) = build(&picked(5 << 20)) else { panic!("a file within the limit builds") };
+        let Ok(OsAction::ImageCreate(spec)) = build(&picked(5 << 20)) else {
+            panic!("a file within the limit builds")
+        };
         assert_eq!((spec.upload_bytes, spec.url), (Some(5 << 20), None));
-        assert!(build(&picked((1 << 30) + 1)).unwrap_err().contains("1 GiB"), "over [images] max_upload_gb");
+        assert!(
+            build(&picked((1 << 30) + 1)).unwrap_err().contains("1 GiB"),
+            "over [images] max_upload_gb"
+        );
         assert!(build("").is_err(), "no file picked");
 
         // The field shows the same problem before submitting, and picking a file sets its format.
         let check = d.check.as_ref().unwrap();
-        let vals_of = |size: u64| HashMap::from([("source".to_string(), "file".to_string()), ("file".to_string(), picked(size))]);
-        assert!(check(&vals_of((1 << 30) + 1), &Sets::new()).iter().any(|(f, _)| *f == "file"));
+        let vals_of = |size: u64| {
+            HashMap::from([
+                ("source".to_string(), "file".to_string()),
+                ("file".to_string(), picked(size)),
+            ])
+        };
+        assert!(
+            check(&vals_of((1 << 30) + 1), &Sets::new())
+                .iter()
+                .any(|(f, _)| *f == "file")
+        );
         assert!(check(&vals_of(1), &Sets::new()).is_empty());
-        let mut v = HashMap::from([("file".to_string(), Picked { name: "disk.iso".into(), size: 1 }.encode())]);
+        let mut v = HashMap::from([(
+            "file".to_string(),
+            Picked {
+                name: "disk.iso".into(),
+                size: 1,
+            }
+            .encode(),
+        )]);
         (d.on_change.as_ref().unwrap())("file", &mut v, &Sets::new());
         assert_eq!(v.get("disk_format").map(String::as_str), Some("iso"));
     }
@@ -4857,52 +7506,133 @@ mod tests {
             current: false,
             member: false,
         };
-        let labels = |admin| identity_project_items(Lang::EnUs, &p, None, admin).into_iter().map(|m| m.label).collect::<Vec<_>>();
-        assert_eq!(labels(true), ["Edit Project", "Modify Quotas", "Delete Project"], "Horizon's order (roadmap 82)");
-        assert!(!labels(false).iter().any(|l| l == "Modify Quotas"), "hidden without the admin role");
+        let labels = |admin| {
+            identity_project_items(Lang::EnUs, &p, None, admin)
+                .into_iter()
+                .map(|m| m.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(true),
+            ["Edit Project", "Modify Quotas", "Delete Project"],
+            "Horizon's order (roadmap 82)"
+        );
+        assert!(
+            !labels(false).iter().any(|l| l == "Modify Quotas"),
+            "hidden without the admin role"
+        );
         let items = identity_project_items(Lang::EnUs, &p, None, true);
         assert!(matches!(&items[1].kind, ItemKind::Link(h) if h == "/identity/projects/p9/quotas"));
     }
 
     #[test]
     fn update_defaults_sends_the_changes_to_the_default_class() {
-        let row = |key: &str, limit| QuotaRow { key: key.into(), used: None, reserved: None, limit };
-        let card = QuotaCard { service: QuotaService::Volume, project_id: "p1".into(), rows: vec![row("volumes", Some(10)), row("gigabytes", Some(1000))], error: None };
+        let row = |key: &str, limit| QuotaRow {
+            key: key.into(),
+            used: None,
+            reserved: None,
+            limit,
+        };
+        let card = QuotaCard {
+            service: QuotaService::Volume,
+            project_id: "p1".into(),
+            rows: vec![row("volumes", Some(10)), row("gigabytes", Some(1000))],
+            error: None,
+        };
         let d = update_defaults_dialog(Lang::EnUs, &card);
-        assert!(!d.intro.concat().contains("used"), "defaults have no usage to stay above");
+        assert!(
+            !d.intro.concat().contains("used"),
+            "defaults have no usage to stay above"
+        );
         assert!(d.title.starts_with("Update Defaults"), "{}", d.title);
         let a = (d.build)(&vals(&[("volumes", "10"), ("gigabytes", "-1")])).unwrap();
-        assert_eq!(a, OsAction::DefaultQuotaUpdate { service: QuotaService::Volume, values: [("gigabytes".to_string(), -1)].into() }, "only what changed");
-        assert!((d.build)(&vals(&[("volumes", "10"), ("gigabytes", "1000")])).is_err(), "nothing changed");
+        assert_eq!(
+            a,
+            OsAction::DefaultQuotaUpdate {
+                service: QuotaService::Volume,
+                values: [("gigabytes".to_string(), -1)].into()
+            },
+            "only what changed"
+        );
+        assert!(
+            (d.build)(&vals(&[("volumes", "10"), ("gigabytes", "1000")])).is_err(),
+            "nothing changed"
+        );
     }
 
     #[test]
     fn edit_quotas_sends_only_changes_and_names_the_quota() {
-        let row = |key: &str, used, limit| QuotaRow { key: key.into(), used, reserved: None, limit };
+        let row = |key: &str, used, limit| QuotaRow {
+            key: key.into(),
+            used,
+            reserved: None,
+            limit,
+        };
         let card = QuotaCard {
             service: QuotaService::Compute,
             project_id: "p1".into(),
-            rows: vec![row("instances", Some(4), Some(10)), row("ram", Some(2048), None), row("unknown_key", None, Some(1))],
+            rows: vec![
+                row("instances", Some(4), Some(10)),
+                row("ram", Some(2048), None),
+                row("unknown_key", None, Some(1)),
+            ],
             error: None,
         };
         let d = edit_quotas_dialog(Lang::EnUs, &card);
         let names: Vec<_> = d.fields.iter().map(|f| (f.name, f.default.as_str())).collect();
-        assert_eq!(names, [("instances", "10"), ("ram", "-1")], "editable keys only; unlimited shown as -1");
+        assert_eq!(
+            names,
+            [("instances", "10"), ("ram", "-1")],
+            "editable keys only; unlimited shown as -1"
+        );
         assert_eq!(d.fields[1].label, "RAM (MiB)");
-        assert!(d.forbidden.as_deref().is_some_and(|m| m.contains("no permission to edit quotas")));
+        assert!(
+            d.forbidden
+                .as_deref()
+                .is_some_and(|m| m.contains("no permission to edit quotas"))
+        );
         let a = (d.build)(&vals(&[("instances", "12"), ("ram", "-1")])).unwrap();
-        let OsAction::QuotaUpdate { service, project_id, values } = a else { panic!("{a:?}") };
-        assert_eq!((service, project_id.as_str(), values.into_iter().collect::<Vec<_>>()), (QuotaService::Compute, "p1", vec![("instances".to_string(), 12)]));
-        assert_eq!((d.build)(&vals(&[("instances", "10")])).unwrap_err(), "Nothing changed.");
-        assert!((d.build)(&vals(&[("instances", "3")])).unwrap_err().starts_with("Instances: 3 is below"));
+        let OsAction::QuotaUpdate {
+            service,
+            project_id,
+            values,
+        } = a
+        else {
+            panic!("{a:?}")
+        };
+        assert_eq!(
+            (service, project_id.as_str(), values.into_iter().collect::<Vec<_>>()),
+            (QuotaService::Compute, "p1", vec![("instances".to_string(), 12)])
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("instances", "10")])).unwrap_err(),
+            "Nothing changed."
+        );
+        assert!(
+            (d.build)(&vals(&[("instances", "3")]))
+                .unwrap_err()
+                .starts_with("Instances: 3 is below")
+        );
     }
 
     #[test]
     fn quota_labels_cover_per_type_and_unknown_keys() {
-        assert_eq!(quota_label(Lang::EnUs, QuotaService::Volume, "gigabytes_ceph"), "Total Size of Volumes and Snapshots (ceph)");
-        assert_eq!(quota_label(Lang::EsEs, QuotaService::Volume, "volumes_ssd"), "Volúmenes (ssd)");
+        assert_eq!(
+            quota_label(Lang::EnUs, QuotaService::Volume, "gigabytes_ceph"),
+            "Total Size of Volumes and Snapshots (ceph)"
+        );
+        assert_eq!(
+            quota_label(Lang::EsEs, QuotaService::Volume, "volumes_ssd"),
+            "Volúmenes (ssd)"
+        );
         assert_eq!(quota_label(Lang::EnUs, QuotaService::Network, "new_thing"), "new_thing");
-        for s in [QuotaService::Compute, QuotaService::Volume, QuotaService::Network, QuotaService::LoadBalancer, QuotaService::KeyManager] {
+        for s in [
+            QuotaService::Compute,
+            QuotaService::Volume,
+            QuotaService::Network,
+            QuotaService::LoadBalancer,
+            QuotaService::KeyManager,
+        ] {
             for k in s.keys() {
                 assert_ne!(quota_label(Lang::EnUs, s, k), *k, "{s:?} {k} has no label");
             }
@@ -4916,7 +7646,10 @@ mod tests {
             description: None,
             status: "available".into(),
             availability_zone: None,
-            group_type: Ref { id: "gt".into(), name: "gt".into() },
+            group_type: Ref {
+                id: "gt".into(),
+                name: "gt".into(),
+            },
             volume_types: vec![],
             has_snapshots: false,
             created: String::new(),
@@ -4925,8 +7658,13 @@ mod tests {
 
     /// The dialog behind the menu item labelled `label`.
     fn item_dialog(items: &[MenuItem], label: &str) -> Dialog {
-        let item = items.iter().find(|m| m.label == label).unwrap_or_else(|| panic!("no {label}"));
-        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else { panic!("{label} opens no dialog") };
+        let item = items
+            .iter()
+            .find(|m| m.label == label)
+            .unwrap_or_else(|| panic!("no {label}"));
+        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else {
+            panic!("{label} opens no dialog")
+        };
         open()
     }
 
@@ -4937,7 +7675,10 @@ mod tests {
             description: None,
             status: status.into(),
             size_gb: 5,
-            volume: Ref { id: "v1".into(), name: "data".into() },
+            volume: Ref {
+                id: "v1".into(),
+                name: "data".into(),
+            },
             incremental: false,
             container: None,
             snapshot_id: None,
@@ -4949,15 +7690,42 @@ mod tests {
 
     #[test]
     fn backup_menu_restores_only_available_backups_and_deletes_last() {
-        let labels = |s: &str| backup_items(Lang::EnUs, &backup_row(s)).into_iter().map(|m| m.label).collect::<Vec<_>>();
-        assert_eq!(labels("available"), ["Restore Backup", "Edit Backup", "Delete Volume Backup"]);
-        assert_eq!(labels("creating"), ["Edit Backup", "Delete Volume Backup"], "nothing to restore yet");
+        let labels = |s: &str| {
+            backup_items(Lang::EnUs, &backup_row(s))
+                .into_iter()
+                .map(|m| m.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels("available"),
+            ["Restore Backup", "Edit Backup", "Delete Volume Backup"]
+        );
+        assert_eq!(
+            labels("creating"),
+            ["Edit Backup", "Delete Volume Backup"],
+            "nothing to restore yet"
+        );
         let items = backup_items(Lang::EnUs, &backup_row("available"));
         let d = item_dialog(&items, "Delete Volume Backup");
         assert!(d.danger && d.selection == ["nightly"]);
         let d = item_dialog(&items, "Restore Backup");
-        assert_eq!((d.build)(&vals(&[("volume", ""), ("name", "copy")])).unwrap(), OsAction::BackupRestore { id: "b1".into(), volume_id: None, name: Some("copy".into()) }, "empty volume = new volume");
-        assert_eq!((d.build)(&vals(&[("volume", "v9")])).unwrap(), OsAction::BackupRestore { id: "b1".into(), volume_id: Some("v9".into()), name: None });
+        assert_eq!(
+            (d.build)(&vals(&[("volume", ""), ("name", "copy")])).unwrap(),
+            OsAction::BackupRestore {
+                id: "b1".into(),
+                volume_id: None,
+                name: Some("copy".into())
+            },
+            "empty volume = new volume"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("volume", "v9")])).unwrap(),
+            OsAction::BackupRestore {
+                id: "b1".into(),
+                volume_id: Some("v9".into()),
+                name: None
+            }
+        );
     }
 
     #[test]
@@ -4967,11 +7735,22 @@ mod tests {
         assert!((d.build)(&vals(&[("name", "n")])).is_err(), "a volume is required");
         assert_eq!(
             (d.build)(&vals(&[("volume", "v1"), ("name", "n"), ("incremental", "true")])).unwrap(),
-            OsAction::BackupCreate { volume_id: "v1".into(), name: "n".into(), description: None, incremental: true, force: false, snapshot_id: None }
+            OsAction::BackupCreate {
+                volume_id: "v1".into(),
+                name: "n".into(),
+                description: None,
+                incremental: true,
+                force: false,
+                snapshot_id: None
+            }
         );
         let d = backup_form(l, Some("v2".into()), "x-backup".into(), true);
         assert!(d.fields.iter().all(|f| f.name != "volume"));
-        assert_eq!(d.fields.iter().find(|f| f.name == "force").unwrap().default, "true", "attached volumes preselect Force");
+        assert_eq!(
+            d.fields.iter().find(|f| f.name == "force").unwrap().default,
+            "true",
+            "attached volumes preselect Force"
+        );
     }
 
     #[test]
@@ -4979,49 +7758,115 @@ mod tests {
         let items = volume_group_items(Lang::EnUs, &volume_group_row());
         let d = item_dialog(&items, "Delete Group");
         assert_eq!(items.last().unwrap().label, "Delete Group", "delete last");
-        assert!(d.danger && items.last().unwrap().danger, "destructive: red, with the confirmation tick");
+        assert!(
+            d.danger && items.last().unwrap().danger,
+            "destructive: red, with the confirmation tick"
+        );
         assert_eq!(d.selection, ["db"]);
         assert_eq!(d.fields[0].default, "false", "volumes are kept unless ticked");
-        assert_eq!((d.build)(&vals(&[("delete_volumes", "true")])).unwrap(), OsAction::VolumeGroupDelete { id: "g1".into(), delete_volumes: true });
-        assert_eq!((d.build)(&vals(&[])).unwrap(), OsAction::VolumeGroupDelete { id: "g1".into(), delete_volumes: false });
+        assert_eq!(
+            (d.build)(&vals(&[("delete_volumes", "true")])).unwrap(),
+            OsAction::VolumeGroupDelete {
+                id: "g1".into(),
+                delete_volumes: true
+            }
+        );
+        assert_eq!(
+            (d.build)(&vals(&[])).unwrap(),
+            OsAction::VolumeGroupDelete {
+                id: "g1".into(),
+                delete_volumes: false
+            }
+        );
     }
 
     #[test]
     fn volume_group_dialogs_build_their_requests() {
         let l = Lang::EnUs;
         let d = create_volume_group(l);
-        assert!((d.build)(&vals(&[("name", "db"), ("group_type", "gt1")])).is_err(), "at least one volume type");
+        assert!(
+            (d.build)(&vals(&[("name", "db"), ("group_type", "gt1")])).is_err(),
+            "at least one volume type"
+        );
         assert_eq!(
-            (d.build)(&vals(&[("name", "db"), ("group_type", "gt1"), ("volume_types", "vt1,vt2"), ("az", "")])).unwrap(),
-            OsAction::VolumeGroupCreate { name: "db".into(), description: None, group_type_id: "gt1".into(), volume_type_ids: vec!["vt1".into(), "vt2".into()], availability_zone: None }
+            (d.build)(&vals(&[
+                ("name", "db"),
+                ("group_type", "gt1"),
+                ("volume_types", "vt1,vt2"),
+                ("az", "")
+            ]))
+            .unwrap(),
+            OsAction::VolumeGroupCreate {
+                name: "db".into(),
+                description: None,
+                group_type_id: "gt1".into(),
+                volume_type_ids: vec!["vt1".into(), "vt2".into()],
+                availability_zone: None
+            }
         );
 
         let labels = |items: &[MenuItem]| items.iter().map(|m| m.label.clone()).collect::<Vec<_>>();
         let row = volume_group_row();
-        assert_eq!(labels(&volume_group_items(l, &row)), ["Create Snapshot", "Edit Group", "Clone Group", "Delete Group"]);
+        assert_eq!(
+            labels(&volume_group_items(l, &row)),
+            ["Create Snapshot", "Edit Group", "Clone Group", "Delete Group"]
+        );
         let clone = item_dialog(&volume_group_items(l, &row), "Clone Group");
         assert_eq!(clone.fields[0].default, "db-clone");
         assert_eq!(
             (clone.build)(&vals(&[("name", "db-clone")])).unwrap(),
-            OsAction::VolumeGroupCreateFrom { name: "db-clone".into(), description: None, source_group_id: Some("g1".into()), group_snapshot_id: None }
+            OsAction::VolumeGroupCreateFrom {
+                name: "db-clone".into(),
+                description: None,
+                source_group_id: Some("g1".into()),
+                group_snapshot_id: None
+            }
         );
 
         // The detail page knows the volumes: Manage Volumes saves the difference.
-        let vol = |id: &str| Volume { id: id.into(), name: format!("vol-{id}"), ..volume("available") };
-        let detail = VolumeGroupDetail { row: row.clone(), volumes: vec![vol("v1"), vol("v2")], snapshots: vec![] };
+        let vol = |id: &str| Volume {
+            id: id.into(),
+            name: format!("vol-{id}"),
+            ..volume("available")
+        };
+        let detail = VolumeGroupDetail {
+            row: row.clone(),
+            volumes: vec![vol("v1"), vol("v2")],
+            snapshots: vec![],
+        };
         let items = volume_group_detail_items(l, &detail);
-        assert_eq!(labels(&items), ["Create Snapshot", "Manage Volumes", "Edit Group", "Remove Volumes from Group", "Clone Group", "Delete Group"]);
+        assert_eq!(
+            labels(&items),
+            [
+                "Create Snapshot",
+                "Manage Volumes",
+                "Edit Group",
+                "Remove Volumes from Group",
+                "Clone Group",
+                "Delete Group"
+            ]
+        );
         let manage = item_dialog(&items, "Manage Volumes");
         assert_eq!(manage.fields[0].default, "v1,v2", "current volumes preselected");
         assert_eq!(
             (manage.build)(&vals(&[("volumes", "v2,v3")])).unwrap(),
-            OsAction::VolumeGroupSetVolumes { id: "g1".into(), add_volume_ids: vec!["v3".into()], remove_volume_ids: vec!["v1".into()] }
+            OsAction::VolumeGroupSetVolumes {
+                id: "g1".into(),
+                add_volume_ids: vec!["v3".into()],
+                remove_volume_ids: vec!["v1".into()]
+            }
         );
-        assert!((manage.build)(&vals(&[("volumes", "v1,v2")])).is_err(), "nothing changed");
+        assert!(
+            (manage.build)(&vals(&[("volumes", "v1,v2")])).is_err(),
+            "nothing changed"
+        );
         let remove = item_dialog(&items, "Remove Volumes from Group");
         assert_eq!(remove.selection, ["vol-v1", "vol-v2"]);
         assert!(!remove.danger, "the volumes are kept");
-        let empty = VolumeGroupDetail { volumes: vec![], ..detail };
+        let empty = VolumeGroupDetail {
+            volumes: vec![],
+            ..detail
+        };
         assert!(!labels(&volume_group_detail_items(l, &empty)).contains(&"Remove Volumes from Group".to_string()));
 
         let gs = GroupSnapshotRow {
@@ -5029,24 +7874,40 @@ mod tests {
             name: "nightly".into(),
             description: None,
             status: "available".into(),
-            group: Ref { id: "g1".into(), name: "db".into() },
-            group_type: Ref { id: "gt".into(), name: "gt".into() },
+            group: Ref {
+                id: "g1".into(),
+                name: "db".into(),
+            },
+            group_type: Ref {
+                id: "gt".into(),
+                name: "gt".into(),
+            },
             created: String::new(),
         };
         let from = item_dialog(&group_snapshot_items(l, &gs), "Create Group");
         assert_eq!(
             (from.build)(&vals(&[("name", "restored")])).unwrap(),
-            OsAction::VolumeGroupCreateFrom { name: "restored".into(), description: None, source_group_id: None, group_snapshot_id: Some("gs1".into()) }
+            OsAction::VolumeGroupCreateFrom {
+                name: "restored".into(),
+                description: None,
+                source_group_id: None,
+                group_snapshot_id: Some("gs1".into())
+            }
         );
     }
 
     #[test]
     fn bulk_delete_lists_every_name_and_batches_in_order() {
-        let items = vec![("v1".to_string(), "data".to_string()), ("v2".to_string(), "logs".to_string())];
+        let items = vec![
+            ("v1".to_string(), "data".to_string()),
+            ("v2".to_string(), "logs".to_string()),
+        ];
         let d = bulk_delete(Lang::EnUs, K::DeleteVolumes, items, |id| OsAction::VolumeDelete { id });
         assert!(d.danger);
         assert_eq!(d.selection, ["data", "logs"], "one bullet per name");
-        let OsAction::Batch(b) = (d.build)(&vals(&[])).unwrap() else { panic!() };
+        let OsAction::Batch(b) = (d.build)(&vals(&[])).unwrap() else {
+            panic!()
+        };
         assert_eq!(b[1], ("logs".to_string(), OsAction::VolumeDelete { id: "v2".into() }));
         let many = (0..=MAX_BATCH).map(|i| (i.to_string(), i.to_string())).collect();
         let d = bulk_delete(Lang::EnUs, K::DeleteVolumes, many, |id| OsAction::VolumeDelete { id });
@@ -5058,8 +7919,18 @@ mod tests {
         let d = import_keypair_dialog(Lang::EnUs);
         let pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
         let a = (d.build)(&vals(&[("name", "web"), ("key_type", "x509"), ("public_key", pem)])).unwrap();
-        assert_eq!(a, OsAction::KeyPairImport { name: "web".into(), public_key: pem.into(), key_type: "x509".into() });
-        assert!((d.build)(&vals(&[("name", "web"), ("key_type", "ssh"), ("public_key", pem)])).is_err(), "checked before sending");
+        assert_eq!(
+            a,
+            OsAction::KeyPairImport {
+                name: "web".into(),
+                public_key: pem.into(),
+                key_type: "x509".into()
+            }
+        );
+        assert!(
+            (d.build)(&vals(&[("name", "web"), ("key_type", "ssh"), ("public_key", pem)])).is_err(),
+            "checked before sending"
+        );
     }
 
     #[test]
@@ -5067,39 +7938,101 @@ mod tests {
         let d = create_load_balancer_dialog(Lang::EnUs);
         assert_eq!(d.steps.len(), 5);
         let full = vals(&[
-            ("name", "web-lb"), ("vip_subnet", "sub-1"), ("with_listener", "true"), ("listener_protocol", "HTTPS"),
-            ("listener_port", "443"), ("with_pool", "true"), ("pool_name", "web-pool"), ("algorithm", "LEAST_CONNECTIONS"),
+            ("name", "web-lb"),
+            ("vip_subnet", "sub-1"),
+            ("with_listener", "true"),
+            ("listener_protocol", "HTTPS"),
+            ("listener_port", "443"),
+            ("with_pool", "true"),
+            ("pool_name", "web-pool"),
+            ("algorithm", "LEAST_CONNECTIONS"),
             ("persistence", ""),
-            ("members", r#"[{"address":"10.0.0.11","subnet_id":"sub-1","label":"web-1: 10.0.0.11","port":"8443","weight":"1"},
-                           {"address":"192.0.2.10","subnet_id":"sub-ext","port":"9443","weight":"","backup":true,"monitor_port":"9000"}]"#),
-            ("with_monitor", "true"), ("monitor_type", "TCP"), ("delay", "5"), ("timeout", "3"), ("max_retries", "3"),
-            ("http_method", "GET"), ("url_path", "/"), ("expected_codes", "200"),
+            (
+                "members",
+                r#"[{"address":"10.0.0.11","subnet_id":"sub-1","label":"web-1: 10.0.0.11","port":"8443","weight":"1"},
+                           {"address":"192.0.2.10","subnet_id":"sub-ext","port":"9443","weight":"","backup":true,"monitor_port":"9000"}]"#,
+            ),
+            ("with_monitor", "true"),
+            ("monitor_type", "TCP"),
+            ("delay", "5"),
+            ("timeout", "3"),
+            ("max_retries", "3"),
+            ("http_method", "GET"),
+            ("url_path", "/"),
+            ("expected_codes", "200"),
         ]);
-        let OsAction::LoadBalancerCreate(spec) = (d.build)(&full).unwrap() else { panic!("not a create") };
-        assert_eq!(spec.pool.as_ref().map(|p| p.protocol.as_str()), Some("HTTPS"), "pool protocol follows the listener");
+        let OsAction::LoadBalancerCreate(spec) = (d.build)(&full).unwrap() else {
+            panic!("not a create")
+        };
+        assert_eq!(
+            spec.pool.as_ref().map(|p| p.protocol.as_str()),
+            Some("HTTPS"),
+            "pool protocol follows the listener"
+        );
         assert_eq!(spec.pool.as_ref().and_then(|p| p.name.as_deref()), Some("web-pool"));
         let field = |n: &str| d.fields.iter().find(|f| f.name == n).unwrap();
-        assert_eq!((field("pool_name").default.as_str(), field("pool_name").required), ("pool-1", true), "Octavia needs a pool name");
-        let Kind::Select(Source::Static(persistence)) = &field("persistence").kind else { panic!("not a static select") };
-        assert!(persistence.iter().all(|(v, _)| !v.is_empty()), "the select adds *— None —* itself");
+        assert_eq!(
+            (field("pool_name").default.as_str(), field("pool_name").required),
+            ("pool-1", true),
+            "Octavia needs a pool name"
+        );
+        let Kind::Select(Source::Static(persistence)) = &field("persistence").kind else {
+            panic!("not a static select")
+        };
+        assert!(
+            persistence.iter().all(|(v, _)| !v.is_empty()),
+            "the select adds *— None —* itself"
+        );
         let mut unnamed = full.clone();
         unnamed.0.insert("pool_name".into(), String::new());
-        assert!((d.build)(&unnamed).is_err(), "an empty pool name is refused before sending");
+        assert!(
+            (d.build)(&unnamed).is_err(),
+            "an empty pool name is refused before sending"
+        );
         assert_eq!(spec.members.len(), 2);
-        assert_eq!((spec.members[0].address.as_str(), spec.members[0].port, spec.members[0].subnet_id.as_deref()), ("10.0.0.11", 8443, Some("sub-1")));
+        assert_eq!(
+            (
+                spec.members[0].address.as_str(),
+                spec.members[0].port,
+                spec.members[0].subnet_id.as_deref()
+            ),
+            ("10.0.0.11", 8443, Some("sub-1"))
+        );
         let ext = &spec.members[1];
-        assert_eq!((ext.address.as_str(), ext.port, ext.weight, ext.backup, ext.monitor_port), ("192.0.2.10", 9443, None, true, Some(9000)), "an external member with its own port (roadmap 54)");
+        assert_eq!(
+            (ext.address.as_str(), ext.port, ext.weight, ext.backup, ext.monitor_port),
+            ("192.0.2.10", 9443, None, true, Some(9000)),
+            "an external member with its own port (roadmap 54)"
+        );
         assert!(ext.admin_up, "a row without admin state is enabled");
         let mut twice = full.clone();
-        twice.0.insert("members".into(), r#"[{"address":"10.0.0.11","port":"80","weight":"1"},{"address":"10.0.0.11","port":"80","weight":"1"}]"#.into());
+        twice.0.insert(
+            "members".into(),
+            r#"[{"address":"10.0.0.11","port":"80","weight":"1"},{"address":"10.0.0.11","port":"80","weight":"1"}]"#
+                .into(),
+        );
         assert!((d.build)(&twice).unwrap_err().contains("listed twice"));
         let m = spec.monitor.unwrap();
-        assert_eq!((m.kind.as_str(), m.http_method.clone()), ("TCP", None), "HTTP fields only for HTTP monitors");
+        assert_eq!(
+            (m.kind.as_str(), m.http_method.clone()),
+            ("TCP", None),
+            "HTTP fields only for HTTP monitors"
+        );
 
-        let bare = vals(&[("vip_subnet", "sub-1"), ("with_listener", "false"), ("with_pool", "true"), ("members", r#"[{"address":"10.0.0.11","port":"80","weight":"1"}]"#)]);
-        let OsAction::LoadBalancerCreate(spec) = (d.build)(&bare).unwrap() else { panic!("not a create") };
+        let bare = vals(&[
+            ("vip_subnet", "sub-1"),
+            ("with_listener", "false"),
+            ("with_pool", "true"),
+            ("members", r#"[{"address":"10.0.0.11","port":"80","weight":"1"}]"#),
+        ]);
+        let OsAction::LoadBalancerCreate(spec) = (d.build)(&bare).unwrap() else {
+            panic!("not a create")
+        };
         assert!(spec.listener.is_none() && spec.pool.is_none() && spec.members.is_empty() && spec.monitor.is_none());
-        assert!((d.build)(&vals(&[("with_listener", "false")])).is_err(), "a subnet is required");
+        assert!(
+            (d.build)(&vals(&[("with_listener", "false")])).is_err(),
+            "a subnet is required"
+        );
     }
 
     fn lb_with_members() -> LoadBalancerDetail {
@@ -5131,13 +8064,29 @@ mod tests {
         let dlg = pool_members_dialog(Lang::EnUs, &d, &d.pools[0]);
         assert!(dlg.danger, "the batch deletes members left out");
         let rows: Vec<MemberRow> = serde_json::from_str(&dlg.fields[0].default).unwrap();
-        assert_eq!(rows.iter().map(|r| r.address.as_str()).collect::<Vec<_>>(), ["10.0.0.5", "10.0.0.6"], "only this pool's members");
-        assert_eq!((rows[0].weight.as_str(), rows[0].monitor_port.as_str()), ("3", "9000"), "kept, so saving doesn't reset them");
-        let Kind::MemberRows { existing, .. } = &dlg.fields[0].kind else { panic!("not a members editor") };
+        assert_eq!(
+            rows.iter().map(|r| r.address.as_str()).collect::<Vec<_>>(),
+            ["10.0.0.5", "10.0.0.6"],
+            "only this pool's members"
+        );
+        assert_eq!(
+            (rows[0].weight.as_str(), rows[0].monitor_port.as_str()),
+            ("3", "9000"),
+            "kept, so saving doesn't reset them"
+        );
+        let Kind::MemberRows { existing, .. } = &dlg.fields[0].kind else {
+            panic!("not a members editor")
+        };
         assert_eq!(existing.len(), 2);
         let keep_one = serde_json::to_string(&rows[..1]).unwrap();
-        let OsAction::PoolSetMembers { pool_id, members } = (dlg.build)(&vals(&[("members", &keep_one)])).unwrap() else { panic!("not a batch") };
-        assert_eq!((pool_id.as_str(), members.len(), members[0].monitor_address.as_deref()), ("pool-1", 1, Some("10.0.9.9")));
+        let OsAction::PoolSetMembers { pool_id, members } = (dlg.build)(&vals(&[("members", &keep_one)])).unwrap()
+        else {
+            panic!("not a batch")
+        };
+        assert_eq!(
+            (pool_id.as_str(), members.len(), members[0].monitor_address.as_deref()),
+            ("pool-1", 1, Some("10.0.9.9"))
+        );
     }
 
     /// Roadmap 54, slice 2: the *Advanced* box opens on a listener that has
@@ -5152,38 +8101,95 @@ mod tests {
             }))
             .unwrap()
         };
-        let http = listener("HTTP", serde_json::json!({"timeout_client_data": 60000, "insert_headers": ["X-Forwarded-For"], "allowed_cidrs": []}));
+        let http = listener(
+            "HTTP",
+            serde_json::json!({"timeout_client_data": 60000, "insert_headers": ["X-Forwarded-For"], "allowed_cidrs": []}),
+        );
         d.listeners = vec![http.clone()];
         let dlg = listener_dialog(Lang::EnUs, &d, Some(&http));
         let field = |dlg: &Dialog, n: &str| dlg.fields.iter().find(|f| f.name == n).map(|f| f.default.clone());
         assert_eq!(field(&dlg, "lb_advanced").as_deref(), Some("true"), "options set: open");
-        assert_eq!((field(&dlg, "timeout_client_data").as_deref(), field(&dlg, "insert_headers").as_deref()), (Some("60000"), Some("X-Forwarded-For")));
-        let base = [("name", "web"), ("description", ""), ("connection_limit", ""), ("default_pool", ""), ("admin_up", "true")];
+        assert_eq!(
+            (
+                field(&dlg, "timeout_client_data").as_deref(),
+                field(&dlg, "insert_headers").as_deref()
+            ),
+            (Some("60000"), Some("X-Forwarded-For"))
+        );
+        let base = [
+            ("name", "web"),
+            ("description", ""),
+            ("connection_limit", ""),
+            ("default_pool", ""),
+            ("admin_up", "true"),
+        ];
         let with = |extra: &[(&str, &str)]| vals(&base.iter().chain(extra).copied().collect::<Vec<_>>());
-        let OsAction::ListenerUpdate { options, protocol, .. } =
-            (dlg.build)(&with(&[("lb_advanced", "true"), ("timeout_client_data", ""), ("insert_headers", "X-Forwarded-Proto"), ("allowed_cidrs", "10.0.0.0/8\n")])).unwrap()
-        else {
+        let OsAction::ListenerUpdate { options, protocol, .. } = (dlg.build)(&with(&[
+            ("lb_advanced", "true"),
+            ("timeout_client_data", ""),
+            ("insert_headers", "X-Forwarded-Proto"),
+            ("allowed_cidrs", "10.0.0.0/8\n"),
+        ]))
+        .unwrap() else {
             panic!("not an update")
         };
         let o = options.expect("ticked: sent");
-        assert_eq!((protocol.as_str(), o.timeout_client_data, o.insert_headers, o.allowed_cidrs), ("HTTP", None, vec!["X-Forwarded-Proto".to_string()], Some(vec!["10.0.0.0/8".to_string()])));
-        let OsAction::ListenerUpdate { options, .. } = (dlg.build)(&with(&[("lb_advanced", "false")])).unwrap() else { panic!() };
+        assert_eq!(
+            (
+                protocol.as_str(),
+                o.timeout_client_data,
+                o.insert_headers,
+                o.allowed_cidrs
+            ),
+            (
+                "HTTP",
+                None,
+                vec!["X-Forwarded-Proto".to_string()],
+                Some(vec!["10.0.0.0/8".to_string()])
+            )
+        );
+        let OsAction::ListenerUpdate { options, .. } = (dlg.build)(&with(&[("lb_advanced", "false")])).unwrap() else {
+            panic!()
+        };
         assert_eq!(options, None, "unticked: left alone");
 
         let tcp = listener("TCP", serde_json::json!({}));
         let dlg = listener_dialog(Lang::EnUs, &d, Some(&tcp));
         assert_eq!(field(&dlg, "insert_headers"), None, "TCP listeners take no headers");
-        assert_eq!(field(&dlg, "allowed_cidrs"), None, "not reported by the listener: Octavia < 2.12");
+        assert_eq!(
+            field(&dlg, "allowed_cidrs"),
+            None,
+            "not reported by the listener: Octavia < 2.12"
+        );
         assert_eq!(field(&dlg, "lb_advanced").as_deref(), Some("false"));
 
         let pool = d.pools[0].clone();
         let dlg = pool_dialog(Lang::EnUs, &d, Some(&pool));
         let pool_vals = |extra: &[(&str, &str)]| {
-            vals(&[("name", "web"), ("description", ""), ("algorithm", "ROUND_ROBIN"), ("persistence", ""), ("admin_up", "true")].iter().chain(extra).copied().collect::<Vec<_>>())
+            vals(
+                &[
+                    ("name", "web"),
+                    ("description", ""),
+                    ("algorithm", "ROUND_ROBIN"),
+                    ("persistence", ""),
+                    ("admin_up", "true"),
+                ]
+                .iter()
+                .chain(extra)
+                .copied()
+                .collect::<Vec<_>>(),
+            )
         };
-        let OsAction::PoolUpdate { tls, .. } = (dlg.build)(&pool_vals(&[("tls_enabled", "true"), ("tls_ciphers", "AES256")])).unwrap() else { panic!() };
+        let OsAction::PoolUpdate { tls, .. } =
+            (dlg.build)(&pool_vals(&[("tls_enabled", "true"), ("tls_ciphers", "AES256")])).unwrap()
+        else {
+            panic!()
+        };
         assert_eq!(tls, Some((true, Some("AES256".to_string()))));
-        assert!((dlg.build)(&pool_vals(&[("tls_enabled", "false"), ("tls_ciphers", "AES256")])).is_ok(), "hidden ciphers are dropped");
+        assert!(
+            (dlg.build)(&pool_vals(&[("tls_enabled", "false"), ("tls_ciphers", "AES256")])).is_ok(),
+            "hidden ciphers are dropped"
+        );
     }
 
     /// Roadmap 54, slice 4: policies only on HTTP listeners; the policy's own
@@ -5198,18 +8204,33 @@ mod tests {
             }))
             .unwrap()
         };
-        d.listeners = vec![listener("http", "HTTP"), listener("tcp", "TCP"), listener("tls", "TERMINATED_HTTPS")];
-        assert_eq!(l7_listeners(&d).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["http", "tls"]);
+        d.listeners = vec![
+            listener("http", "HTTP"),
+            listener("tcp", "TCP"),
+            listener("tls", "TERMINATED_HTTPS"),
+        ];
+        assert_eq!(
+            l7_listeners(&d).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            ["http", "tls"]
+        );
         let dlg = l7_policy_dialog(Lang::EnUs, &d, None);
         let OsAction::L7PolicyCreate { listener_id, spec } = (dlg.build)(&vals(&[
-            ("listener", "http"), ("name", "api"), ("description", ""), ("action", "REDIRECT_TO_POOL"),
-            ("redirect_pool", "pool-1"), ("redirect_url", ""), ("position", "2"), ("admin_up", "true"),
+            ("listener", "http"),
+            ("name", "api"),
+            ("description", ""),
+            ("action", "REDIRECT_TO_POOL"),
+            ("redirect_pool", "pool-1"),
+            ("redirect_url", ""),
+            ("position", "2"),
+            ("admin_up", "true"),
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("not a create")
         };
-        assert_eq!((listener_id.as_str(), spec.position, spec.redirect_pool_id.as_deref()), ("http", Some(2), Some("pool-1")));
+        assert_eq!(
+            (listener_id.as_str(), spec.position, spec.redirect_pool_id.as_deref()),
+            ("http", Some(2), Some("pool-1"))
+        );
 
         let policy: LbL7Policy = serde_json::from_value(serde_json::json!({
             "id": "pol-1", "name": "api", "description": null, "listener": {"id": "http", "name": "http"}, "action": "REJECT",
@@ -5218,22 +8239,37 @@ mod tests {
         }))
         .unwrap();
         let dlg = l7_rule_dialog(Lang::EnUs, &d, Some(&policy), None);
-        assert!(dlg.fields.iter().all(|f| f.name != "policy"), "preset from the policy's menu");
+        assert!(
+            dlg.fields.iter().all(|f| f.name != "policy"),
+            "preset from the policy's menu"
+        );
         let OsAction::L7RuleCreate { policy_id, spec } = (dlg.build)(&vals(&[
-            ("rule_type", "PATH"), ("compare_type", "STARTS_WITH"), ("key", "stale"), ("value", "/api"), ("invert", "false"), ("admin_up", "true"),
+            ("rule_type", "PATH"),
+            ("compare_type", "STARTS_WITH"),
+            ("key", "stale"),
+            ("value", "/api"),
+            ("invert", "false"),
+            ("admin_up", "true"),
         ]))
-        .unwrap()
-        else {
+        .unwrap() else {
             panic!("not a create")
         };
-        assert_eq!((policy_id.as_str(), spec.key), ("pol-1", None), "a hidden key isn't sent");
+        assert_eq!(
+            (policy_id.as_str(), spec.key),
+            ("pol-1", None),
+            "a hidden key isn't sent"
+        );
     }
 
     /// Roadmap 54: TLS listeners move the default port to 443 and back, but a
     /// typed port stays.
     #[test]
     fn the_port_follows_the_protocol_until_typed() {
-        let mut v: Vals = [("listener_protocol".to_string(), "TERMINATED_HTTPS".to_string()), ("listener_port".to_string(), "80".to_string())].into();
+        let mut v: Vals = [
+            ("listener_protocol".to_string(), "TERMINATED_HTTPS".to_string()),
+            ("listener_port".to_string(), "80".to_string()),
+        ]
+        .into();
         suggest_port("listener_protocol", &mut v, "listener_protocol", "listener_port");
         assert_eq!(v["listener_port"], "443");
         v.insert("listener_protocol".into(), "TCP".into());
@@ -5252,27 +8288,76 @@ mod tests {
         let d = lb_with_members();
         let dlg = member_dialog(Lang::EnUs, &d, None);
         let ext = (dlg.build)(&vals(&[
-            ("pool", "pool-1"), ("source", "external"), ("address", "192.0.2.10"), ("subnet", "sub-ext"), ("port", "8080"),
-            ("weight", "1"), ("monitor_address", ""), ("monitor_port", "9000"), ("admin_up", "true"),
+            ("pool", "pool-1"),
+            ("source", "external"),
+            ("address", "192.0.2.10"),
+            ("subnet", "sub-ext"),
+            ("port", "8080"),
+            ("weight", "1"),
+            ("monitor_address", ""),
+            ("monitor_port", "9000"),
+            ("admin_up", "true"),
         ]))
         .unwrap();
-        let OsAction::MemberCreate { spec, .. } = ext else { panic!("not a create") };
-        assert_eq!((spec.address.as_str(), spec.subnet_id.as_deref(), spec.monitor_port, spec.monitor_address), ("192.0.2.10", Some("sub-ext"), Some(9000), None));
+        let OsAction::MemberCreate { spec, .. } = ext else {
+            panic!("not a create")
+        };
+        assert_eq!(
+            (
+                spec.address.as_str(),
+                spec.subnet_id.as_deref(),
+                spec.monitor_port,
+                spec.monitor_address
+            ),
+            ("192.0.2.10", Some("sub-ext"), Some(9000), None)
+        );
         let edit = member_dialog(Lang::EnUs, &d, Some(&d.members[0]));
-        let field = |n: &str| edit.fields.iter().find(|f| f.name == n).map(|f| f.default.clone()).unwrap();
-        assert_eq!((field("name"), field("monitor_address")), (String::new(), "10.0.9.9".to_string()), "the ID fallback isn't offered as a name");
-        let OsAction::MemberUpdate { monitor_address, monitor_port, .. } =
-            (edit.build)(&vals(&[("name", ""), ("weight", "3"), ("monitor_address", ""), ("monitor_port", ""), ("admin_up", "true")])).unwrap()
+        let field = |n: &str| {
+            edit.fields
+                .iter()
+                .find(|f| f.name == n)
+                .map(|f| f.default.clone())
+                .unwrap()
+        };
+        assert_eq!(
+            (field("name"), field("monitor_address")),
+            (String::new(), "10.0.9.9".to_string()),
+            "the ID fallback isn't offered as a name"
+        );
+        let OsAction::MemberUpdate {
+            monitor_address,
+            monitor_port,
+            ..
+        } = (edit.build)(&vals(&[
+            ("name", ""),
+            ("weight", "3"),
+            ("monitor_address", ""),
+            ("monitor_port", ""),
+            ("admin_up", "true"),
+        ]))
+        .unwrap()
         else {
             panic!("not an update")
         };
-        assert_eq!((monitor_address, monitor_port), (None, None), "emptied: back to monitoring the member itself");
+        assert_eq!(
+            (monitor_address, monitor_port),
+            (None, None),
+            "emptied: back to monitoring the member itself"
+        );
     }
 
     #[test]
     fn identity_create_dialogs_show_where_things_go() {
-        for d in [create_project_dialog(Lang::EnUs), create_user_dialog(Lang::EnUs), create_group_dialog(Lang::EnUs)] {
-            assert!(matches!(d.fields[0].kind, Kind::Info(ChoiceSet::OperationDomain)), "{}: the domain comes first, read-only", d.title);
+        for d in [
+            create_project_dialog(Lang::EnUs),
+            create_user_dialog(Lang::EnUs),
+            create_group_dialog(Lang::EnUs),
+        ] {
+            assert!(
+                matches!(d.fields[0].kind, Kind::Info(ChoiceSet::OperationDomain)),
+                "{}: the domain comes first, read-only",
+                d.title
+            );
         }
     }
 
@@ -5281,10 +8366,27 @@ mod tests {
         let l = Lang::EnUs;
         let d = firewall_rule_dialog(l, None);
         assert!(!d.fields.iter().any(|f| f.name == "shared"), "never offered");
-        let a = (d.build)(&vals(&[("protocol", "tcp"), ("action", "deny"), ("ip_version", "6"), ("destination_port", "443"), ("enabled", "true")])).unwrap();
-        let OsAction::FirewallRuleCreate(spec) = a else { panic!("not a create") };
+        let a = (d.build)(&vals(&[
+            ("protocol", "tcp"),
+            ("action", "deny"),
+            ("ip_version", "6"),
+            ("destination_port", "443"),
+            ("enabled", "true"),
+        ]))
+        .unwrap();
+        let OsAction::FirewallRuleCreate(spec) = a else {
+            panic!("not a create")
+        };
         assert_eq!((spec.ip_version, spec.destination_port.as_str()), (6, "443"));
-        assert!((d.build)(&vals(&[("protocol", "icmp"), ("action", "allow"), ("source_port", "22")])).is_err(), "the server's check runs in the dialog");
+        assert!(
+            (d.build)(&vals(&[
+                ("protocol", "icmp"),
+                ("action", "allow"),
+                ("source_port", "22")
+            ]))
+            .is_err(),
+            "the server's check runs in the dialog"
+        );
         let rule = FirewallRuleRow {
             id: "r1".into(),
             name: "r1".into(),
@@ -5303,21 +8405,59 @@ mod tests {
         };
         let e = firewall_rule_dialog(l, Some(&rule));
         let field = |n: &str| e.fields.iter().find(|f| f.name == n).unwrap().default.clone();
-        assert_eq!((field("name"), field("protocol"), field("enabled")), ("".into(), "any".into(), "false".into()), "unnamed: empty, not the ID");
-        assert!(!e.fields.iter().any(|f| f.name == "shared"), "not even for a shared rule");
-        assert!(firewall_rule_items(l, &FirewallRuleRow { owned: false, ..rule }).is_empty(), "another project's shared rule");
+        assert_eq!(
+            (field("name"), field("protocol"), field("enabled")),
+            ("".into(), "any".into(), "false".into()),
+            "unnamed: empty, not the ID"
+        );
+        assert!(
+            !e.fields.iter().any(|f| f.name == "shared"),
+            "not even for a shared rule"
+        );
+        assert!(
+            firewall_rule_items(l, &FirewallRuleRow { owned: false, ..rule }).is_empty(),
+            "another project's shared rule"
+        );
 
-        let r = |id: &str| Ref { id: id.into(), name: id.into() };
-        let p = FirewallPolicyRow { id: "fp1".into(), name: "web".into(), description: None, rules: vec![r("a"), r("b")], audited: false, shared: false, owned: true };
+        let r = |id: &str| Ref {
+            id: id.into(),
+            name: id.into(),
+        };
+        let p = FirewallPolicyRow {
+            id: "fp1".into(),
+            name: "web".into(),
+            description: None,
+            rules: vec![r("a"), r("b")],
+            audited: false,
+            shared: false,
+            owned: true,
+        };
         let ins = insert_firewall_rule_dialog(l, &p);
-        assert!(matches!(&ins.fields[0].kind, Kind::Select(Source::Without(ChoiceSet::FirewallRules, have)) if have == &["a", "b"]), "rules it has are not offered");
+        assert!(
+            matches!(&ins.fields[0].kind, Kind::Select(Source::Without(ChoiceSet::FirewallRules, have)) if have == &["a", "b"]),
+            "rules it has are not offered"
+        );
         assert_eq!(ins.fields[1].default, "b", "at the end by default");
         let a = (ins.build)(&vals(&[("rule", "c"), ("after", "")])).unwrap();
-        assert_eq!(a, OsAction::FirewallPolicyInsertRule { id: "fp1".into(), rule_id: "c".into(), before_id: None, after_id: None }, "at the top");
+        assert_eq!(
+            a,
+            OsAction::FirewallPolicyInsertRule {
+                id: "fp1".into(),
+                rule_id: "c".into(),
+                before_id: None,
+                after_id: None
+            },
+            "at the top"
+        );
         let labels: Vec<_> = firewall_policy_items(l, &p).into_iter().map(|i| i.label).collect();
         assert_eq!(labels, ["Insert Rule", "Remove Rule", "Edit Policy", "Delete Policy"]);
 
-        let port = |id: &str| FirewallPort { port: r(id), ips: vec!["10.0.0.1".into()], kind: Some("router".into()), device: Some(r("router1")) };
+        let port = |id: &str| FirewallPort {
+            port: r(id),
+            ips: vec!["10.0.0.1".into()],
+            kind: Some("router".into()),
+            device: Some(r("router1")),
+        };
         let g = FirewallGroupRow {
             id: "g1".into(),
             name: "gw".into(),
@@ -5331,12 +8471,36 @@ mod tests {
             owned: true,
         };
         let add = add_firewall_port_dialog(l, &g);
-        assert_eq!((add.build)(&vals(&[("ports", "p2,p3")])).unwrap(), OsAction::FirewallGroupSetPorts { id: "g1".into(), port_ids: vec!["p1".into(), "p2".into(), "p3".into()] }, "the whole list, each once");
-        assert!(matches!(&add.fields[0].kind, Kind::Pick { src: Source::Set(ChoiceSet::FirewallPorts), .. }));
+        assert_eq!(
+            (add.build)(&vals(&[("ports", "p2,p3")])).unwrap(),
+            OsAction::FirewallGroupSetPorts {
+                id: "g1".into(),
+                port_ids: vec!["p1".into(), "p2".into(), "p3".into()]
+            },
+            "the whole list, each once"
+        );
+        assert!(matches!(
+            &add.fields[0].kind,
+            Kind::Pick {
+                src: Source::Set(ChoiceSet::FirewallPorts),
+                ..
+            }
+        ));
         let rm = remove_firewall_port_dialog(l, &g, &g.ports[0]);
-        assert_eq!((rm.build)(&vals(&[])).unwrap(), OsAction::FirewallGroupSetPorts { id: "g1".into(), port_ids: vec!["p2".into()] });
+        assert_eq!(
+            (rm.build)(&vals(&[])).unwrap(),
+            OsAction::FirewallGroupSetPorts {
+                id: "g1".into(),
+                port_ids: vec!["p2".into()]
+            }
+        );
         assert_eq!(firewall_port_label(&g.ports[0]), "router1 (10.0.0.1)");
-        let tips: Vec<_> = create_firewall_group_dialog(l).fields.iter().filter(|f| f.tip.is_some()).map(|f| f.name).collect();
+        let tips: Vec<_> = create_firewall_group_dialog(l)
+            .fields
+            .iter()
+            .filter(|f| f.tip.is_some())
+            .map(|f| f.name)
+            .collect();
         assert_eq!(tips, ["ingress", "egress"], "the direction of each policy is explained");
         let d = create_firewall_group_dialog(l);
         let steps: Vec<_> = d.steps.iter().map(|s| s.fields.clone()).collect();
@@ -5344,44 +8508,127 @@ mod tests {
         assert!(steps[0].starts_with(&["name", "description", "ingress", "egress", "admin_up"]));
 
         // Neutron's `default` group and policies (neutron-fwaas matches them by name).
-        let labels = |g: &FirewallGroupRow| firewall_group_items(l, g).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels(&g), ["Edit Firewall Group", "Add Port", "Remove Port", "Delete Firewall Group"]);
-        let def = FirewallGroupRow { name: "default".into(), ..g.clone() };
+        let labels = |g: &FirewallGroupRow| {
+            firewall_group_items(l, g)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(&g),
+            [
+                "Edit Firewall Group",
+                "Add Port",
+                "Remove Port",
+                "Delete Firewall Group"
+            ]
+        );
+        let def = FirewallGroupRow {
+            name: "default".into(),
+            ..g.clone()
+        };
         assert_eq!(labels(&def), ["Add Port", "Remove Port"], "only its ports can change");
         assert!(!def.deletable() && g.deletable() && !FirewallGroupRow { owned: false, ..g }.deletable());
-        let dp = FirewallPolicyRow { name: "default ingress".into(), ..p.clone() };
+        let dp = FirewallPolicyRow {
+            name: "default ingress".into(),
+            ..p.clone()
+        };
         let labels: Vec<_> = firewall_policy_items(l, &dp).into_iter().map(|i| i.label).collect();
-        assert_eq!(labels, ["Insert Rule", "Remove Rule"], "its rules can change, the policy can't");
+        assert_eq!(
+            labels,
+            ["Insert Rule", "Remove Rule"],
+            "its rules can change, the policy can't"
+        );
         assert!(!dp.deletable() && p.deletable());
     }
 
     #[test]
     fn trunk_dialogs_build_subports() {
         let d = create_trunk_dialog(Lang::EnUs);
-        let a = (d.build)(&vals(&[("parent", "p0"), ("admin_up", "true"), ("subport", "p1"), ("segmentation_type", "vlan"), ("segmentation_id", "101")])).unwrap();
-        let OsAction::TrunkCreate { port_id, subports, .. } = a else { panic!("not a create") };
+        let a = (d.build)(&vals(&[
+            ("parent", "p0"),
+            ("admin_up", "true"),
+            ("subport", "p1"),
+            ("segmentation_type", "vlan"),
+            ("segmentation_id", "101"),
+        ]))
+        .unwrap();
+        let OsAction::TrunkCreate { port_id, subports, .. } = a else {
+            panic!("not a create")
+        };
         assert_eq!((port_id.as_str(), subports[0].segmentation_id), ("p0", Some(101)));
         let none = (d.build)(&vals(&[("parent", "p0")])).unwrap();
-        assert!(matches!(none, OsAction::TrunkCreate { ref subports, .. } if subports.is_empty()), "the first sub-port is optional");
-        assert!((d.build)(&vals(&[("parent", "p0"), ("subport", "p0"), ("segmentation_id", "5")])).is_err(), "parent is not a sub-port");
+        assert!(
+            matches!(none, OsAction::TrunkCreate { ref subports, .. } if subports.is_empty()),
+            "the first sub-port is optional"
+        );
+        assert!(
+            (d.build)(&vals(&[("parent", "p0"), ("subport", "p0"), ("segmentation_id", "5")])).is_err(),
+            "parent is not a sub-port"
+        );
         let add = add_subport_dialog(Lang::EnUs, "t1");
-        let a = (add.build)(&vals(&[("subport", "p2"), ("segmentation_type", "inherit"), ("segmentation_id", "7")])).unwrap();
-        assert!(matches!(a, OsAction::TrunkAddSubports { ref subports, .. } if subports[0].segmentation_id.is_none()), "inherit ignores the ID");
-        assert!((add.build)(&vals(&[("subport", "p2"), ("segmentation_type", "vlan"), ("segmentation_id", "5000")])).is_err());
+        let a = (add.build)(&vals(&[
+            ("subport", "p2"),
+            ("segmentation_type", "inherit"),
+            ("segmentation_id", "7"),
+        ]))
+        .unwrap();
+        assert!(
+            matches!(a, OsAction::TrunkAddSubports { ref subports, .. } if subports[0].segmentation_id.is_none()),
+            "inherit ignores the ID"
+        );
+        assert!(
+            (add.build)(&vals(&[
+                ("subport", "p2"),
+                ("segmentation_type", "vlan"),
+                ("segmentation_id", "5000")
+            ]))
+            .is_err()
+        );
     }
 
     #[test]
     fn qos_rule_dialog_sends_only_the_fields_of_its_type() {
         let d = qos_rule_dialog(Lang::EnUs, "q1", None);
-        let a = (d.build)(&vals(&[("kind", "dscp_marking"), ("dscp_mark", "26"), ("direction", "egress"), ("max_kbps", "5")])).unwrap();
-        let OsAction::QosRuleCreate { policy_id, spec } = a else { panic!("not a create") };
-        assert_eq!((policy_id.as_str(), spec.dscp_mark, spec.direction.clone(), spec.max_kbps), ("q1", Some(26), None, None));
-        assert!((d.build)(&vals(&[("kind", "bandwidth_limit"), ("direction", "egress")])).is_err(), "max_kbps is required");
-        let rule = QosRule { id: "r1".into(), kind: "minimum_bandwidth".into(), direction: Some("ingress".into()), max_kbps: None, max_burst_kbps: None, dscp_mark: None, min_kbps: Some(100), min_kpps: None };
+        let a = (d.build)(&vals(&[
+            ("kind", "dscp_marking"),
+            ("dscp_mark", "26"),
+            ("direction", "egress"),
+            ("max_kbps", "5"),
+        ]))
+        .unwrap();
+        let OsAction::QosRuleCreate { policy_id, spec } = a else {
+            panic!("not a create")
+        };
+        assert_eq!(
+            (
+                policy_id.as_str(),
+                spec.dscp_mark,
+                spec.direction.clone(),
+                spec.max_kbps
+            ),
+            ("q1", Some(26), None, None)
+        );
+        assert!(
+            (d.build)(&vals(&[("kind", "bandwidth_limit"), ("direction", "egress")])).is_err(),
+            "max_kbps is required"
+        );
+        let rule = QosRule {
+            id: "r1".into(),
+            kind: "minimum_bandwidth".into(),
+            direction: Some("ingress".into()),
+            max_kbps: None,
+            max_burst_kbps: None,
+            dscp_mark: None,
+            min_kbps: Some(100),
+            min_kpps: None,
+        };
         let e = qos_rule_dialog(Lang::EnUs, "q1", Some(&rule));
         assert!(e.fields.iter().all(|f| f.name != "kind"), "the type is fixed on edit");
         let a = (e.build)(&vals(&[("direction", "egress"), ("min_kbps", "200")])).unwrap();
-        assert!(matches!(a, OsAction::QosRuleUpdate { ref id, ref spec, .. } if id == "r1" && spec.min_kbps == Some(200) && spec.kind == "minimum_bandwidth"));
+        assert!(
+            matches!(a, OsAction::QosRuleUpdate { ref id, ref spec, .. } if id == "r1" && spec.min_kbps == Some(200) && spec.kind == "minimum_bandwidth")
+        );
         // No `qos` plugin in a test context: the router and floating IP dialogs have no QoS field.
         assert!(create_router_dialog(Lang::EnUs).fields.iter().all(|f| f.name != "qos"));
         assert!(allocate_ip_dialog(Lang::EnUs).fields.iter().all(|f| f.name != "qos"));
@@ -5402,77 +8649,214 @@ mod tests {
             dns_name: None,
             dns_domain: None,
         };
-        let labels = |r: &FloatingIpRow| floating_ip_items(Lang::EnUs, r).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels(&row), ["Associate", "Port Forwarding Rules", "Release Floating IP"]);
-        let associated = FloatingIpRow { fixed_ip: Some("10.0.0.5".into()), ..row.clone() };
+        let labels = |r: &FloatingIpRow| {
+            floating_ip_items(Lang::EnUs, r)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(&row),
+            ["Associate", "Port Forwarding Rules", "Release Floating IP"]
+        );
+        let associated = FloatingIpRow {
+            fixed_ip: Some("10.0.0.5".into()),
+            ..row.clone()
+        };
         assert_eq!(labels(&associated)[0], "Disassociate");
-        let admin = |r: &FloatingIpRow| admin_floating_ip_items(Lang::EnUs, r, Some("p9")).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(admin(&row), ["Associate", "Release Floating IP"], "Admin: Associate among the owner's ports");
+        let admin = |r: &FloatingIpRow| {
+            admin_floating_ip_items(Lang::EnUs, r, Some("p9"))
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            admin(&row),
+            ["Associate", "Release Floating IP"],
+            "Admin: Associate among the owner's ports"
+        );
         let items = admin_floating_ip_items(Lang::EnUs, &row, Some("p9"));
         let d = dialog_of(&items, "Associate");
-        assert!(matches!(&d.fields[0].kind, Kind::Select(Source::Of(ChoiceSet::AllAssociablePorts, p)) if p == "p9 net-public"), "the owner's ports its pool reaches, not the session's");
-        assert_eq!(admin_floating_ip_items(Lang::EnUs, &row, None).len(), 1, "no owner known: no Associate");
-        assert_eq!(admin(&associated), ["Disassociate", "Release Floating IP"], "Horizon's admin menu");
+        assert!(
+            matches!(&d.fields[0].kind, Kind::Select(Source::Of(ChoiceSet::AllAssociablePorts, p)) if p == "p9 net-public"),
+            "the owner's ports its pool reaches, not the session's"
+        );
+        assert_eq!(
+            admin_floating_ip_items(Lang::EnUs, &row, None).len(),
+            1,
+            "no owner known: no Associate"
+        );
+        assert_eq!(
+            admin(&associated),
+            ["Disassociate", "Release Floating IP"],
+            "Horizon's admin menu"
+        );
     }
 
     #[test]
     fn create_flavor_is_private_with_projects() {
         let d = create_flavor_dialog(Lang::EnUs);
-        let base = [("name", "m1.big"), ("flavor_id", "auto"), ("vcpus", "4"), ("ram", "8192"), ("disk", "40"), ("ephemeral", "0"), ("swap", ""), ("rxtx", "1.0")];
+        let base = [
+            ("name", "m1.big"),
+            ("flavor_id", "auto"),
+            ("vcpus", "4"),
+            ("ram", "8192"),
+            ("disk", "40"),
+            ("ephemeral", "0"),
+            ("swap", ""),
+            ("rxtx", "1.0"),
+        ];
         let with = |extra: &[(&'static str, &'static str)]| {
             let mut p = base.to_vec();
             p.extend_from_slice(extra);
             (d.build)(&vals(&p))
         };
-        let OsAction::FlavorCreate(spec) = with(&[("projects", "p1,p2")]).unwrap() else { panic!() };
-        assert_eq!((spec.vcpus, spec.ram_mb, spec.disk_gb, spec.swap_mb, spec.rxtx_factor), (4, 8192, 40, 0, Some(1.0)), "empty swap is 0");
+        let OsAction::FlavorCreate(spec) = with(&[("projects", "p1,p2")]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            (spec.vcpus, spec.ram_mb, spec.disk_gb, spec.swap_mb, spec.rxtx_factor),
+            (4, 8192, 40, 0, Some(1.0)),
+            "empty swap is 0"
+        );
         assert_eq!(spec.projects, ["p1", "p2"]);
         assert!(with(&[("rxtx", "fast")]).is_err(), "RX/TX factor must be a number");
-        assert!((d.build)(&vals(&[("name", "x"), ("ram", "1"), ("disk", "0")])).is_err(), "VCPUs are required");
+        assert!(
+            (d.build)(&vals(&[("name", "x"), ("ram", "1"), ("disk", "0")])).is_err(),
+            "VCPUs are required"
+        );
     }
 
     #[test]
     fn modify_access_only_for_private_flavors_and_sends_changes() {
         let f = FlavorRow {
-            id: "f1".into(), name: "m1".into(), vcpus: 1, ram_mb: 512, disk_gb: 1, ephemeral_gb: 0, swap_mb: 0, rxtx_factor: None, public: false,
-            extra_specs: vec![], access: vec![("p1".into(), "One".into())],
+            id: "f1".into(),
+            name: "m1".into(),
+            vcpus: 1,
+            ram_mb: 512,
+            disk_gb: 1,
+            ephemeral_gb: 0,
+            swap_mb: 0,
+            rxtx_factor: None,
+            public: false,
+            extra_specs: vec![],
+            access: vec![("p1".into(), "One".into())],
         };
-        let labels = |f: &FlavorRow| admin_flavor_items(Lang::EnUs, f).into_iter().map(|i| i.label).collect::<Vec<_>>();
+        let labels = |f: &FlavorRow| {
+            admin_flavor_items(Lang::EnUs, f)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(labels(&f), ["Update Metadata", "Modify Access", "Delete Flavor"]);
-        assert_eq!(labels(&FlavorRow { public: true, ..f.clone() }), ["Update Metadata", "Delete Flavor"], "Nova can't make a public flavor private");
+        assert_eq!(
+            labels(&FlavorRow {
+                public: true,
+                ..f.clone()
+            }),
+            ["Update Metadata", "Delete Flavor"],
+            "Nova can't make a public flavor private"
+        );
     }
 
     #[test]
     fn edit_flavor_only_when_enabled_and_recreates_with_the_same_id() {
         let f = FlavorRow {
-            id: "f1".into(), name: "m1".into(), vcpus: 2, ram_mb: 2048, disk_gb: 20, ephemeral_gb: 0, swap_mb: 0, rxtx_factor: None, public: false,
-            extra_specs: vec![("hw:cpu_policy".into(), "dedicated".into())], access: vec![("p1".into(), "One".into())],
+            id: "f1".into(),
+            name: "m1".into(),
+            vcpus: 2,
+            ram_mb: 2048,
+            disk_gb: 20,
+            ephemeral_gb: 0,
+            swap_mb: 0,
+            rxtx_factor: None,
+            public: false,
+            extra_specs: vec![("hw:cpu_policy".into(), "dedicated".into())],
+            access: vec![("p1".into(), "One".into())],
         };
-        let labels = |edit| admin_flavor_menu(Lang::EnUs, &f, edit).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels(false), ["Update Metadata", "Modify Access", "Delete Flavor"], "off by default, as Horizon's ENABLE_FLAVOR_EDIT");
+        let labels = |edit| {
+            admin_flavor_menu(Lang::EnUs, &f, edit)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(false),
+            ["Update Metadata", "Modify Access", "Delete Flavor"],
+            "off by default, as Horizon's ENABLE_FLAVOR_EDIT"
+        );
         assert_eq!(labels(true)[0], "Edit Flavor");
         let d = dialog_of(&admin_flavor_menu(Lang::EnUs, &f, true), "Edit Flavor");
         let field = |n: &str| d.fields.iter().find(|x| x.name == n).map(|x| x.default.clone());
-        assert_eq!((field("name"), field("vcpus"), field("ram"), field("projects")), (Some("m1".into()), Some("2".into()), Some("2048".into()), Some("p1".into())));
+        assert_eq!(
+            (field("name"), field("vcpus"), field("ram"), field("projects")),
+            (
+                Some("m1".into()),
+                Some("2".into()),
+                Some("2048".into()),
+                Some("p1".into())
+            )
+        );
         assert!(field("flavor_id").is_none(), "the ID stays");
         assert!(!d.steps[0].fields.contains(&"flavor_id"));
-        let v = vals(&[("name", "m1"), ("vcpus", "4"), ("ram", "4096"), ("disk", "20"), ("ephemeral", "0"), ("swap", "0"), ("rxtx", "1.0"), ("projects", "p1")]);
-        let OsAction::FlavorReplace { spec, extra_specs } = (d.build)(&v).unwrap() else { panic!() };
-        assert_eq!((spec.flavor_id.as_deref(), spec.vcpus, spec.projects.clone()), (Some("f1"), 4, vec!["p1".to_string()]));
+        let v = vals(&[
+            ("name", "m1"),
+            ("vcpus", "4"),
+            ("ram", "4096"),
+            ("disk", "20"),
+            ("ephemeral", "0"),
+            ("swap", "0"),
+            ("rxtx", "1.0"),
+            ("projects", "p1"),
+        ]);
+        let OsAction::FlavorReplace { spec, extra_specs } = (d.build)(&v).unwrap() else {
+            panic!()
+        };
+        assert_eq!(
+            (spec.flavor_id.as_deref(), spec.vcpus, spec.projects.clone()),
+            (Some("f1"), 4, vec!["p1".to_string()])
+        );
         assert_eq!(extra_specs, f.extra_specs, "the extra specs come back");
     }
 
     #[test]
     fn admin_instance_menu_adds_migrations_and_drops_project_pickers() {
-        let labels = |status: &str| admin_instance_items(Lang::EnUs, &instance(status, false), Some("c1")).into_iter().map(|i| i.label).collect::<Vec<_>>();
+        let labels = |status: &str| {
+            admin_instance_items(Lang::EnUs, &instance(status, false), Some("c1"))
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
         let active = labels("ACTIVE");
-        for gone in ["Associate Floating IP", "Attach Interface", "Attach Volume", "Edit Security Groups", "Resize Instance", "Rebuild Instance", "Rescue Instance"] {
-            assert!(!active.iter().any(|l| l == gone), "{gone}: picks from the session project's resources");
+        for gone in [
+            "Associate Floating IP",
+            "Attach Interface",
+            "Attach Volume",
+            "Edit Security Groups",
+            "Resize Instance",
+            "Rebuild Instance",
+            "Rescue Instance",
+        ] {
+            assert!(
+                !active.iter().any(|l| l == gone),
+                "{gone}: picks from the session project's resources"
+            );
         }
-        let at = |l: &str| active.iter().position(|x| x == l).unwrap_or_else(|| panic!("{l} in {active:?}"));
-        assert!(at("Migrate Instance") < at("Live Migrate Instance") && at("Live Migrate Instance") < at("Lock Instance"), "{active:?}");
+        let at = |l: &str| {
+            active
+                .iter()
+                .position(|x| x == l)
+                .unwrap_or_else(|| panic!("{l} in {active:?}"))
+        };
+        assert!(
+            at("Migrate Instance") < at("Live Migrate Instance") && at("Live Migrate Instance") < at("Lock Instance"),
+            "{active:?}"
+        );
         let off = labels("SHUTOFF");
-        assert!(off.iter().any(|l| l == "Migrate Instance") && !off.iter().any(|l| l == "Live Migrate Instance"), "cold only when stopped");
+        assert!(
+            off.iter().any(|l| l == "Migrate Instance") && !off.iter().any(|l| l == "Live Migrate Instance"),
+            "cold only when stopped"
+        );
     }
 
     #[test]
@@ -5480,131 +8864,488 @@ mod tests {
         let v = volume("in-use");
         let items = admin_volume_items(Lang::EnUs, &v, Some("c1@ceph#fast"));
         let labels: Vec<String> = items.iter().map(|i| i.label.clone()).collect();
-        assert_eq!(labels, ["Update Volume Status", "Migrate Volume", "Update Metadata", "Unmanage Volume", "Delete Volume"]);
-        assert!(items[3].danger && items[4].danger, "unmanage and delete are destructive");
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[0].kind else { panic!() };
+        assert_eq!(
+            labels,
+            [
+                "Update Volume Status",
+                "Migrate Volume",
+                "Update Metadata",
+                "Unmanage Volume",
+                "Delete Volume"
+            ]
+        );
+        assert!(
+            items[3].danger && items[4].danger,
+            "unmanage and delete are destructive"
+        );
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[0].kind else {
+            panic!()
+        };
         let d = open();
-        let Kind::Select(Source::Static(choices)) = &d.fields[0].kind else { panic!("status choices") };
-        assert!(!choices.iter().any(|(v, _)| v == "in-use") && choices.iter().any(|(v, _)| v == "available"), "Horizon drops the current status");
-        assert_eq!((d.build)(&vals(&[("status", "available")])).unwrap(), OsAction::VolumeResetStatus { id: v.id.clone(), status: "available".into() });
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else { panic!() };
+        let Kind::Select(Source::Static(choices)) = &d.fields[0].kind else {
+            panic!("status choices")
+        };
+        assert!(
+            !choices.iter().any(|(v, _)| v == "in-use") && choices.iter().any(|(v, _)| v == "available"),
+            "Horizon drops the current status"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("status", "available")])).unwrap(),
+            OsAction::VolumeResetStatus {
+                id: v.id.clone(),
+                status: "available".into()
+            }
+        );
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else {
+            panic!()
+        };
         let d = open();
-        assert!(d.intro.iter().any(|l| l.ends_with("c1@ceph#fast")), "shows the current host: {:?}", d.intro);
-        assert!(matches!(&d.fields[0].kind, Kind::Select(Source::Except(ChoiceSet::CinderPools, h)) if h == "c1@ceph#fast"), "Cinder refuses the current pool: not offered");
-        assert_eq!((d.build)(&vals(&[("host", "c2@ceph#slow"), ("force", "true")])).unwrap(), OsAction::VolumeMigrate { id: v.id.clone(), host: "c2@ceph#slow".into(), force_host_copy: true });
-        let snap = Snapshot { id: "s1".into(), name: "s".into(), description: None, size_gb: 1, status: "error".into(), volume_id: "v".into(), volume_name: None, created: String::new(), metadata: vec![] };
-        let labels: Vec<String> = admin_snapshot_items(Lang::EnUs, &snap).into_iter().map(|i| i.label).collect();
+        assert!(
+            d.intro.iter().any(|l| l.ends_with("c1@ceph#fast")),
+            "shows the current host: {:?}",
+            d.intro
+        );
+        assert!(
+            matches!(&d.fields[0].kind, Kind::Select(Source::Except(ChoiceSet::CinderPools, h)) if h == "c1@ceph#fast"),
+            "Cinder refuses the current pool: not offered"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("host", "c2@ceph#slow"), ("force", "true")])).unwrap(),
+            OsAction::VolumeMigrate {
+                id: v.id.clone(),
+                host: "c2@ceph#slow".into(),
+                force_host_copy: true
+            }
+        );
+        let snap = Snapshot {
+            id: "s1".into(),
+            name: "s".into(),
+            description: None,
+            size_gb: 1,
+            status: "error".into(),
+            volume_id: "v".into(),
+            volume_name: None,
+            created: String::new(),
+            metadata: vec![],
+        };
+        let labels: Vec<String> = admin_snapshot_items(Lang::EnUs, &snap)
+            .into_iter()
+            .map(|i| i.label)
+            .collect();
         assert_eq!(labels, ["Update Status", "Update Metadata", "Delete Volume Snapshot"]);
     }
 
     fn dialog_of(items: &[MenuItem], label: &str) -> Dialog {
-        let item = items.iter().find(|i| i.label == label).unwrap_or_else(|| panic!("{label}"));
-        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else { panic!("{label} opens no dialog") };
+        let item = items
+            .iter()
+            .find(|i| i.label == label)
+            .unwrap_or_else(|| panic!("{label}"));
+        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else {
+            panic!("{label} opens no dialog")
+        };
         open()
     }
 
     #[test]
     fn volume_type_menu_follows_encryption_and_qos() {
-        let plain = VolumeTypeRow { id: "t1".into(), name: "ssd".into(), description: None, qos: Some(Ref { id: "q1".into(), name: "gold".into() }), encrypted: false, public: true, extra_specs: vec![("a".into(), "1".into())], encryption: None };
-        let labels = |t: &VolumeTypeRow| volume_type_items(Lang::EnUs, t).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels(&plain), ["View Extra Specs", "Manage QoS Spec Association", "Edit Volume Type", "Create Encryption", "Delete Volume Type"]);
-        let luks = EncryptionSpec { provider: "luks".into(), control_location: "back-end".into(), cipher: None, key_size: Some(256) };
-        let enc = VolumeTypeRow { encrypted: true, encryption: Some(luks.clone()), ..plain.clone() };
-        assert_eq!(labels(&enc), ["View Extra Specs", "Manage QoS Spec Association", "Edit Volume Type", "Update Encryption", "Delete Encryption", "Delete Volume Type"]);
+        let plain = VolumeTypeRow {
+            id: "t1".into(),
+            name: "ssd".into(),
+            description: None,
+            qos: Some(Ref {
+                id: "q1".into(),
+                name: "gold".into(),
+            }),
+            encrypted: false,
+            public: true,
+            extra_specs: vec![("a".into(), "1".into())],
+            encryption: None,
+        };
+        let labels = |t: &VolumeTypeRow| {
+            volume_type_items(Lang::EnUs, t)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(&plain),
+            [
+                "View Extra Specs",
+                "Manage QoS Spec Association",
+                "Edit Volume Type",
+                "Create Encryption",
+                "Delete Volume Type"
+            ]
+        );
+        let luks = EncryptionSpec {
+            provider: "luks".into(),
+            control_location: "back-end".into(),
+            cipher: None,
+            key_size: Some(256),
+        };
+        let enc = VolumeTypeRow {
+            encrypted: true,
+            encryption: Some(luks.clone()),
+            ..plain.clone()
+        };
+        assert_eq!(
+            labels(&enc),
+            [
+                "View Extra Specs",
+                "Manage QoS Spec Association",
+                "Edit Volume Type",
+                "Update Encryption",
+                "Delete Encryption",
+                "Delete Volume Type"
+            ]
+        );
         let d = dialog_of(&volume_type_items(Lang::EnUs, &enc), "Update Encryption");
-        assert_eq!(d.fields.iter().map(|f| f.default.as_str()).collect::<Vec<_>>(), ["luks", "back-end", "", "256"], "prefilled from the spec");
-        assert_eq!((d.build)(&vals(&[("provider", "luks"), ("control_location", "back-end"), ("key_size", "512")])).unwrap(),
-            OsAction::VolumeTypeEncryptionSet { id: "t1".into(), spec: EncryptionSpec { key_size: Some(512), ..luks }, update: true });
+        assert_eq!(
+            d.fields.iter().map(|f| f.default.as_str()).collect::<Vec<_>>(),
+            ["luks", "back-end", "", "256"],
+            "prefilled from the spec"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[
+                ("provider", "luks"),
+                ("control_location", "back-end"),
+                ("key_size", "512")
+            ]))
+            .unwrap(),
+            OsAction::VolumeTypeEncryptionSet {
+                id: "t1".into(),
+                spec: EncryptionSpec {
+                    key_size: Some(512),
+                    ..luks
+                },
+                update: true
+            }
+        );
         let d = dialog_of(&volume_type_items(Lang::EnUs, &plain), "Manage QoS Spec Association");
         assert_eq!(d.fields[0].default, "q1", "the current spec preselected");
         assert!((d.build)(&vals(&[("qos", "q1")])).is_err(), "nothing changed");
-        assert_eq!((d.build)(&vals(&[("qos", "")])).unwrap(), OsAction::VolumeTypeSetQos { id: "t1".into(), qos_id: None, current_qos_id: Some("q1".into()) });
+        assert_eq!(
+            (d.build)(&vals(&[("qos", "")])).unwrap(),
+            OsAction::VolumeTypeSetQos {
+                id: "t1".into(),
+                qos_id: None,
+                current_qos_id: Some("q1".into())
+            }
+        );
         let d = dialog_of(&volume_type_items(Lang::EnUs, &plain), "View Extra Specs");
-        assert_eq!((d.build)(&vals(&[("metadata", r#"[["b","2"]]"#)])).unwrap(), OsAction::VolumeTypeSetExtraSpecs { id: "t1".into(), set: vec![("b".into(), "2".into())], unset: vec!["a".into()] });
+        assert_eq!(
+            (d.build)(&vals(&[("metadata", r#"[["b","2"]]"#)])).unwrap(),
+            OsAction::VolumeTypeSetExtraSpecs {
+                id: "t1".into(),
+                set: vec![("b".into(), "2".into())],
+                unset: vec!["a".into()]
+            }
+        );
     }
 
     #[test]
     fn qos_and_group_type_menus() {
-        let q = QosSpecRow { id: "q1".into(), name: "gold".into(), consumer: "back-end".into(), specs: vec![] };
+        let q = QosSpecRow {
+            id: "q1".into(),
+            name: "gold".into(),
+            consumer: "back-end".into(),
+            specs: vec![],
+        };
         let items = qos_spec_items(Lang::EnUs, &q);
-        assert_eq!(items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), ["Manage Specs", "Edit Consumer", "Delete QoS Spec"]);
+        assert_eq!(
+            items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
+            ["Manage Specs", "Edit Consumer", "Delete QoS Spec"]
+        );
         let d = dialog_of(&items, "Edit Consumer");
-        assert!((d.build)(&vals(&[("consumer", "back-end")])).is_err(), "nothing changed");
-        assert_eq!((d.build)(&vals(&[("consumer", "both")])).unwrap(), OsAction::QosSpecSetConsumer { id: "q1".into(), consumer: "both".into() });
+        assert!(
+            (d.build)(&vals(&[("consumer", "back-end")])).is_err(),
+            "nothing changed"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("consumer", "both")])).unwrap(),
+            OsAction::QosSpecSetConsumer {
+                id: "q1".into(),
+                consumer: "both".into()
+            }
+        );
         let c = create_qos_spec_dialog(Lang::EnUs);
-        assert_eq!((c.build)(&vals(&[("name", "gold"), ("consumer", "front-end"), ("specs", r#"[["read_iops_sec","500"]]"#)])).unwrap(),
-            OsAction::QosSpecCreate { name: "gold".into(), consumer: "front-end".into(), specs: vec![("read_iops_sec".into(), "500".into())] });
-        let g = GroupTypeRow { id: "g1".into(), name: "cg".into(), description: None, public: true, specs: vec![] };
-        assert_eq!(group_type_items(Lang::EnUs, &g).into_iter().map(|i| i.label).collect::<Vec<_>>(), ["View Specs", "Edit Group Type", "Delete Group Type"]);
+        assert_eq!(
+            (c.build)(&vals(&[
+                ("name", "gold"),
+                ("consumer", "front-end"),
+                ("specs", r#"[["read_iops_sec","500"]]"#)
+            ]))
+            .unwrap(),
+            OsAction::QosSpecCreate {
+                name: "gold".into(),
+                consumer: "front-end".into(),
+                specs: vec![("read_iops_sec".into(), "500".into())]
+            }
+        );
+        let g = GroupTypeRow {
+            id: "g1".into(),
+            name: "cg".into(),
+            description: None,
+            public: true,
+            specs: vec![],
+        };
+        assert_eq!(
+            group_type_items(Lang::EnUs, &g)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>(),
+            ["View Specs", "Edit Group Type", "Delete Group Type"]
+        );
         let c = create_group_type_dialog(Lang::EnUs);
-        assert_eq!((c.build)(&vals(&[("name", "cg"), ("public", "false")])).unwrap(), OsAction::GroupTypeCreate { name: "cg".into(), description: None, public: false });
+        assert_eq!(
+            (c.build)(&vals(&[("name", "cg"), ("public", "false")])).unwrap(),
+            OsAction::GroupTypeCreate {
+                name: "cg".into(),
+                description: None,
+                public: false
+            }
+        );
     }
 
     #[test]
     fn metadef_menu_hides_delete_when_protected_and_sends_association_changes() {
-        let n = MetadefNamespace { namespace: "OS::Acme::Gpu".into(), name: "GPU".into(), description: None, resource_types: vec!["OS::Glance::Image".into()], public: true, protected: false, prefixes: vec![] };
+        let n = MetadefNamespace {
+            namespace: "OS::Acme::Gpu".into(),
+            name: "GPU".into(),
+            description: None,
+            resource_types: vec!["OS::Glance::Image".into()],
+            public: true,
+            protected: false,
+            prefixes: vec![],
+        };
         let items = metadef_items(Lang::EnUs, &n);
-        assert_eq!(items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), ["Edit Namespace", "Update Associations", "Delete Namespace"]);
-        assert_eq!(metadef_items(Lang::EnUs, &MetadefNamespace { protected: true, ..n.clone() }).len(), 2, "Glance refuses deleting a protected namespace");
+        assert_eq!(
+            items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
+            ["Edit Namespace", "Update Associations", "Delete Namespace"]
+        );
+        assert_eq!(
+            metadef_items(
+                Lang::EnUs,
+                &MetadefNamespace {
+                    protected: true,
+                    ..n.clone()
+                }
+            )
+            .len(),
+            2,
+            "Glance refuses deleting a protected namespace"
+        );
         let d = dialog_of(&items, "Update Associations");
-        assert_eq!((d.build)(&vals(&[("types", "OS::Nova::Flavor")])).unwrap(),
-            OsAction::MetadefNamespaceSetTypes { id: "OS::Acme::Gpu".into(), add_type_ids: vec!["OS::Nova::Flavor".into()], remove_type_ids: vec!["OS::Glance::Image".into()], prefixes: vec![] });
+        assert_eq!(
+            (d.build)(&vals(&[("types", "OS::Nova::Flavor")])).unwrap(),
+            OsAction::MetadefNamespaceSetTypes {
+                id: "OS::Acme::Gpu".into(),
+                add_type_ids: vec!["OS::Nova::Flavor".into()],
+                remove_type_ids: vec!["OS::Glance::Image".into()],
+                prefixes: vec![]
+            }
+        );
         // Prefixes (roadmap 89): prefilled, a change re-adds the association, and one
         // for a type that isn't ticked is refused.
-        let with = MetadefNamespace { prefixes: vec![("OS::Glance::Image".into(), "hw_".into())], ..n.clone() };
+        let with = MetadefNamespace {
+            prefixes: vec![("OS::Glance::Image".into(), "hw_".into())],
+            ..n.clone()
+        };
         let d = dialog_of(&metadef_items(Lang::EnUs, &with), "Update Associations");
         assert_eq!(d.fields[1].default, r#"[["OS::Glance::Image","hw_"]]"#);
         let img = || vec!["OS::Glance::Image".to_string()];
-        assert!((d.build)(&vals(&[("types", "OS::Glance::Image"), ("prefixes", r#"[["OS::Glance::Image","hw_"]]"#)])).is_err(), "nothing changed");
-        assert_eq!((d.build)(&vals(&[("types", "OS::Glance::Image"), ("prefixes", r#"[["OS::Glance::Image","gpu_"]]"#)])).unwrap(),
-            OsAction::MetadefNamespaceSetTypes { id: "OS::Acme::Gpu".into(), add_type_ids: img(), remove_type_ids: img(), prefixes: vec![("OS::Glance::Image".into(), "gpu_".into())] });
-        assert!((d.build)(&vals(&[("types", "OS::Glance::Image"), ("prefixes", r#"[["OS::Nova::Flavor","hw:"]]"#)])).is_err(), "not associated");
+        assert!(
+            (d.build)(&vals(&[
+                ("types", "OS::Glance::Image"),
+                ("prefixes", r#"[["OS::Glance::Image","hw_"]]"#)
+            ]))
+            .is_err(),
+            "nothing changed"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[
+                ("types", "OS::Glance::Image"),
+                ("prefixes", r#"[["OS::Glance::Image","gpu_"]]"#)
+            ]))
+            .unwrap(),
+            OsAction::MetadefNamespaceSetTypes {
+                id: "OS::Acme::Gpu".into(),
+                add_type_ids: img(),
+                remove_type_ids: img(),
+                prefixes: vec![("OS::Glance::Image".into(), "gpu_".into())]
+            }
+        );
+        assert!(
+            (d.build)(&vals(&[
+                ("types", "OS::Glance::Image"),
+                ("prefixes", r#"[["OS::Nova::Flavor","hw:"]]"#)
+            ]))
+            .is_err(),
+            "not associated"
+        );
         let d = dialog_of(&items, "Edit Namespace");
         assert_eq!(d.fields[0].default, "GPU", "the display name, not the namespace");
-        assert!((import_namespace_dialog(Lang::EnUs).build)(&vals(&[("definition", "{oops")])).is_err(), "JSON checked in the dialog");
+        assert!(
+            (import_namespace_dialog(Lang::EnUs).build)(&vals(&[("definition", "{oops")])).is_err(),
+            "JSON checked in the dialog"
+        );
     }
 
     #[test]
     fn manage_volume_reads_horizons_form() {
         let d = manage_volume_dialog(Lang::EnUs);
-        let a = (d.build)(&vals(&[("identifier", "lun-7"), ("id_type", "source-id"), ("host", "c1@san#p"), ("name", ""), ("bootable", "true"), ("metadata", r#"[["k","v"]]"#)])).unwrap();
+        let a = (d.build)(&vals(&[
+            ("identifier", "lun-7"),
+            ("id_type", "source-id"),
+            ("host", "c1@san#p"),
+            ("name", ""),
+            ("bootable", "true"),
+            ("metadata", r#"[["k","v"]]"#),
+        ]))
+        .unwrap();
         let OsAction::VolumeManage(spec) = a else { panic!() };
-        assert_eq!((spec.identifier.as_str(), spec.by_id, spec.host.as_str(), spec.name, spec.bootable), ("lun-7", true, "c1@san#p", None, true));
+        assert_eq!(
+            (
+                spec.identifier.as_str(),
+                spec.by_id,
+                spec.host.as_str(),
+                spec.name,
+                spec.bootable
+            ),
+            ("lun-7", true, "c1@san#p", None, true)
+        );
         assert_eq!(spec.metadata, [("k".to_string(), "v".to_string())]);
-        assert!((d.build)(&vals(&[("identifier", "lun-7"), ("id_type", "source-name")])).is_err(), "the host is required");
+        assert!(
+            (d.build)(&vals(&[("identifier", "lun-7"), ("id_type", "source-name")])).is_err(),
+            "the host is required"
+        );
     }
 
     #[test]
     fn live_migrate_sends_auto_unless_chosen() {
         let item = live_migrate_item(Lang::EnUs, "s1", "web", "c1");
-        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else { panic!("a dialog item") };
+        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else {
+            panic!("a dialog item")
+        };
         let d = open();
-        assert!(matches!(&d.fields[0].kind, Kind::Select(Source::Except(ChoiceSet::ComputeHosts, h)) if h == "c1"), "Nova refuses the current host: not offered");
-        assert_eq!((d.build)(&vals(&[("host", ""), ("block", "auto")])).unwrap(), OsAction::ServerLiveMigrate { id: "s1".into(), host: None, block_migration: None });
-        assert_eq!((d.build)(&vals(&[("host", "c2"), ("block", "false")])).unwrap(), OsAction::ServerLiveMigrate { id: "s1".into(), host: Some("c2".into()), block_migration: Some(false) });
+        assert!(
+            matches!(&d.fields[0].kind, Kind::Select(Source::Except(ChoiceSet::ComputeHosts, h)) if h == "c1"),
+            "Nova refuses the current host: not offered"
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("host", ""), ("block", "auto")])).unwrap(),
+            OsAction::ServerLiveMigrate {
+                id: "s1".into(),
+                host: None,
+                block_migration: None
+            }
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("host", "c2"), ("block", "false")])).unwrap(),
+            OsAction::ServerLiveMigrate {
+                id: "s1".into(),
+                host: Some("c2".into()),
+                block_migration: Some(false)
+            }
+        );
     }
 
     #[test]
     fn aggregate_hosts_and_compute_services() {
-        let a = AggregateRow { id: "7".into(), name: "gpu".into(), zone: Some("az1".into()), hosts: vec!["c1".into()], metadata: vec![("availability_zone".into(), "az1".into())] };
+        let a = AggregateRow {
+            id: "7".into(),
+            name: "gpu".into(),
+            zone: Some("az1".into()),
+            hosts: vec!["c1".into()],
+            metadata: vec![("availability_zone".into(), "az1".into())],
+        };
         let items = aggregate_items(Lang::EnUs, &a);
-        assert_eq!(items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), ["Edit Host Aggregate", "Manage Hosts", "Update Metadata", "Delete Host Aggregate"]);
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else { panic!() };
+        assert_eq!(
+            items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
+            [
+                "Edit Host Aggregate",
+                "Manage Hosts",
+                "Update Metadata",
+                "Delete Host Aggregate"
+            ]
+        );
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else {
+            panic!()
+        };
         let d = open();
-        assert_eq!((d.build)(&vals(&[("hosts", "c2")])).unwrap(), OsAction::AggregateSetHosts { id: "7".into(), add: vec!["c2".into()], remove: vec!["c1".into()] });
+        assert_eq!(
+            (d.build)(&vals(&[("hosts", "c2")])).unwrap(),
+            OsAction::AggregateSetHosts {
+                id: "7".into(),
+                add: vec!["c2".into()],
+                remove: vec!["c1".into()]
+            }
+        );
         assert!((d.build)(&vals(&[("hosts", "c1")])).is_err(), "nothing changed");
-        let svc = HostService { id: "u1".into(), binary: "nova-compute".into(), host: "c1".into(), zone: None, enabled: true, up: true, updated_at: None, disabled_reason: None };
+        let svc = HostService {
+            id: "u1".into(),
+            binary: "nova-compute".into(),
+            host: "c1".into(),
+            zone: None,
+            enabled: true,
+            up: true,
+            updated_at: None,
+            disabled_reason: None,
+        };
         assert_eq!(compute_service_items(Lang::EnUs, &svc)[0].label, "Disable Service");
-        assert_eq!(compute_service_items(Lang::EnUs, &HostService { enabled: false, ..svc.clone() })[0].label, "Enable Service");
-        assert!(compute_service_items(Lang::EnUs, &HostService { id: String::new(), ..svc }).is_empty(), "no UUID (before 2.53): no action");
+        assert_eq!(
+            compute_service_items(
+                Lang::EnUs,
+                &HostService {
+                    enabled: false,
+                    ..svc.clone()
+                }
+            )[0]
+            .label,
+            "Enable Service"
+        );
+        assert!(
+            compute_service_items(
+                Lang::EnUs,
+                &HostService {
+                    id: String::new(),
+                    ..svc
+                }
+            )
+            .is_empty(),
+            "no UUID (before 2.53): no action"
+        );
     }
 
     #[test]
     fn admin_create_router_sends_server_defaults_as_nothing() {
         let d = admin_create_router_dialog(Lang::EnUs);
         let names: Vec<&str> = d.fields.iter().map(|f| f.name).collect();
-        assert_eq!(names, ["name", "project_id", "admin_up", "external", "snat", "mode", "ha", "az_hints"], "unknown capabilities show every field");
-        let a = (d.build)(&vals(&[("name", "edge"), ("project_id", "p2"), ("admin_up", "true"), ("external", "ext"), ("snat", "false"), ("mode", "off"), ("ha", "default"), ("az_hints", "az1,az2")])).unwrap();
+        assert_eq!(
+            names,
+            [
+                "name",
+                "project_id",
+                "admin_up",
+                "external",
+                "snat",
+                "mode",
+                "ha",
+                "az_hints"
+            ],
+            "unknown capabilities show every field"
+        );
+        let a = (d.build)(&vals(&[
+            ("name", "edge"),
+            ("project_id", "p2"),
+            ("admin_up", "true"),
+            ("external", "ext"),
+            ("snat", "false"),
+            ("mode", "off"),
+            ("ha", "default"),
+            ("az_hints", "az1,az2"),
+        ]))
+        .unwrap();
         let OsAction::AdminRouterCreate(spec) = a else { panic!() };
         assert_eq!(
             *spec,
@@ -5620,9 +9361,18 @@ mod tests {
             }
         );
         // No gateway: *Enable SNAT* is hidden (empty) and not sent.
-        let OsAction::AdminRouterCreate(spec) = (d.build)(&vals(&[("project_id", "p2"), ("mode", "on")])).unwrap() else { panic!() };
-        assert_eq!((spec.enable_snat, spec.external_network_id, spec.distributed), (None, None, Some(true)));
-        assert!((d.build)(&vals(&[("name", "edge")])).is_err(), "the project is required");
+        let OsAction::AdminRouterCreate(spec) = (d.build)(&vals(&[("project_id", "p2"), ("mode", "on")])).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (spec.enable_snat, spec.external_network_id, spec.distributed),
+            (None, None, Some(true))
+        );
+        assert!(
+            (d.build)(&vals(&[("name", "edge")])).is_err(),
+            "the project is required"
+        );
     }
 
     #[test]
@@ -5640,8 +9390,16 @@ mod tests {
             ha: None,
         };
         let labels = |items: Vec<MenuItem>| items.into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels(admin_router_items(Lang::EnUs, &r)), ["Edit Router", "Delete Router"], "no gateway or interface items: their choices are the session project's");
-        assert_eq!(labels(router_items(Lang::EnUs, &r)), ["Clear Gateway", "Edit Router", "Add Interface", "Delete Router"], "Project's menu unchanged");
+        assert_eq!(
+            labels(admin_router_items(Lang::EnUs, &r)),
+            ["Edit Router", "Delete Router"],
+            "no gateway or interface items: their choices are the session project's"
+        );
+        assert_eq!(
+            labels(router_items(Lang::EnUs, &r)),
+            ["Clear Gateway", "Edit Router", "Add Interface", "Delete Router"],
+            "Project's menu unchanged"
+        );
     }
 
     #[test]
@@ -5659,25 +9417,60 @@ mod tests {
             ha: Some(true),
         };
         let names = |d: &Dialog| d.fields.iter().map(|f| f.name).collect::<Vec<_>>();
-        assert_eq!(names(&dialog_of(&router_items(Lang::EnUs, &r(true)), "Edit Router")), ["name", "admin_up"], "Project's has neither");
+        assert_eq!(
+            names(&dialog_of(&router_items(Lang::EnUs, &r(true)), "Edit Router")),
+            ["name", "admin_up"],
+            "Project's has neither"
+        );
         let d = dialog_of(&admin_router_items(Lang::EnUs, &r(true)), "Edit Router");
         assert_eq!(names(&d), ["name", "admin_up", "mode", "ha"]);
         let v = |mode: &str, ha: &str| vals(&[("name", "edge"), ("admin_up", "false"), ("mode", mode), ("ha", ha)]).0;
         let check = d.check.clone().unwrap();
-        assert!(check(&v("centralized", "true"), &Sets::default()).is_empty(), "nothing changed: fine while up");
+        assert!(
+            check(&v("centralized", "true"), &Sets::default()).is_empty(),
+            "nothing changed: fine while up"
+        );
         let errs = check(&v("distributed", "false"), &Sets::default());
-        assert_eq!(errs.iter().map(|e| e.0).collect::<Vec<_>>(), ["mode", "ha"], "the router is up, whatever the form says");
+        assert_eq!(
+            errs.iter().map(|e| e.0).collect::<Vec<_>>(),
+            ["mode", "ha"],
+            "the router is up, whatever the form says"
+        );
         let down = dialog_of(&admin_router_items(Lang::EnUs, &r(false)), "Edit Router");
         assert!(down.check.clone().unwrap()(&v("distributed", "false"), &Sets::default()).is_empty());
         let a = (down.build)(&Values(v("distributed", "true"))).unwrap();
-        assert!(matches!(a, OsAction::RouterUpdate { distributed: Some(true), ha: None, .. }), "only what changed: {a:?}");
+        assert!(
+            matches!(
+                a,
+                OsAction::RouterUpdate {
+                    distributed: Some(true),
+                    ha: None,
+                    ..
+                }
+            ),
+            "only what changed: {a:?}"
+        );
     }
 
     #[test]
     fn admin_allocate_names_the_project_and_optional_address() {
         let d = admin_allocate_ip_dialog(Lang::EnUs);
-        let a = (d.build)(&vals(&[("pool", "ext"), ("project_id", "p2"), ("address", ""), ("description", "vpn")])).unwrap();
-        assert_eq!(a, OsAction::AdminFloatingIpAllocate { network_id: "ext".into(), project_id: "p2".into(), address: None, description: Some("vpn".into()) });
+        let a = (d.build)(&vals(&[
+            ("pool", "ext"),
+            ("project_id", "p2"),
+            ("address", ""),
+            ("description", "vpn"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            a,
+            OsAction::AdminFloatingIpAllocate {
+                network_id: "ext".into(),
+                project_id: "p2".into(),
+                address: None,
+                description: Some("vpn".into())
+            }
+        );
         assert!((d.build)(&vals(&[("pool", "ext")])).is_err(), "the project is required");
     }
 
@@ -5699,26 +9492,54 @@ mod tests {
         let net = NetworkPrefs {
             default_dns_nameservers: vec!["10.0.0.2".into(), "10.0.0.3".into()],
             enable_ipv6: false,
-            allowed_private_subnet_cidr: AllowedCidrs { ipv4: vec!["10.0.0.0/8".into()], ipv6: vec![] },
+            allowed_private_subnet_cidr: AllowedCidrs {
+                ipv4: vec!["10.0.0.0/8".into()],
+                ipv6: vec![],
+            },
             ..Default::default()
         };
         let fs = subnet_fields(Lang::EnUs, None, &net);
         assert_eq!(field(&fs, "dns").default, "10.0.0.2\n10.0.0.3");
         assert!(matches!(field(&fs, "ip_version").kind, Kind::Select(Source::Static(o)) if o.len() == 1));
         let check = subnet_check(Lang::EnUs, net);
-        let vals = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vals>();
+        let vals = |pairs: &[(&str, &str)]| {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<Vals>()
+        };
         let sets = Sets::default();
         assert!(check(&vals(&[("cidr", "10.1.0.0/24")]), &sets).is_empty());
         assert_eq!(check(&vals(&[("cidr", "172.16.0.0/24")]), &sets)[0].0, "cidr");
-        assert!(check(&vals(&[("with_subnet", "false"), ("cidr", "172.16.0.0/24")]), &sets).is_empty(), "no subnet: no check");
-        let a = OsAction::Batch(vec![("s".into(), OsAction::SubnetCreate { network_id: "n".into(), spec: SubnetSpec { cidr: "10.0.0.0/24".into(), ..sample_subnet() } })]);
+        assert!(
+            check(&vals(&[("with_subnet", "false"), ("cidr", "172.16.0.0/24")]), &sets).is_empty(),
+            "no subnet: no check"
+        );
+        let a = OsAction::Batch(vec![(
+            "s".into(),
+            OsAction::SubnetCreate {
+                network_id: "n".into(),
+                spec: SubnetSpec {
+                    cidr: "10.0.0.0/24".into(),
+                    ..sample_subnet()
+                },
+            },
+        )]);
         assert_eq!(a.new_subnet_cidrs(), ["10.0.0.0/24"]);
     }
 
     fn sample_subnet() -> SubnetSpec {
         SubnetSpec {
-            name: String::new(), cidr: String::new(), ip_version: 4, gateway_ip: None, enable_dhcp: true, dns_nameservers: vec![], allocation_pools: vec![],
-            ipv6_ra_mode: None, ipv6_address_mode: None, host_routes: vec![],
+            name: String::new(),
+            cidr: String::new(),
+            ip_version: 4,
+            gateway_ip: None,
+            enable_dhcp: true,
+            dns_nameservers: vec![],
+            allocation_pools: vec![],
+            ipv6_ra_mode: None,
+            ipv6_address_mode: None,
+            host_routes: vec![],
         }
     }
 
@@ -5731,7 +9552,11 @@ mod tests {
         };
         let def = launch_with(Lang::EnUs, &crate::prefs::LaunchPrefs::default(), None);
         assert_eq!(sources(&def).len(), 4);
-        assert_eq!(field(&def, "create_volume").unwrap().default, "true", "default: boot from a new volume");
+        assert_eq!(
+            field(&def, "create_volume").unwrap().default,
+            "true",
+            "default: boot from a new volume"
+        );
         assert!(!field(&def, "key_name").unwrap().required && field(&def, "admin_pass").is_none());
 
         let p = crate::prefs::LaunchPrefs {
@@ -5746,20 +9571,36 @@ mod tests {
         let d = launch_with(Lang::EnUs, &p, None);
         assert_eq!(sources(&d), ["volume", "volume_snapshot"]);
         assert_eq!(field(&d, "source").unwrap().default, "volume", "first offered source");
-        assert_eq!((field(&d, "create_volume").unwrap().default.as_str(), field(&d, "config_drive").unwrap().default.as_str()), ("false", "true"));
+        assert_eq!(
+            (
+                field(&d, "create_volume").unwrap().default.as_str(),
+                field(&d, "config_drive").unwrap().default.as_str()
+            ),
+            ("false", "true")
+        );
         assert!(field(&d, "key_name").unwrap().required);
         assert!(matches!(field(&d, "admin_pass").unwrap().kind, Kind::Password));
         let from_image = launch_with(Lang::EnUs, &p, Some("image"));
-        assert_eq!(sources(&from_image), ["image", "volume", "volume_snapshot"], "a row's own source stays");
+        assert_eq!(
+            sources(&from_image),
+            ["image", "volume", "volume_snapshot"],
+            "a row's own source stays"
+        );
     }
 
     #[test]
     fn launch_form_builds_a_launch_spec() {
         let d = launch_dialog(Lang::EnUs);
         let a = (d.build)(&vals(&[
-            ("name", "web"), ("count", "2"), ("source", "image"), ("source_id", "img"),
-            ("create_volume", "true"), ("volume_size", "30"), ("flavor", "f"),
-            ("networks", "n1,n2"), ("security_groups", "default"),
+            ("name", "web"),
+            ("count", "2"),
+            ("source", "image"),
+            ("source_id", "img"),
+            ("create_volume", "true"),
+            ("volume_size", "30"),
+            ("flavor", "f"),
+            ("networks", "n1,n2"),
+            ("security_groups", "default"),
         ]))
         .unwrap();
         let OsAction::ServerLaunch(s) = a else { panic!() };
@@ -5778,7 +9619,16 @@ mod tests {
         assert!(allowed("SHELVED_OFFLOADED", Some(false), false).contains(&Unshelve));
         assert!(!allowed("ACTIVE", Some(false), false).contains(&Unshelve));
         let active = allowed("ACTIVE", Some(false), false);
-        for op in [Resize, Rebuild, Shelve, Rescue, AttachInterface, AssociateIp, Pause, SoftReboot] {
+        for op in [
+            Resize,
+            Rebuild,
+            Shelve,
+            Rescue,
+            AttachInterface,
+            AssociateIp,
+            Pause,
+            SoftReboot,
+        ] {
             assert!(active.contains(&op), "{op:?}");
         }
         assert!(allowed("RESCUE", Some(false), false).contains(&Unrescue));
@@ -5787,12 +9637,24 @@ mod tests {
         for op in [Resize, Rebuild, Snapshot, Pause, HardReboot, AttachInterface] {
             assert!(!shelved.contains(&op), "{op:?} on a shelved instance");
         }
-        assert_eq!(allowed("ACTIVE", Some(true), true), [Edit, Unlock, Delete], "busy: almost nothing");
-        assert_eq!(allowed("SHUTOFF", Some(false), false)[0], Start, "start first when stopped");
+        assert_eq!(
+            allowed("ACTIVE", Some(true), true),
+            [Edit, Unlock, Delete],
+            "busy: almost nothing"
+        );
+        assert_eq!(
+            allowed("SHUTOFF", Some(false), false)[0],
+            Start,
+            "start first when stopped"
+        );
         assert_eq!(allowed("ACTIVE", Some(false), false)[0], Snapshot);
         assert_eq!(allowed("BUILD", None, true), [Edit, Lock, Unlock, Delete]);
         for s in ["ACTIVE", "SHUTOFF", "ERROR", "SHELVED", "VERIFY_RESIZE"] {
-            assert_eq!(allowed(s, Some(false), false).last(), Some(&Delete), "{s}: delete is last");
+            assert_eq!(
+                allowed(s, Some(false), false).last(),
+                Some(&Delete),
+                "{s}: delete is last"
+            );
         }
     }
 
@@ -5803,7 +9665,15 @@ mod tests {
             image_name: None,
             addresses: vec![],
             flavor_name: "small".into(),
-            flavor: FlavorInfo { id: "f1".into(), name: "small".into(), vcpus: None, ram_mb: None, disk_gb: None, ephemeral_gb: None, swap_mb: None },
+            flavor: FlavorInfo {
+                id: "f1".into(),
+                name: "small".into(),
+                vcpus: None,
+                ram_mb: None,
+                disk_gb: None,
+                ephemeral_gb: None,
+                swap_mb: None,
+            },
             image_from_volume: false,
             locked,
             key_name: None,
@@ -5821,15 +9691,28 @@ mod tests {
     #[test]
     fn edit_security_groups_sends_the_difference_and_needs_ports() {
         let mut inst = instance("ACTIVE", false);
-        let has = |inst: &Instance| instance_items(Lang::EnUs, inst).iter().any(|m| m.label == "Edit Security Groups");
+        let has = |inst: &Instance| {
+            instance_items(Lang::EnUs, inst)
+                .iter()
+                .any(|m| m.label == "Edit Security Groups")
+        };
         assert!(!has(&inst), "no ports: Nova would answer 400");
-        inst.addresses = vec![Address { network: "net".into(), addr: "10.0.0.5".into(), floating: false, mac: None }];
+        inst.addresses = vec![Address {
+            network: "net".into(),
+            addr: "10.0.0.5".into(),
+            floating: false,
+            mac: None,
+        }];
         assert!(has(&inst));
         assert!(!allowed("SHELVED_OFFLOADED", Some(false), false).contains(&Op::EditSecurityGroups));
         let d = security_groups_dialog(Lang::EnUs, "i", &inst.security_groups);
         assert_eq!(
             (d.build)(&vals(&[("groups", "web,ssh")])).unwrap(),
-            OsAction::ServerSetSecurityGroups { id: "i".into(), add: vec!["web".into(), "ssh".into()], remove: vec!["default".into()] }
+            OsAction::ServerSetSecurityGroups {
+                id: "i".into(),
+                add: vec!["web".into(), "ssh".into()],
+                remove: vec!["default".into()]
+            }
         );
         assert!((d.build)(&vals(&[("groups", "default")])).is_err(), "nothing changed");
     }
@@ -5839,11 +9722,25 @@ mod tests {
         use crate::components::dialog::Kind;
         let ops = allowed("ACTIVE", Some(false), false);
         let at = |op| ops.iter().position(|o| *o == op).unwrap();
-        assert_eq!(at(Op::EditPortSecurityGroups), at(Op::EditSecurityGroups) + 1, "the two items sit together");
-        assert!(allowed("SHELVED_OFFLOADED", Some(false), false).contains(&Op::EditPortSecurityGroups), "per port stays available");
-        for d in [security_groups_dialog(Lang::EnUs, "i", &[]), port_security_groups_dialog(Lang::EnUs, "i")] {
+        assert_eq!(
+            at(Op::EditPortSecurityGroups),
+            at(Op::EditSecurityGroups) + 1,
+            "the two items sit together"
+        );
+        assert!(
+            allowed("SHELVED_OFFLOADED", Some(false), false).contains(&Op::EditPortSecurityGroups),
+            "per port stays available"
+        );
+        for d in [
+            security_groups_dialog(Lang::EnUs, "i", &[]),
+            port_security_groups_dialog(Lang::EnUs, "i"),
+        ] {
             let f = d.fields.iter().find(|f| f.name == "groups").unwrap();
-            assert!(matches!(f.kind, Kind::Pick { multi: true, .. }), "{}: Allocated / Available with a filter", d.title);
+            assert!(
+                matches!(f.kind, Kind::Pick { multi: true, .. }),
+                "{}: Allocated / Available with a filter",
+                d.title
+            );
         }
     }
 
@@ -5851,13 +9748,21 @@ mod tests {
     fn resize_rejects_the_current_flavor_and_launch_presets_the_source() {
         let items = instance_items(Lang::EnUs, &instance("ACTIVE", false));
         let resize = items.iter().find(|m| m.label == "Resize Instance").unwrap();
-        let crate::components::dialog::ItemKind::Dialog(open) = &resize.kind else { panic!() };
+        let crate::components::dialog::ItemKind::Dialog(open) = &resize.kind else {
+            panic!()
+        };
         let d = open();
         assert!((d.build)(&vals(&[("flavor", "f1")])).is_err());
-        assert!(matches!((d.build)(&vals(&[("flavor", "f2")])), Ok(OsAction::ServerResize { .. })));
+        assert!(matches!(
+            (d.build)(&vals(&[("flavor", "f2")])),
+            Ok(OsAction::ServerResize { .. })
+        ));
         let d = launch_from(Lang::EnUs, "volume", "v1");
         let get = |n: &str| d.fields.iter().find(|f| f.name == n).unwrap().default.clone();
-        assert_eq!((get("source"), get("source_id")), ("volume".to_string(), "v1".to_string()));
+        assert_eq!(
+            (get("source"), get("source_id")),
+            ("volume".to_string(), "v1".to_string())
+        );
     }
 
     fn volume(status: &str) -> Volume {
@@ -5878,7 +9783,12 @@ mod tests {
 
     #[test]
     fn volume_menu_follows_status_and_retype_needs_a_new_type() {
-        let labels = |st| volume_items(Lang::EnUs, &volume(st)).into_iter().map(|m| m.label).collect::<Vec<_>>();
+        let labels = |st| {
+            volume_items(Lang::EnUs, &volume(st))
+                .into_iter()
+                .map(|m| m.label)
+                .collect::<Vec<_>>()
+        };
         let avail = labels("available");
         for l in ["Change Volume Type", "Upload to Image", "Create Transfer"] {
             assert!(avail.contains(&l.to_string()), "{l}");
@@ -5887,12 +9797,20 @@ mod tests {
         assert!(in_use.contains(&"Upload to Image".to_string()) && !in_use.contains(&"Create Transfer".to_string()));
         assert!(!labels("error").contains(&"Change Volume Type".to_string()));
         let items = volume_items(Lang::EnUs, &volume("available"));
-        let crate::components::dialog::ItemKind::Dialog(open) = &items.iter().find(|m| m.label == "Change Volume Type").unwrap().kind else { panic!() };
+        let crate::components::dialog::ItemKind::Dialog(open) =
+            &items.iter().find(|m| m.label == "Change Volume Type").unwrap().kind
+        else {
+            panic!()
+        };
         let d = open();
         assert!((d.build)(&vals(&[("type", "std")])).is_err());
         assert_eq!(
             (d.build)(&vals(&[("type", "fast"), ("migrate", "true")])).unwrap(),
-            OsAction::VolumeRetype { id: "v".into(), new_type: "fast".into(), migrate: true }
+            OsAction::VolumeRetype {
+                id: "v".into(),
+                new_type: "fast".into(),
+                migrate: true
+            }
         );
     }
 
@@ -5902,26 +9820,55 @@ mod tests {
         let new = vals(&[("destination", "10.2.0.0/16"), ("nexthop", "10.0.0.2")]);
         let a = (add_route_dialog(Lang::EnUs, "r", None).build)(&new).unwrap();
         assert!(matches!(a, OsAction::RouterAddRoute { .. }));
-        let OsAction::RouterSetRoutes { routes, .. } = (add_route_dialog(Lang::EnUs, "r", Some(cur.clone())).build)(&new).unwrap() else { panic!() };
+        let OsAction::RouterSetRoutes { routes, .. } =
+            (add_route_dialog(Lang::EnUs, "r", Some(cur.clone())).build)(&new).unwrap()
+        else {
+            panic!()
+        };
         assert_eq!(routes.len(), 2);
         let items = route_items(Lang::EnUs, "r", &cur[0], Some(&cur));
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[0].kind else { panic!() };
-        assert_eq!((open().build)(&vals(&[])).unwrap(), OsAction::RouterSetRoutes { id: "r".into(), routes: vec![] });
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[0].kind else {
+            panic!()
+        };
+        assert_eq!(
+            (open().build)(&vals(&[])).unwrap(),
+            OsAction::RouterSetRoutes {
+                id: "r".into(),
+                routes: vec![]
+            }
+        );
     }
 
     #[test]
     fn associate_ip_picks_an_existing_ip_or_allocates_one() {
         let d = associate_ip_dialog(Lang::EnUs, "s1");
         let a = (d.build)(&vals(&[("allocate", "false"), ("ip", "f1"), ("port", "p1")])).unwrap();
-        assert_eq!(a, OsAction::FloatingIpAssociate { id: "f1".into(), port_id: "p1".into() });
+        assert_eq!(
+            a,
+            OsAction::FloatingIpAssociate {
+                id: "f1".into(),
+                port_id: "p1".into()
+            }
+        );
         let a = (d.build)(&vals(&[("allocate", "true"), ("pool", "ext"), ("port", "p1")])).unwrap();
-        assert_eq!(a, OsAction::FloatingIpAllocate { network_id: "ext".into(), description: None, port_id: Some("p1".into()), qos_policy_id: None });
+        assert_eq!(
+            a,
+            OsAction::FloatingIpAllocate {
+                network_id: "ext".into(),
+                description: None,
+                port_id: Some("p1".into()),
+                qos_policy_id: None
+            }
+        );
     }
 
     #[test]
     fn instance_menu_depends_on_state() {
         let labels = |status, locked| -> Vec<String> {
-            instance_items(Lang::EnUs, &instance(status, locked)).into_iter().map(|m| m.label).collect()
+            instance_items(Lang::EnUs, &instance(status, locked))
+                .into_iter()
+                .map(|m| m.label)
+                .collect()
         };
         let active = labels("ACTIVE", false);
         assert!(active.contains(&"Shut Off Instance".into()));
@@ -5937,57 +9884,197 @@ mod tests {
     #[test]
     fn admin_edit_network_sends_shared_and_external_and_shows_the_provider() {
         let net = NetworkRow {
-            id: "n1".into(), name: "ext".into(), subnets: vec![], shared: false, external: true, status: "ACTIVE".into(), admin_up: true,
-            availability_zones: vec![], owned: false, dhcp_agents: None,
-            provider: Some(ProviderNetwork { network_type: "vlan".into(), physical_network: Some("physnet1".into()), segmentation_id: Some(120) }),
+            id: "n1".into(),
+            name: "ext".into(),
+            subnets: vec![],
+            shared: false,
+            external: true,
+            status: "ACTIVE".into(),
+            admin_up: true,
+            availability_zones: vec![],
+            owned: false,
+            dhcp_agents: None,
+            provider: Some(ProviderNetwork {
+                network_type: "vlan".into(),
+                physical_network: Some("physnet1".into()),
+                segmentation_id: Some(120),
+            }),
         };
         let d = admin_edit_network_dialog(Lang::EnUs, &net);
-        assert_eq!(d.fields.iter().map(|f| f.name).collect::<Vec<_>>(), ["name", "admin_up", "shared", "external"], "Horizon's four fields");
-        assert!(d.intro[0].contains("vlan") && d.intro[0].contains("physnet1") && d.intro[0].contains("120"), "{:?}", d.intro);
-        let a = (d.build)(&vals(&[("name", "ext"), ("admin_up", "true"), ("shared", "true"), ("external", "false")])).unwrap();
-        assert_eq!(a, OsAction::AdminNetworkUpdate { id: "n1".into(), name: "ext".into(), admin_up: true, shared: true, external: false });
+        assert_eq!(
+            d.fields.iter().map(|f| f.name).collect::<Vec<_>>(),
+            ["name", "admin_up", "shared", "external"],
+            "Horizon's four fields"
+        );
+        assert!(
+            d.intro[0].contains("vlan") && d.intro[0].contains("physnet1") && d.intro[0].contains("120"),
+            "{:?}",
+            d.intro
+        );
+        let a = (d.build)(&vals(&[
+            ("name", "ext"),
+            ("admin_up", "true"),
+            ("shared", "true"),
+            ("external", "false"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            a,
+            OsAction::AdminNetworkUpdate {
+                id: "n1".into(),
+                name: "ext".into(),
+                admin_up: true,
+                shared: true,
+                external: false
+            }
+        );
     }
 
     #[test]
     fn admin_network_form_builds_provider_and_owner() {
         let d = admin_create_network_dialog(Lang::EnUs);
-        let base = [("name", "ext"), ("project_id", "p1"), ("admin_up", "true"), ("shared", "true"), ("external", "true"), ("with_subnet", "false")];
+        let base = [
+            ("name", "ext"),
+            ("project_id", "p1"),
+            ("admin_up", "true"),
+            ("shared", "true"),
+            ("external", "true"),
+            ("with_subnet", "false"),
+        ];
         let with = |extra: &[(&'static str, &'static str)]| vals(&[&base[..], extra].concat());
-        let a = (d.build)(&with(&[("provider_type", "vlan"), ("physical_network", "physnet1"), ("segmentation_id", "120")])).unwrap();
-        let OsAction::AdminNetworkCreate(spec) = a else { panic!() };
-        assert_eq!((spec.project_id.as_str(), spec.shared, spec.external, spec.subnet.is_none()), ("p1", true, true, true));
-        assert_eq!(spec.provider, Some(ProviderNetwork { network_type: "vlan".into(), physical_network: Some("physnet1".into()), segmentation_id: Some(120) }));
-        assert!((d.build)(&with(&[("provider_type", "vlan"), ("segmentation_id", "120")])).is_err(), "vlan without a physical network");
-        assert!((d.build)(&with(&[("provider_type", "vxlan"), ("segmentation_id", "99999999")])).is_err(), "VNI out of range");
-        assert!((d.build)(&vals(&[("provider_type", "vxlan")])).is_err(), "the project is required");
-        let a = (d.build)(&with(&[("provider_type", "local"), ("mtu", "1450"), ("az_hints", "az1,az2")])).unwrap();
-        let OsAction::AdminNetworkCreate(spec) = a else { panic!() };
-        assert_eq!((spec.mtu, spec.az_hints.clone()), (Some(1450), vec!["az1".to_string(), "az2".to_string()]));
-        assert_eq!(d.fields.iter().find(|f| f.name == "provider_type").map(|f| f.default.as_str()), Some("local"), "Horizon preselects Local");
+        let a = (d.build)(&with(&[
+            ("provider_type", "vlan"),
+            ("physical_network", "physnet1"),
+            ("segmentation_id", "120"),
+        ]))
+        .unwrap();
+        let OsAction::AdminNetworkCreate(spec) = a else {
+            panic!()
+        };
+        assert_eq!(
+            (
+                spec.project_id.as_str(),
+                spec.shared,
+                spec.external,
+                spec.subnet.is_none()
+            ),
+            ("p1", true, true, true)
+        );
+        assert_eq!(
+            spec.provider,
+            Some(ProviderNetwork {
+                network_type: "vlan".into(),
+                physical_network: Some("physnet1".into()),
+                segmentation_id: Some(120)
+            })
+        );
+        assert!(
+            (d.build)(&with(&[("provider_type", "vlan"), ("segmentation_id", "120")])).is_err(),
+            "vlan without a physical network"
+        );
+        assert!(
+            (d.build)(&with(&[("provider_type", "vxlan"), ("segmentation_id", "99999999")])).is_err(),
+            "VNI out of range"
+        );
+        assert!(
+            (d.build)(&vals(&[("provider_type", "vxlan")])).is_err(),
+            "the project is required"
+        );
+        let a = (d.build)(&with(&[
+            ("provider_type", "local"),
+            ("mtu", "1450"),
+            ("az_hints", "az1,az2"),
+        ]))
+        .unwrap();
+        let OsAction::AdminNetworkCreate(spec) = a else {
+            panic!()
+        };
+        assert_eq!(
+            (spec.mtu, spec.az_hints.clone()),
+            (Some(1450), vec!["az1".to_string(), "az2".to_string()])
+        );
+        assert_eq!(
+            d.fields
+                .iter()
+                .find(|f| f.name == "provider_type")
+                .map(|f| f.default.as_str()),
+            Some("local"),
+            "Horizon preselects Local"
+        );
     }
 
     #[test]
     fn rbac_edit_changes_only_the_target_and_starts_from_the_current_one() {
         let r = RbacPolicyRow {
-            id: "r1".into(), project: "admin".into(), object_type: "network".into(), object: Ref { id: "n1".into(), name: "public".into() },
-            target: "demo".into(), target_id: "p2".into(), action: "access_as_shared".into(),
+            id: "r1".into(),
+            project: "admin".into(),
+            object_type: "network".into(),
+            object: Ref {
+                id: "n1".into(),
+                name: "public".into(),
+            },
+            target: "demo".into(),
+            target_id: "p2".into(),
+            action: "access_as_shared".into(),
         };
         let labels: Vec<String> = rbac_policy_items(Lang::EnUs, &r).into_iter().map(|m| m.label).collect();
-        assert_eq!(labels, ["Edit Policy", "Delete RBAC Policy"], "Horizon's row menu, delete last");
+        assert_eq!(
+            labels,
+            ["Edit Policy", "Delete RBAC Policy"],
+            "Horizon's row menu, delete last"
+        );
         let d = edit_rbac_policy_dialog(Lang::EnUs, &r);
-        assert_eq!((d.fields.len(), d.fields[0].default.as_str()), (1, "p2"), "one field, preselected with the target's ID");
+        assert_eq!(
+            (d.fields.len(), d.fields[0].default.as_str()),
+            (1, "p2"),
+            "one field, preselected with the target's ID"
+        );
         let a = (d.build)(&vals(&[("target_project", "*")])).unwrap();
-        assert_eq!(a, OsAction::RbacPolicyUpdate { id: "r1".into(), target_project: "*".into() });
+        assert_eq!(
+            a,
+            OsAction::RbacPolicyUpdate {
+                id: "r1".into(),
+                target_project: "*".into()
+            }
+        );
     }
 
     #[test]
     fn rbac_form_picks_the_object_by_kind() {
         let d = create_rbac_policy_dialog(Lang::EnUs);
-        let a = (d.build)(&vals(&[("target_project", "*"), ("kind", "external_network"), ("network_id", "n1"), ("qos_policy_id", "q1")])).unwrap();
-        assert_eq!(a, OsAction::RbacPolicyCreate { kind: "external_network".into(), object_id: "n1".into(), target_project: "*".into() });
-        let a = (d.build)(&vals(&[("target_project", "p2"), ("kind", "shared_qos_policy"), ("qos_policy_id", "q1")])).unwrap();
-        assert_eq!(a, OsAction::RbacPolicyCreate { kind: "shared_qos_policy".into(), object_id: "q1".into(), target_project: "p2".into() });
-        assert!((d.build)(&vals(&[("target_project", "p2"), ("kind", "shared_network")])).is_err(), "the network is required");
+        let a = (d.build)(&vals(&[
+            ("target_project", "*"),
+            ("kind", "external_network"),
+            ("network_id", "n1"),
+            ("qos_policy_id", "q1"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            a,
+            OsAction::RbacPolicyCreate {
+                kind: "external_network".into(),
+                object_id: "n1".into(),
+                target_project: "*".into()
+            }
+        );
+        let a = (d.build)(&vals(&[
+            ("target_project", "p2"),
+            ("kind", "shared_qos_policy"),
+            ("qos_policy_id", "q1"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            a,
+            OsAction::RbacPolicyCreate {
+                kind: "shared_qos_policy".into(),
+                object_id: "q1".into(),
+                target_project: "p2".into()
+            }
+        );
+        assert!(
+            (d.build)(&vals(&[("target_project", "p2"), ("kind", "shared_network")])).is_err(),
+            "the network is required"
+        );
     }
 
     #[test]
@@ -5999,12 +10086,38 @@ mod tests {
             OsAction::NetworkCreate { subnet: Some(s), .. } => s,
             other => panic!("{other:?}"),
         };
-        let s = subnet(build(&[("cidr", "2001:db8::/64"), ("ip_version", "6"), ("ipv6_modes", "none/slaac"), ("host_routes", "2001:db8:1::/64,2001:db8::1")]).unwrap());
+        let s = subnet(
+            build(&[
+                ("cidr", "2001:db8::/64"),
+                ("ip_version", "6"),
+                ("ipv6_modes", "none/slaac"),
+                ("host_routes", "2001:db8:1::/64,2001:db8::1"),
+            ])
+            .unwrap(),
+        );
         assert_eq!((s.ipv6_ra_mode, s.ipv6_address_mode.as_deref()), (None, Some("slaac")));
-        assert_eq!(s.host_routes, vec![("2001:db8:1::/64".to_string(), "2001:db8::1".to_string())]);
-        let s = subnet(build(&[("cidr", "10.0.0.0/24"), ("ip_version", "4"), ("ipv6_modes", "slaac/slaac")]).unwrap());
+        assert_eq!(
+            s.host_routes,
+            vec![("2001:db8:1::/64".to_string(), "2001:db8::1".to_string())]
+        );
+        let s = subnet(
+            build(&[
+                ("cidr", "10.0.0.0/24"),
+                ("ip_version", "4"),
+                ("ipv6_modes", "slaac/slaac"),
+            ])
+            .unwrap(),
+        );
         assert_eq!(s.ipv6_address_mode, None, "IPv4 ignores a leftover IPv6 mode");
-        assert!(build(&[("cidr", "10.0.0.0/24"), ("ip_version", "4"), ("host_routes", "10.1.0.0/24")]).is_err(), "a route needs its next hop");
+        assert!(
+            build(&[
+                ("cidr", "10.0.0.0/24"),
+                ("ip_version", "4"),
+                ("host_routes", "10.1.0.0/24")
+            ])
+            .is_err(),
+            "a route needs its next hop"
+        );
     }
 
     #[test]
@@ -6013,11 +10126,18 @@ mod tests {
         let a = (d.build)(&vals(&[("name", "n"), ("admin_up", "true"), ("with_subnet", "false")])).unwrap();
         assert!(matches!(a, OsAction::NetworkCreate { subnet: None, .. }));
         let a = (d.build)(&vals(&[
-            ("with_subnet", "true"), ("cidr", "10.0.0.0/24"), ("ip_version", "4"),
-            ("no_gateway", "true"), ("dhcp", "true"), ("pools", "10.0.0.10,10.0.0.20"), ("dns", "1.1.1.1\n8.8.8.8"),
+            ("with_subnet", "true"),
+            ("cidr", "10.0.0.0/24"),
+            ("ip_version", "4"),
+            ("no_gateway", "true"),
+            ("dhcp", "true"),
+            ("pools", "10.0.0.10,10.0.0.20"),
+            ("dns", "1.1.1.1\n8.8.8.8"),
         ]))
         .unwrap();
-        let OsAction::NetworkCreate { subnet: Some(s), .. } = a else { panic!() };
+        let OsAction::NetworkCreate { subnet: Some(s), .. } = a else {
+            panic!()
+        };
         assert_eq!(s.gateway_ip.as_deref(), Some(""));
         assert_eq!(s.allocation_pools, vec![("10.0.0.10".into(), "10.0.0.20".into())]);
         assert_eq!(s.dns_nameservers.len(), 2);
@@ -6027,14 +10147,33 @@ mod tests {
     #[test]
     fn foreign_networks_and_the_default_group_are_read_only() {
         let net = |owned| NetworkRow {
-            id: "n".into(), name: "public".into(), subnets: vec![], shared: false, external: true,
-            status: "ACTIVE".into(), admin_up: true, availability_zones: vec![], owned, dhcp_agents: None, provider: None,
+            id: "n".into(),
+            name: "public".into(),
+            subnets: vec![],
+            shared: false,
+            external: true,
+            status: "ACTIVE".into(),
+            admin_up: true,
+            availability_zones: vec![],
+            owned,
+            dhcp_agents: None,
+            provider: None,
         };
         assert!(network_items(Lang::EnUs, &net(false)).is_empty());
         let labels = |items: Vec<MenuItem>| items.into_iter().map(|m| m.label).collect::<Vec<_>>();
-        assert_eq!(labels(network_items(Lang::EnUs, &net(true))), ["Edit Network", "Create Subnet", "Create Port", "Delete Network"]);
-        assert_eq!(labels(admin_network_items(Lang::EnUs, &net(false))), ["Edit Network", "Create Subnet", "Delete Network"], "Admin: any project's network, Horizon's admin menu");
-        assert_eq!(labels(security_group_items(Lang::EnUs, "g", "default", None, true)), ["Manage Rules"]);
+        assert_eq!(
+            labels(network_items(Lang::EnUs, &net(true))),
+            ["Edit Network", "Create Subnet", "Create Port", "Delete Network"]
+        );
+        assert_eq!(
+            labels(admin_network_items(Lang::EnUs, &net(false))),
+            ["Edit Network", "Create Subnet", "Delete Network"],
+            "Admin: any project's network, Horizon's admin menu"
+        );
+        assert_eq!(
+            labels(security_group_items(Lang::EnUs, "g", "default", None, true)),
+            ["Manage Rules"]
+        );
         assert!(security_group_items(Lang::EnUs, "g", "default", None, false).is_empty());
         assert_eq!(security_group_items(Lang::EnUs, "g", "web", None, true).len(), 3);
     }
@@ -6042,18 +10181,51 @@ mod tests {
     #[test]
     fn edit_image_sends_only_the_changes() {
         let im = Image {
-            id: "i".into(), name: "deb".into(), is_snapshot: false, status: "active".into(), visibility: "private".into(),
-            protected: false, disk_format: Some("qcow2".into()), size: None, owned_by_project: true, owner_id: None,
-            owner_name: None, properties: vec![("description".into(), "old".into())], min_disk_gb: Some(5), min_ram_mb: None,
+            id: "i".into(),
+            name: "deb".into(),
+            is_snapshot: false,
+            status: "active".into(),
+            visibility: "private".into(),
+            protected: false,
+            disk_format: Some("qcow2".into()),
+            size: None,
+            owned_by_project: true,
+            owner_id: None,
+            owner_name: None,
+            properties: vec![("description".into(), "old".into())],
+            min_disk_gb: Some(5),
+            min_ram_mb: None,
             import_failed: None,
         };
         let formats = vec!["raw".to_string(), "qcow2".to_string()];
         let d = edit_image_dialog(Lang::EnUs, &im, false, &formats);
         let names: Vec<_> = d.fields.iter().map(|f| f.name).collect();
-        assert_eq!(names, ["name", "description", "architecture", "min_disk", "min_ram", "visibility", "protected"], "no kernel/ramdisk/format");
-        let Kind::Select(Source::Static(vis)) = &d.fields[5].kind else { panic!() };
+        assert_eq!(
+            names,
+            [
+                "name",
+                "description",
+                "architecture",
+                "min_disk",
+                "min_ram",
+                "visibility",
+                "protected"
+            ],
+            "no kernel/ramdisk/format"
+        );
+        let Kind::Select(Source::Static(vis)) = &d.fields[5].kind else {
+            panic!()
+        };
         assert!(!vis.iter().any(|(v, _)| v == "public"), "public needs the admin role");
-        let base = [("name", "deb"), ("description", "old"), ("architecture", ""), ("min_disk", "5"), ("min_ram", "0"), ("visibility", "private"), ("protected", "false")];
+        let base = [
+            ("name", "deb"),
+            ("description", "old"),
+            ("architecture", ""),
+            ("min_disk", "5"),
+            ("min_ram", "0"),
+            ("visibility", "private"),
+            ("protected", "false"),
+        ];
         let with = |changes: &[(&'static str, &'static str)]| {
             let mut all: Vec<(&str, &str)> = base.to_vec();
             for (k, v) in changes {
@@ -6063,39 +10235,87 @@ mod tests {
             (d.build)(&vals(&all))
         };
         assert!(with(&[]).is_err(), "nothing changed");
-        let OsAction::ImageUpdate { changes, .. } = with(&[("description", ""), ("architecture", "x86_64"), ("min_disk", "10")]).unwrap() else { panic!() };
-        assert_eq!(changes, ImageChanges {
-            min_disk_gb: Some(10),
-            set: vec![("architecture".into(), "x86_64".into())],
-            remove: vec!["description".into()],
-            ..Default::default()
-        });
-        let ami = Image { disk_format: Some("ami".into()), status: "queued".into(), visibility: "public".into(), ..im };
+        let OsAction::ImageUpdate { changes, .. } =
+            with(&[("description", ""), ("architecture", "x86_64"), ("min_disk", "10")]).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            changes,
+            ImageChanges {
+                min_disk_gb: Some(10),
+                set: vec![("architecture".into(), "x86_64".into())],
+                remove: vec!["description".into()],
+                ..Default::default()
+            }
+        );
+        let ami = Image {
+            disk_format: Some("ami".into()),
+            status: "queued".into(),
+            visibility: "public".into(),
+            ..im
+        };
         let d = edit_image_dialog(Lang::EnUs, &ami, false, &formats);
         for f in ["kernel_id", "ramdisk_id", "disk_format"] {
             assert!(d.fields.iter().any(|x| x.name == f), "{f}");
         }
-        let Kind::Select(Source::Static(vis)) = &d.fields.iter().find(|f| f.name == "visibility").unwrap().kind else { panic!() };
+        let Kind::Select(Source::Static(vis)) = &d.fields.iter().find(|f| f.name == "visibility").unwrap().kind else {
+            panic!()
+        };
         assert!(vis.iter().any(|(v, _)| v == "public"), "already public: kept");
     }
 
     #[test]
     fn admin_edits_any_projects_image_and_may_publicize() {
         let im = Image {
-            id: "i".into(), name: "deb".into(), is_snapshot: false, status: "active".into(), visibility: "private".into(),
-            protected: false, disk_format: Some("qcow2".into()), size: None, owned_by_project: false, owner_id: Some("p9".into()),
-            owner_name: None, properties: vec![], min_disk_gb: None, min_ram_mb: None, import_failed: None,
+            id: "i".into(),
+            name: "deb".into(),
+            is_snapshot: false,
+            status: "active".into(),
+            visibility: "private".into(),
+            protected: false,
+            disk_format: Some("qcow2".into()),
+            size: None,
+            owned_by_project: false,
+            owner_id: Some("p9".into()),
+            owner_name: None,
+            properties: vec![],
+            min_disk_gb: None,
+            min_ram_mb: None,
+            import_failed: None,
         };
-        assert!(image_items(Lang::EnUs, &im).iter().all(|i| i.label != "Edit Image" && i.label != "Update Metadata"), "Project: another project's image is read-only");
-        let own = image_items(Lang::EnUs, &Image { owned_by_project: true, ..im.clone() });
-        assert!(dialog_of(&own, "Update Metadata").forbidden.is_some(), "a 403 shows the no-permission text");
+        assert!(
+            image_items(Lang::EnUs, &im)
+                .iter()
+                .all(|i| i.label != "Edit Image" && i.label != "Update Metadata"),
+            "Project: another project's image is read-only"
+        );
+        let own = image_items(
+            Lang::EnUs,
+            &Image {
+                owned_by_project: true,
+                ..im.clone()
+            },
+        );
+        assert!(
+            dialog_of(&own, "Update Metadata").forbidden.is_some(),
+            "a 403 shows the no-permission text"
+        );
         let items = admin_image_items(Lang::EnUs, &im);
-        assert_eq!(items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(), ["Edit Image", "Update Metadata", "Delete Image"]);
+        assert_eq!(
+            items.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
+            ["Edit Image", "Update Metadata", "Delete Image"]
+        );
         let d = dialog_of(&items, "Edit Image");
-        let Kind::Select(Source::Static(vis)) = &d.fields.iter().find(|f| f.name == "visibility").unwrap().kind else { panic!() };
+        let Kind::Select(Source::Static(vis)) = &d.fields.iter().find(|f| f.name == "visibility").unwrap().kind else {
+            panic!()
+        };
         assert!(vis.iter().any(|(v, _)| v == "public"), "an admin may publicize");
         let locked = admin_image_items(Lang::EnUs, &Image { protected: true, ..im });
-        assert!(locked.iter().all(|i| i.label != "Delete Image"), "Glance refuses deleting a protected image (Horizon hides it)");
+        assert!(
+            locked.iter().all(|i| i.label != "Delete Image"),
+            "Glance refuses deleting a protected image (Horizon hides it)"
+        );
     }
 
     #[test]
@@ -6107,50 +10327,129 @@ mod tests {
 
     #[test]
     fn update_metadata_submits_only_changes() {
-        let kv = |p: &[(&str, &str)]| p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
+        let kv = |p: &[(&str, &str)]| {
+            p.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<Vec<_>>()
+        };
         let json = |p: &[(&str, &str)]| serde_json::to_string(&kv(p)).unwrap();
-        let v = Volume { metadata: kv(&[("env", "dev")]), ..volume("available") };
+        let v = Volume {
+            metadata: kv(&[("env", "dev")]),
+            ..volume("available")
+        };
         let items = volume_items(Lang::EnUs, &v);
-        let item = items.iter().find(|m| m.label == "Update Metadata").expect("volume menu has it");
-        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else { panic!() };
+        let item = items
+            .iter()
+            .find(|m| m.label == "Update Metadata")
+            .expect("volume menu has it");
+        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else {
+            panic!()
+        };
         let d = open();
-        assert_eq!(d.fields[0].default, json(&[("env", "dev")]), "prefilled with the current pairs");
-        assert!((d.build)(&vals(&[("metadata", &json(&[(" env ", "dev")]))])).is_err(), "nothing changed");
-        assert!((d.build)(&vals(&[("metadata", &json(&[("a", "1"), ("a", "2")]))])).is_err(), "repeated key");
+        assert_eq!(
+            d.fields[0].default,
+            json(&[("env", "dev")]),
+            "prefilled with the current pairs"
+        );
+        assert!(
+            (d.build)(&vals(&[("metadata", &json(&[(" env ", "dev")]))])).is_err(),
+            "nothing changed"
+        );
+        assert!(
+            (d.build)(&vals(&[("metadata", &json(&[("a", "1"), ("a", "2")]))])).is_err(),
+            "repeated key"
+        );
         let ok = (d.build)(&vals(&[("metadata", &json(&[]))])).unwrap();
-        assert_eq!(ok, OsAction::VolumeSetMetadata { id: "v".into(), metadata: vec![] });
-        let item = metadata_item(Lang::EnUs, "OS::Glance::Image", &kv(&[("a", "1"), ("b", "2")]), |new, old| {
-            let (set, remove) = metadata_changes(old, &new);
-            OsAction::ImageSetProperties { id: "i".into(), set, remove }
-        });
-        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else { panic!() };
+        assert_eq!(
+            ok,
+            OsAction::VolumeSetMetadata {
+                id: "v".into(),
+                metadata: vec![]
+            }
+        );
+        let item = metadata_item(
+            Lang::EnUs,
+            "OS::Glance::Image",
+            &kv(&[("a", "1"), ("b", "2")]),
+            |new, old| {
+                let (set, remove) = metadata_changes(old, &new);
+                OsAction::ImageSetProperties {
+                    id: "i".into(),
+                    set,
+                    remove,
+                }
+            },
+        );
+        let crate::components::dialog::ItemKind::Dialog(open) = &item.kind else {
+            panic!()
+        };
         let d = open();
         let out = (d.build)(&vals(&[("metadata", &json(&[("a", "10"), ("c", "3")]))])).unwrap();
-        assert_eq!(out, OsAction::ImageSetProperties { id: "i".into(), set: kv(&[("a", "10"), ("c", "3")]), remove: vec!["b".into()] });
-        assert!(instance_items(Lang::EnUs, &instance("ACTIVE", false)).iter().any(|m| m.label == "Update Metadata"));
+        assert_eq!(
+            out,
+            OsAction::ImageSetProperties {
+                id: "i".into(),
+                set: kv(&[("a", "10"), ("c", "3")]),
+                remove: vec!["b".into()]
+            }
+        );
+        assert!(
+            instance_items(Lang::EnUs, &instance("ACTIVE", false))
+                .iter()
+                .any(|m| m.label == "Update Metadata")
+        );
     }
 
     #[test]
     fn extend_must_grow() {
         let v = Volume {
-            id: "v".into(), name: "d".into(), description: None, size_gb: 10, status: "available".into(),
-            volume_type: None, attachments: vec![], availability_zone: None, bootable: false, encrypted: false,
+            id: "v".into(),
+            name: "d".into(),
+            description: None,
+            size_gb: 10,
+            status: "available".into(),
+            volume_type: None,
+            attachments: vec![],
+            availability_zone: None,
+            bootable: false,
+            encrypted: false,
             metadata: vec![],
         };
         let items = volume_items(Lang::EnUs, &v);
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else { panic!() };
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else {
+            panic!()
+        };
         let d = open();
         assert!((d.build)(&vals(&[("size", "10")])).is_err());
-        assert!(matches!((d.build)(&vals(&[("size", "11")])), Ok(OsAction::VolumeExtend { new_size_gb: 11, .. })));
+        assert!(matches!(
+            (d.build)(&vals(&[("size", "11")])),
+            Ok(OsAction::VolumeExtend { new_size_gb: 11, .. })
+        ));
     }
 
     #[test]
     fn rule_form_prefers_remote_group_over_cidr() {
         let d = add_rule_dialog(Lang::EnUs, "sg");
-        let a = (d.build)(&vals(&[("direction", "ingress"), ("ethertype", "IPv4"), ("protocol", "tcp"), ("port_min", "22"), ("cidr", "0.0.0.0/0")])).unwrap();
+        let a = (d.build)(&vals(&[
+            ("direction", "ingress"),
+            ("ethertype", "IPv4"),
+            ("protocol", "tcp"),
+            ("port_min", "22"),
+            ("cidr", "0.0.0.0/0"),
+        ]))
+        .unwrap();
         let OsAction::RuleCreate(r) = a else { panic!() };
-        assert_eq!((r.port_min, r.remote_ip_prefix.as_deref()), (Some(22), Some("0.0.0.0/0")));
-        let a = (d.build)(&vals(&[("direction", "egress"), ("ethertype", "IPv6"), ("remote_group", "other"), ("cidr", "0.0.0.0/0")])).unwrap();
+        assert_eq!(
+            (r.port_min, r.remote_ip_prefix.as_deref()),
+            (Some(22), Some("0.0.0.0/0"))
+        );
+        let a = (d.build)(&vals(&[
+            ("direction", "egress"),
+            ("ethertype", "IPv6"),
+            ("remote_group", "other"),
+            ("cidr", "0.0.0.0/0"),
+        ]))
+        .unwrap();
         let OsAction::RuleCreate(r) = a else { panic!() };
         assert_eq!(r.remote_ip_prefix, None);
         assert_eq!(r.remote_group_id.as_deref(), Some("other"));
@@ -6168,41 +10467,113 @@ mod tests {
     #[test]
     fn alarm_dialog_follows_the_type_and_keeps_what_it_does_not_edit() {
         let create = alarm_dialog(Lang::EsEs, None);
-        assert!(create.fields.iter().any(|f| f.name == "type"), "the type is chosen on create");
-        let a = (create.build)(&vals(&[("name", "cpu"), ("type", "prometheus"), ("promql", "up"), ("comparison", "lt"), ("threshold", "0,5"), ("severity", "low"), ("enabled", "true")])).unwrap();
-        let OsAction::AlarmCreate(spec) = a else { panic!("{a:?}") };
-        assert_eq!((spec.query.as_str(), spec.threshold), ("up", Some(0.5)), "decimal comma");
-        assert!((create.build)(&vals(&[("name", "cpu"), ("type", "prometheus"), ("promql", "up"), ("comparison", "lt"), ("severity", "low")])).is_err(), "no threshold");
+        assert!(
+            create.fields.iter().any(|f| f.name == "type"),
+            "the type is chosen on create"
+        );
+        let a = (create.build)(&vals(&[
+            ("name", "cpu"),
+            ("type", "prometheus"),
+            ("promql", "up"),
+            ("comparison", "lt"),
+            ("threshold", "0,5"),
+            ("severity", "low"),
+            ("enabled", "true"),
+        ]))
+        .unwrap();
+        let OsAction::AlarmCreate(spec) = a else {
+            panic!("{a:?}")
+        };
+        assert_eq!(
+            (spec.query.as_str(), spec.threshold),
+            ("up", Some(0.5)),
+            "decimal comma"
+        );
+        assert!(
+            (create.build)(&vals(&[
+                ("name", "cpu"),
+                ("type", "prometheus"),
+                ("promql", "up"),
+                ("comparison", "lt"),
+                ("severity", "low")
+            ]))
+            .is_err(),
+            "no threshold"
+        );
         let existing = AlarmSpec {
             name: "deleted".into(),
             alarm_type: "event".into(),
             severity: "moderate".into(),
             event_type: "compute.instance.delete.end".into(),
             event_query: vec!["traits.instance_id = srv1".into()],
-            time_constraints: vec![AlarmTimeConstraint { name: "office".into(), start: "0 9 * * *".into(), duration: Some(3600), timezone: None, description: None }],
+            time_constraints: vec![AlarmTimeConstraint {
+                name: "office".into(),
+                start: "0 9 * * *".into(),
+                duration: Some(3600),
+                timezone: None,
+                description: None,
+            }],
             ..Default::default()
         };
         let edit = alarm_dialog(Lang::EnUs, Some(("a1", &existing)));
         let names: Vec<_> = edit.fields.iter().map(|f| f.name).collect();
-        assert!(!names.contains(&"type") && !names.contains(&"threshold") && names.contains(&"event_query"), "only the fixed type's fields: {names:?}");
+        assert!(
+            !names.contains(&"type") && !names.contains(&"threshold") && names.contains(&"event_query"),
+            "only the fixed type's fields: {names:?}"
+        );
         let event_query = edit.fields.iter().find(|f| f.name == "event_query").unwrap();
         assert_eq!(event_query.default, "traits.instance_id = srv1");
-        let a = (edit.build)(&vals(&[("name", "deleted"), ("event_type", "compute.instance.delete.end"), ("event_query", "traits.instance_id = srv1"), ("severity", "critical")])).unwrap();
-        let OsAction::AlarmUpdate { id, spec } = a else { panic!("{a:?}") };
-        assert_eq!((id.as_str(), spec.alarm_type.as_str(), spec.severity.as_str()), ("a1", "event", "critical"));
-        assert_eq!(spec.time_constraints, existing.time_constraints, "Aodh's PUT replaces the alarm: constraints go back");
+        let a = (edit.build)(&vals(&[
+            ("name", "deleted"),
+            ("event_type", "compute.instance.delete.end"),
+            ("event_query", "traits.instance_id = srv1"),
+            ("severity", "critical"),
+        ]))
+        .unwrap();
+        let OsAction::AlarmUpdate { id, spec } = a else {
+            panic!("{a:?}")
+        };
+        assert_eq!(
+            (id.as_str(), spec.alarm_type.as_str(), spec.severity.as_str()),
+            ("a1", "event", "critical")
+        );
+        assert_eq!(
+            spec.time_constraints, existing.time_constraints,
+            "Aodh's PUT replaces the alarm: constraints go back"
+        );
         for d in [&create, &edit] {
             let bare: Vec<_> = d.fields.iter().filter(|f| f.help.is_none()).map(|f| f.name).collect();
             assert!(bare.is_empty(), "every alarm field has a help text: {bare:?}");
         }
-        let tipped = |d: &Dialog| d.fields.iter().filter(|f| f.tip.is_some()).map(|f| f.name).collect::<Vec<_>>();
+        let tipped = |d: &Dialog| {
+            d.fields
+                .iter()
+                .filter(|f| f.tip.is_some())
+                .map(|f| f.name)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
             tipped(&create),
-            ["type", "promql", "metric", "metrics", "resource_type", "resource_id", "search", "aggregation", "threshold", "granularity", "evaluation_periods", "event_type", "event_query", "alarm_actions"],
+            [
+                "type",
+                "promql",
+                "metric",
+                "metrics",
+                "resource_type",
+                "resource_id",
+                "search",
+                "aggregation",
+                "threshold",
+                "granularity",
+                "evaluation_periods",
+                "event_type",
+                "event_query",
+                "alarm_actions"
+            ],
             "the complex fields explain themselves behind an (i)"
         );
         // Markup that doesn't pair up would show as raw `*` or backticks.
-        use crate::components::widgets::{tip_blocks, tip_inline, TipBlock, TipInline};
+        use crate::components::widgets::{TipBlock, TipInline, tip_blocks, tip_inline};
         fn raw(parts: &[TipInline]) -> bool {
             parts.iter().any(|p| match p {
                 TipInline::Text(t) => t.contains('`') || t.contains('*'),
@@ -6234,26 +10605,51 @@ mod launch_tests {
         let image = |id: &str, bytes: u64, min_disk: i64, min_ram: i64| Choice {
             value: id.into(),
             label: id.into(),
-            facts: Facts { size_bytes: Some(bytes), min_disk_gb: Some(min_disk), min_ram_mb: Some(min_ram), ..Default::default() },
+            facts: Facts {
+                size_bytes: Some(bytes),
+                min_disk_gb: Some(min_disk),
+                min_ram_mb: Some(min_ram),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let flavor = |id: &str, ram: i64, disk: i64| Choice {
             value: id.into(),
             label: id.into(),
-            facts: Facts { ram_mb: Some(ram), disk_gb: Some(disk), vcpus: Some(1), ..Default::default() },
+            facts: Facts {
+                ram_mb: Some(ram),
+                disk_gb: Some(disk),
+                vcpus: Some(1),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let mut s = Sets::new();
-        s.insert(ChoiceSet::LaunchImages, vec![image("rhel", 7_800_000_000, 20, 2048), image("debian", 428_690_000, 0, 0)]);
-        s.insert(ChoiceSet::Flavors, vec![flavor("small", 1024, 10), flavor("big", 4096, 50)]);
+        s.insert(
+            ChoiceSet::LaunchImages,
+            vec![
+                image("rhel", 7_800_000_000, 20, 2048),
+                image("debian", 428_690_000, 0, 0),
+            ],
+        );
+        s.insert(
+            ChoiceSet::Flavors,
+            vec![flavor("small", 1024, 10), flavor("big", 4096, 50)],
+        );
         s
     }
 
     fn launch_values() -> Vals {
-        [("source", "image"), ("create_volume", "true"), ("volume_size", "1"), ("source_id", ""), ("networks", "n1")]
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect()
+        [
+            ("source", "image"),
+            ("create_volume", "true"),
+            ("volume_size", "1"),
+            ("source_id", ""),
+            ("networks", "n1"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
     }
 
     #[test]
@@ -6282,7 +10678,10 @@ mod launch_tests {
         v.insert("volume_size".into(), "10".into());
         v.insert("networks".into(), String::new());
         let p = check(&v, &s);
-        assert!(p.iter().any(|(f, m)| *f == "volume_size" && m.contains("at least 20 GB")));
+        assert!(
+            p.iter()
+                .any(|(f, m)| *f == "volume_size" && m.contains("at least 20 GB"))
+        );
         assert!(p.iter().any(|(f, _)| *f == "networks"));
 
         let small = &s[&ChoiceSet::Flavors][0];
@@ -6292,7 +10691,11 @@ mod launch_tests {
         // Booting straight from the image also needs the root disk.
         v.insert("create_volume".into(), "false".into());
         v.insert("source_id".into(), "debian".into());
-        assert_eq!(block("flavor", small, &v, &s), None, "debian needs 1 GB and no RAM minimum");
+        assert_eq!(
+            block("flavor", small, &v, &s),
+            None,
+            "debian needs 1 GB and no RAM minimum"
+        );
         v.insert("ports".into(), "p1".into());
         assert!(check(&v, &s).iter().all(|(f, _)| *f != "networks"), "a port is enough");
     }
@@ -6317,7 +10720,12 @@ const CONTAINER_ROLE_FIELDS: &[(&str, &str, &str)] = &[
 ];
 
 fn km_options(lang: Lang, items: &[&str]) -> Source {
-    Source::Static(items.iter().map(|v| (v.to_string(), crate::i18n::key_manager_term(lang, v))).collect())
+    Source::Static(
+        items
+            .iter()
+            .map(|v| (v.to_string(), crate::i18n::key_manager_term(lang, v)))
+            .collect(),
+    )
 }
 
 /// *Store Secret* (Barbican `POST /v1/secrets`): name, type, payload (text, or
@@ -6327,10 +10735,23 @@ pub fn store_secret_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let fields = vec![
         Field::text("name", tr(K::Name)).help(tr(K::SecretNameHelp)),
-        Field::select("secret_type", tr(K::SecretType), km_options(lang, SECRET_TYPES)).value("opaque").required().help(tr(K::SecretTypeHelp)),
-        Field::select("format", tr(K::PayloadFormat), options(&[("text/plain", K::PayloadText), ("application/octet-stream", K::PayloadBase64)], lang))
-            .value("text/plain")
-            .help(tr(K::PayloadFormatHelp)),
+        Field::select("secret_type", tr(K::SecretType), km_options(lang, SECRET_TYPES))
+            .value("opaque")
+            .required()
+            .help(tr(K::SecretTypeHelp)),
+        Field::select(
+            "format",
+            tr(K::PayloadFormat),
+            options(
+                &[
+                    ("text/plain", K::PayloadText),
+                    ("application/octet-stream", K::PayloadBase64),
+                ],
+                lang,
+            ),
+        )
+        .value("text/plain")
+        .help(tr(K::PayloadFormatHelp)),
         Field::area("payload", tr(K::Payload)).help(tr(K::PayloadHelp)),
         Field::text("algorithm", tr(K::Algorithm)).help(tr(K::AlgorithmHelp)),
         Field::number("bit_length", tr(K::BitLength), 1).help(tr(K::BitLengthHelp)),
@@ -6340,7 +10761,8 @@ pub fn store_secret_dialog(lang: Lang) -> Dialog {
     ];
     Dialog::form(tr(K::StoreSecret), tr(K::StoreSecret), fields, move |v| {
         let now = chrono::Utc::now().naive_utc();
-        let expiration = app_credential_expiry(&v.get("expiration_date"), &v.get("expiration_time"), now).map_err(|e| invalid(lang, e))?;
+        let expiration = app_credential_expiry(&v.get("expiration_date"), &v.get("expiration_time"), now)
+            .map_err(|e| invalid(lang, e))?;
         Ok(OsAction::SecretCreate(SecretSpec {
             name: v.opt("name"),
             secret_type: req(v, "secret_type", K::SecretType, lang)?,
@@ -6366,8 +10788,14 @@ pub fn secret_items(lang: Lang, x: &SecretRow) -> Vec<MenuItem> {
 /// *Delete Secret*, listing the secret's consumers.
 pub fn secret_detail_items(lang: Lang, d: &SecretDetail) -> Vec<MenuItem> {
     let id = d.secret.id.clone();
-    let target = move |project_access, users| OsAction::SecretAclSet { id: id.clone(), project_access, users };
-    let reset = OsAction::SecretAclDelete { id: d.secret.id.clone() };
+    let target = move |project_access, users| OsAction::SecretAclSet {
+        id: id.clone(),
+        project_access,
+        users,
+    };
+    let reset = OsAction::SecretAclDelete {
+        id: d.secret.id.clone(),
+    };
     let mut items = acl_items(lang, &d.secret.name, &d.acl, target, reset, None);
     items.push(delete_secret(lang, &d.secret, d.consumers.clone()));
     items
@@ -6379,7 +10807,11 @@ pub fn secret_detail_items(lang: Lang, d: &SecretDetail) -> Vec<MenuItem> {
 pub fn container_detail_items(lang: Lang, d: &ContainerDetail) -> Vec<MenuItem> {
     let c = &d.container;
     let id = c.id.clone();
-    let target = move |project_access, users| OsAction::ContainerAclSet { id: id.clone(), project_access, users };
+    let target = move |project_access, users| OsAction::ContainerAclSet {
+        id: id.clone(),
+        project_access,
+        users,
+    };
     let reset = OsAction::ContainerAclDelete { id: c.id.clone() };
     let mut items = acl_items(lang, &c.name, &d.acl, target, reset, Some(K::ContainerAclSecrets));
     items.extend(container_items(lang, c));
@@ -6411,7 +10843,8 @@ fn acl_items(
 /// When something uses the resource (the *Consumers* section of its page lists
 /// what): removing a service's user (Octavia's) from the ACL breaks it.
 fn in_use_warning(lang: Lang, acl: &KmAcl) -> Option<String> {
-    acl.in_use().then(|| format!("{} {}", t(lang, K::AclInUse), t(lang, K::AclInUseWarning)))
+    acl.in_use()
+        .then(|| format!("{} {}", t(lang, K::AclInUse), t(lang, K::AclInUseWarning)))
 }
 
 /// *Edit Access*: whether every project member can read it, and which other
@@ -6429,11 +10862,16 @@ fn edit_access(
         let tr = |k| t(lang, k).to_string();
         let fields = vec![
             Field::check("project_access", tr(K::ProjectAccessField), before_access),
-            Field::area("users", tr(K::AclUsersField)).value(before_users.join("\n")).help(tr(K::AclUsersHelp)),
+            Field::area("users", tr(K::AclUsersField))
+                .value(before_users.join("\n"))
+                .help(tr(K::AclUsersHelp)),
         ];
         let (set, before_users) = (set.clone(), before_users.clone());
         let mut d = Dialog::form(tr(K::EditAccess), tr(K::Save), fields, move |v| {
-            let (project_access, users) = (v.flag("project_access"), parse_user_ids(&v.opt("users").unwrap_or_default()));
+            let (project_access, users) = (
+                v.flag("project_access"),
+                parse_user_ids(&v.opt("users").unwrap_or_default()),
+            );
             if project_access == before_access && users == before_users {
                 return Err(t(lang, K::NothingChanged).to_string());
             }
@@ -6453,7 +10891,8 @@ fn reset_access(lang: Lang, name: &str, acl: &KmAcl, reset: OsAction, warning: O
         // "You have selected:" stays first: the dialog lists the selection under it.
         d.intro = vec![t(lang, K::YouSelected).into(), t(lang, K::ResetAccessIntro).into()];
         if !users.is_empty() {
-            d.intro.push(format!("{}: {}", t(lang, K::AclUsersLoseAccess), users.join(", ")));
+            d.intro
+                .push(format!("{}: {}", t(lang, K::AclUsersLoseAccess), users.join(", ")));
         }
         d.intro.extend(warning.clone());
         d
@@ -6463,12 +10902,21 @@ fn reset_access(lang: Lang, name: &str, acl: &KmAcl, reset: OsAction, warning: O
 fn delete_secret(lang: Lang, x: &SecretRow, consumers: Option<Vec<SecretConsumer>>) -> MenuItem {
     let (i, n) = (x.id.clone(), x.name.clone());
     MenuItem::danger(t(lang, K::DeleteSecret), move || {
-        let mut d = Dialog::confirm(lang, t(lang, K::DeleteSecret), n.clone(), OsAction::SecretDelete { id: i.clone() });
+        let mut d = Dialog::confirm(
+            lang,
+            t(lang, K::DeleteSecret),
+            n.clone(),
+            OsAction::SecretDelete { id: i.clone() },
+        );
         match consumers.as_deref() {
             Some([]) => {}
             Some(cs) => {
-                let list: Vec<String> = cs.iter().map(|c| format!("{} {} {}", c.service, c.resource_type, c.resource_id)).collect();
-                d.intro.push(format!("{}: {}", t(lang, K::SecretConsumersOf), list.join(", ")));
+                let list: Vec<String> = cs
+                    .iter()
+                    .map(|c| format!("{} {} {}", c.service, c.resource_type, c.resource_id))
+                    .collect();
+                d.intro
+                    .push(format!("{}: {}", t(lang, K::SecretConsumersOf), list.join(", ")));
             }
             None => d.intro.push(t(lang, K::SecretInUse).into()),
         }
@@ -6479,9 +10927,17 @@ fn delete_secret(lang: Lang, x: &SecretRow, consumers: Option<Vec<SecretConsumer
 /// The (role, `secret_ref`) pairs of *Create Container*: one per role field of
 /// the type, or, for `generic`, each picked secret as `secret_1`, `secret_2`…
 /// (Barbican's generic roles are free names).
-pub fn container_pairs(container_type: &str, get: impl Fn(&str) -> Option<String>, generic: Vec<String>) -> Vec<(String, String)> {
+pub fn container_pairs(
+    container_type: &str,
+    get: impl Fn(&str) -> Option<String>,
+    generic: Vec<String>,
+) -> Vec<(String, String)> {
     if container_type == "generic" {
-        return generic.into_iter().enumerate().map(|(n, r)| (format!("secret_{}", n + 1), r)).collect();
+        return generic
+            .into_iter()
+            .enumerate()
+            .map(|(n, r)| (format!("secret_{}", n + 1), r))
+            .collect();
     }
     CONTAINER_ROLE_FIELDS
         .iter()
@@ -6496,16 +10952,37 @@ pub fn create_container_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let mut fields = vec![
         Field::text("name", tr(K::Name)),
-        Field::select("container_type", tr(K::ContainerType), km_options(lang, &["certificate", "rsa", "generic"])).value("certificate").required(),
+        Field::select(
+            "container_type",
+            tr(K::ContainerType),
+            km_options(lang, &["certificate", "rsa", "generic"]),
+        )
+        .value("certificate")
+        .required(),
         Field::multi("generic", tr(K::Secrets), Source::Set(ChoiceSet::Secrets)).when("container_type", "generic"),
     ];
     for &(ty, field, role) in CONTAINER_ROLE_FIELDS {
-        let f = Field::select(field, crate::i18n::key_manager_term(lang, role), Source::Set(ChoiceSet::Secrets)).when("container_type", ty);
-        fields.push(if role == "certificate" || (ty == "rsa" && role != "private_key_passphrase") { f.required() } else { f });
+        let f = Field::select(
+            field,
+            crate::i18n::key_manager_term(lang, role),
+            Source::Set(ChoiceSet::Secrets),
+        )
+        .when("container_type", ty);
+        fields.push(
+            if role == "certificate" || (ty == "rsa" && role != "private_key_passphrase") {
+                f.required()
+            } else {
+                f
+            },
+        );
     }
     let mut d = Dialog::form(tr(K::CreateContainer), tr(K::CreateContainer), fields, move |v| {
         let ty = req(v, "container_type", K::ContainerType, lang)?;
-        Ok(OsAction::ContainerCreate { name: v.opt("name"), secrets: container_pairs(&ty, |f| v.opt(f), v.list("generic")), container_type: ty })
+        Ok(OsAction::ContainerCreate {
+            name: v.opt("name"),
+            secrets: container_pairs(&ty, |f| v.opt(f), v.list("generic")),
+            container_type: ty,
+        })
     })
     .sized(DialogSize::Medium);
     d.intro = vec![tr(K::ContainerSecretsHelp)];
@@ -6516,7 +10993,12 @@ pub fn create_container_dialog(lang: Lang) -> Dialog {
 pub fn container_items(lang: Lang, c: &ContainerRow) -> Vec<MenuItem> {
     let (i, n) = (c.id.clone(), c.name.clone());
     vec![MenuItem::danger(t(lang, K::DeleteContainer), move || {
-        let mut d = Dialog::confirm(lang, t(lang, K::DeleteContainer), n.clone(), OsAction::ContainerDelete { id: i.clone() });
+        let mut d = Dialog::confirm(
+            lang,
+            t(lang, K::DeleteContainer),
+            n.clone(),
+            OsAction::ContainerDelete { id: i.clone() },
+        );
         d.intro.push(t(lang, K::ContainerKeepsSecrets).into());
         d
     })]
@@ -6531,11 +11013,16 @@ pub fn stack_items(lang: Lang, x: &StackRow) -> Vec<MenuItem> {
     let (name, id) = (x.name.clone(), x.id.clone());
     let simple = |label: K, make: fn(String, String) -> OsAction| {
         let (n, i) = (name.clone(), id.clone());
-        MenuItem::dialog(t(lang, label), move || Dialog::simple(lang, t(lang, label), n.clone(), make(n.clone(), i.clone())))
+        MenuItem::dialog(t(lang, label), move || {
+            Dialog::simple(lang, t(lang, label), n.clone(), make(n.clone(), i.clone()))
+        })
     };
     let mut items = vec![];
     if !stack_busy(&x.status) {
-        items.push(MenuItem::link(t(lang, K::ChangeStackTemplate), format!("/project/stacks/{}/change", x.id)));
+        items.push(MenuItem::link(
+            t(lang, K::ChangeStackTemplate),
+            format!("/project/stacks/{}/change", x.id),
+        ));
         items.push(simple(K::CheckStack, |name, id| OsAction::StackCheck { name, id }));
         if stack_suspended(&x.status) {
             items.push(simple(K::ResumeStack, |name, id| OsAction::StackResume { name, id }));
@@ -6544,7 +11031,15 @@ pub fn stack_items(lang: Lang, x: &StackRow) -> Vec<MenuItem> {
         }
     }
     items.push(MenuItem::danger(t(lang, K::DeleteStack), move || {
-        let mut d = Dialog::confirm(lang, t(lang, K::DeleteStack), name.clone(), OsAction::StackDelete { name: name.clone(), id: id.clone() });
+        let mut d = Dialog::confirm(
+            lang,
+            t(lang, K::DeleteStack),
+            name.clone(),
+            OsAction::StackDelete {
+                name: name.clone(),
+                id: id.clone(),
+            },
+        );
         d.intro.push(t(lang, K::StackDeletesResources).into());
         d
     }));
@@ -6593,9 +11088,19 @@ mod stack_tests {
     fn stack_menu_follows_the_status() {
         let l = Lang::EnUs;
         let labels = |s: &str| stack_items(l, &row(s)).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels("CREATE_COMPLETE"), ["Change Stack Template", "Check Stack", "Suspend Stack", "Delete Stack"]);
-        assert_eq!(labels("SUSPEND_COMPLETE"), ["Change Stack Template", "Check Stack", "Resume Stack", "Delete Stack"]);
-        assert_eq!(labels("UPDATE_IN_PROGRESS"), ["Delete Stack"], "Heat refuses actions while busy");
+        assert_eq!(
+            labels("CREATE_COMPLETE"),
+            ["Change Stack Template", "Check Stack", "Suspend Stack", "Delete Stack"]
+        );
+        assert_eq!(
+            labels("SUSPEND_COMPLETE"),
+            ["Change Stack Template", "Check Stack", "Resume Stack", "Delete Stack"]
+        );
+        assert_eq!(
+            labels("UPDATE_IN_PROGRESS"),
+            ["Delete Stack"],
+            "Heat refuses actions while busy"
+        );
     }
 
     #[test]
@@ -6641,11 +11146,31 @@ mod key_manager_tests {
 
     #[test]
     fn secret_access_items_follow_policy_and_acl() {
-        let labels = |d: SecretDetail| secret_detail_items(Lang::EnUs, &d).into_iter().map(|i| i.label).collect::<Vec<_>>();
-        assert_eq!(labels(secret(false, Some(false), &["u1"])), ["Delete Secret"], "neither creator nor admin");
-        assert_eq!(labels(secret(true, Some(true), &[])), ["Edit Access", "Delete Secret"], "Barbican's default: nothing to reset");
-        assert_eq!(labels(secret(true, Some(true), &["u1"])), ["Edit Access", "Reset Access", "Delete Secret"]);
-        assert_eq!(labels(secret(true, Some(false), &[])), ["Edit Access", "Reset Access", "Delete Secret"], "private");
+        let labels = |d: SecretDetail| {
+            secret_detail_items(Lang::EnUs, &d)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(secret(false, Some(false), &["u1"])),
+            ["Delete Secret"],
+            "neither creator nor admin"
+        );
+        assert_eq!(
+            labels(secret(true, Some(true), &[])),
+            ["Edit Access", "Delete Secret"],
+            "Barbican's default: nothing to reset"
+        );
+        assert_eq!(
+            labels(secret(true, Some(true), &["u1"])),
+            ["Edit Access", "Reset Access", "Delete Secret"]
+        );
+        assert_eq!(
+            labels(secret(true, Some(false), &[])),
+            ["Edit Access", "Reset Access", "Delete Secret"],
+            "private"
+        );
         assert_eq!(secret(true, None, &[]).acl.user_label("u1"), "octavia (u1)");
         assert_eq!(secret(true, None, &[]).acl.user_label("u9"), "u9");
     }
@@ -6654,13 +11179,23 @@ mod key_manager_tests {
     fn access_dialogs_warn_when_something_uses_it() {
         let mut d = secret(true, Some(true), &["u1"]);
         assert_eq!(in_use_warning(Lang::EnUs, &d.acl), None);
-        d.acl.octavia = vec![OctaviaUse { lb_id: Some("lb1".into()), lb_name: "web".into(), kind: "listener".into(), name: "https".into(), via: None }];
+        d.acl.octavia = vec![OctaviaUse {
+            lb_id: Some("lb1".into()),
+            lb_name: "web".into(),
+            kind: "listener".into(),
+            name: "https".into(),
+            via: None,
+        }];
         let w = in_use_warning(Lang::EnUs, &d.acl).unwrap();
         assert!(w.contains("Consumers"), "points at the page's list: {w}");
         let items = secret_detail_items(Lang::EnUs, &d);
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else { panic!("Reset Access opens a dialog") };
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[1].kind else {
+            panic!("Reset Access opens a dialog")
+        };
         assert!(open().intro.contains(&w), "Reset Access shows the warning");
-        let crate::components::dialog::ItemKind::Dialog(open) = &items[0].kind else { panic!("Edit Access opens a dialog") };
+        let crate::components::dialog::ItemKind::Dialog(open) = &items[0].kind else {
+            panic!("Edit Access opens a dialog")
+        };
         assert!(open().intro.contains(&w), "Edit Access too");
     }
 
@@ -6673,9 +11208,22 @@ mod key_manager_tests {
             _ => None,
         };
         let refs = |v: Vec<(String, String)>| v.into_iter().map(|(r, s)| format!("{r}={s}")).collect::<Vec<_>>();
-        assert_eq!(refs(container_pairs("certificate", picked, vec![])), ["certificate=https://kms/v1/secrets/c", "private_key=https://kms/v1/secrets/k"], "fields of another type are ignored");
-        assert_eq!(refs(container_pairs("rsa", picked, vec![])), ["public_key=https://kms/v1/secrets/p"]);
-        assert_eq!(refs(container_pairs("generic", picked, vec!["a".into(), "b".into()])), ["secret_1=a", "secret_2=b"]);
+        assert_eq!(
+            refs(container_pairs("certificate", picked, vec![])),
+            [
+                "certificate=https://kms/v1/secrets/c",
+                "private_key=https://kms/v1/secrets/k"
+            ],
+            "fields of another type are ignored"
+        );
+        assert_eq!(
+            refs(container_pairs("rsa", picked, vec![])),
+            ["public_key=https://kms/v1/secrets/p"]
+        );
+        assert_eq!(
+            refs(container_pairs("generic", picked, vec!["a".into(), "b".into()])),
+            ["secret_1=a", "secret_2=b"]
+        );
     }
 }
 
@@ -6704,21 +11252,27 @@ pub fn create_app_credential_dialog(lang: Lang) -> Dialog {
         ),
         Field::check("unrestricted", tr(K::UnrestrictedDangerous), false).help(tr(K::UnrestrictedHelp)).danger(),
     ];
-    let mut d = Dialog::form(tr(K::CreateAppCredential), tr(K::CreateAppCredential), fields, move |v| {
-        let now = chrono::Utc::now().naive_utc();
-        let expires_at = app_credential_expiry(&v.get("expiration_date"), &v.get("expiration_time"), now).map_err(|e| invalid(lang, e))?;
-        Ok(OsAction::AppCredentialCreate(Box::new(AppCredentialSpec {
-            // Set from the session by `run_action`.
-            user_id: String::new(),
-            name: req(v, "name", K::Name, lang)?,
-            description: v.opt("description"),
-            secret: v.opt("secret"),
-            expires_at,
-            roles: v.list("roles"),
-            unrestricted: v.flag("unrestricted"),
-            access_rules: v.opt("access_rules"),
-        })))
-    })
+    let mut d = Dialog::form(
+        tr(K::CreateAppCredential),
+        tr(K::CreateAppCredential),
+        fields,
+        move |v| {
+            let now = chrono::Utc::now().naive_utc();
+            let expires_at = app_credential_expiry(&v.get("expiration_date"), &v.get("expiration_time"), now)
+                .map_err(|e| invalid(lang, e))?;
+            Ok(OsAction::AppCredentialCreate(Box::new(AppCredentialSpec {
+                // Set from the session by `run_action`.
+                user_id: String::new(),
+                name: req(v, "name", K::Name, lang)?,
+                description: v.opt("description"),
+                secret: v.opt("secret"),
+                expires_at,
+                roles: v.list("roles"),
+                unrestricted: v.flag("unrestricted"),
+                access_rules: v.opt("access_rules"),
+            })))
+        },
+    )
     .sized(DialogSize::Medium);
     d.intro = vec![tr(K::AppCredHelp)];
     d
@@ -6727,9 +11281,16 @@ pub fn create_app_credential_dialog(lang: Lang) -> Dialog {
 /// Horizon's *Create Role* (admins): a role name.
 pub fn create_role_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    Dialog::form(tr(K::CreateRole), tr(K::CreateRole), vec![Field::text("name", tr(K::RoleName)).required()], move |v| {
-        Ok(OsAction::RoleCreate { name: req(v, "name", K::RoleName, lang)? })
-    })
+    Dialog::form(
+        tr(K::CreateRole),
+        tr(K::CreateRole),
+        vec![Field::text("name", tr(K::RoleName)).required()],
+        move |v| {
+            Ok(OsAction::RoleCreate {
+                name: req(v, "name", K::RoleName, lang)?,
+            })
+        },
+    )
 }
 
 /// A role's menu, as Horizon's: *Edit* (the name) and *Delete Role*.
@@ -6740,12 +11301,25 @@ pub fn role_items(lang: Lang, r: &IdentityRole) -> Vec<MenuItem> {
         MenuItem::dialog(t(lang, K::Edit), move || {
             let id = i.clone();
             let tr = |k| t(lang, k).to_string();
-            Dialog::form(tr(K::EditRole), tr(K::Save), vec![Field::text("name", tr(K::RoleName)).value(n.clone()).required()], move |v| {
-                Ok(OsAction::RoleUpdate { id: id.clone(), name: req(v, "name", K::RoleName, lang)? })
-            })
+            Dialog::form(
+                tr(K::EditRole),
+                tr(K::Save),
+                vec![Field::text("name", tr(K::RoleName)).value(n.clone()).required()],
+                move |v| {
+                    Ok(OsAction::RoleUpdate {
+                        id: id.clone(),
+                        name: req(v, "name", K::RoleName, lang)?,
+                    })
+                },
+            )
         }),
         MenuItem::danger(t(lang, K::DeleteRole), move || {
-            let mut d = Dialog::confirm(lang, t(lang, K::DeleteRole), n2.clone(), OsAction::RoleDelete { id: i2.clone() });
+            let mut d = Dialog::confirm(
+                lang,
+                t(lang, K::DeleteRole),
+                n2.clone(),
+                OsAction::RoleDelete { id: i2.clone() },
+            );
             d.intro.push(t(lang, K::DeleteRoleWarning).to_string());
             d
         }),
@@ -6756,7 +11330,15 @@ pub fn role_items(lang: Lang, r: &IdentityRole) -> Vec<MenuItem> {
 pub fn app_credential_items(lang: Lang, a: &AppCredential) -> Vec<MenuItem> {
     let (i, n) = (a.id.clone(), a.name.clone());
     vec![MenuItem::danger(t(lang, K::DeleteAppCredential), move || {
-        Dialog::confirm(lang, t(lang, K::DeleteAppCredential), n.clone(), OsAction::AppCredentialDelete { user_id: String::new(), id: i.clone() })
+        Dialog::confirm(
+            lang,
+            t(lang, K::DeleteAppCredential),
+            n.clone(),
+            OsAction::AppCredentialDelete {
+                user_id: String::new(),
+                id: i.clone(),
+            },
+        )
     })]
 }
 
@@ -6773,14 +11355,24 @@ pub fn create_project_dialog(lang: Lang) -> Dialog {
     ];
     Dialog::form(tr(K::CreateProject), tr(K::CreateProject), fields, move |v| {
         // `domain_id` is set from the session by `run_action`.
-        Ok(OsAction::ProjectCreate { name: req(v, "name", K::Name, lang)?, description: v.opt("description"), enabled: v.flag("enabled"), domain_id: String::new() })
+        Ok(OsAction::ProjectCreate {
+            name: req(v, "name", K::Name, lang)?,
+            description: v.opt("description"),
+            enabled: v.flag("enabled"),
+            domain_id: String::new(),
+        })
     })
 }
 
 /// A project's menu (admins), as Horizon's: *Manage Members*, *Modify Groups*,
 /// *Edit Project*, *Delete Project*. The members dialogs need the project's
 /// assignments, so they are offered on the detail page (`detail`).
-pub fn identity_project_items(lang: Lang, p: &IdentityProject, detail: Option<&IdentityProjectDetail>, admin: bool) -> Vec<MenuItem> {
+pub fn identity_project_items(
+    lang: Lang,
+    p: &IdentityProject,
+    detail: Option<&IdentityProjectDetail>,
+    admin: bool,
+) -> Vec<MenuItem> {
     let tr = move |k| t(lang, k).to_string();
     let mut items = Vec::new();
     if let Some(d) = detail.filter(|d| d.users.is_some()) {
@@ -6788,12 +11380,27 @@ pub fn identity_project_items(lang: Lang, p: &IdentityProject, detail: Option<&I
         let before: Vec<AssignmentRow> = users
             .iter()
             .filter(|m| !m.role_ids.is_empty())
-            .map(|m| AssignmentRow { actor_id: m.id.clone(), label: m.name.clone(), role_ids: m.role_ids.clone() })
+            .map(|m| AssignmentRow {
+                actor_id: m.id.clone(),
+                label: m.name.clone(),
+                role_ids: m.role_ids.clone(),
+            })
             .collect();
-        items.push(MenuItem::dialog(tr(K::ManageMembers), move || assignments_dialog(lang, K::ManageMembers, &pid, false, &before)));
+        items.push(MenuItem::dialog(tr(K::ManageMembers), move || {
+            assignments_dialog(lang, K::ManageMembers, &pid, false, &before)
+        }));
         let (pid, groups) = (p.id.clone(), d.groups.clone().unwrap_or_default());
-        let before: Vec<AssignmentRow> = groups.iter().map(|g| AssignmentRow { actor_id: g.id.clone(), label: g.name.clone(), role_ids: g.role_ids.clone() }).collect();
-        items.push(MenuItem::dialog(tr(K::ModifyGroups), move || assignments_dialog(lang, K::ModifyGroups, &pid, true, &before)));
+        let before: Vec<AssignmentRow> = groups
+            .iter()
+            .map(|g| AssignmentRow {
+                actor_id: g.id.clone(),
+                label: g.name.clone(),
+                role_ids: g.role_ids.clone(),
+            })
+            .collect();
+        items.push(MenuItem::dialog(tr(K::ModifyGroups), move || {
+            assignments_dialog(lang, K::ModifyGroups, &pid, true, &before)
+        }));
     }
     let p2 = p.clone();
     items.push(MenuItem::dialog(tr(K::EditProject), move || {
@@ -6804,17 +11411,32 @@ pub fn identity_project_items(lang: Lang, p: &IdentityProject, detail: Option<&I
             Field::check("enabled", tr(K::EnabledCol), p2.enabled),
         ];
         Dialog::form(tr(K::EditProject), tr(K::Save), fields, move |v| {
-            Ok(OsAction::ProjectUpdate { id: id.clone(), name: req(v, "name", K::Name, lang)?, description: v.get("description"), enabled: v.flag("enabled") })
+            Ok(OsAction::ProjectUpdate {
+                id: id.clone(),
+                name: req(v, "name", K::Name, lang)?,
+                description: v.get("description"),
+                enabled: v.flag("enabled"),
+            })
         })
     }));
     // After *Edit Project*, as Horizon. *Modify Quotas* (roadmap 82): any project's quotas, for the
     // `admin` role only (`needs::ADMIN`); the server checks the role again. The
     // session's own project is edited from Project › Quotas by whoever may.
     if admin {
-        items.push(MenuItem::link(tr(K::ModifyQuotas), format!("/identity/projects/{}/quotas", p.id)));
+        items.push(MenuItem::link(
+            tr(K::ModifyQuotas),
+            format!("/identity/projects/{}/quotas", p.id),
+        ));
     }
     let (i, n) = (p.id.clone(), p.name.clone());
-    items.push(MenuItem::danger(tr(K::DeleteProject), move || Dialog::confirm(lang, tr(K::DeleteProject), n.clone(), OsAction::ProjectDelete { id: i.clone() })));
+    items.push(MenuItem::danger(tr(K::DeleteProject), move || {
+        Dialog::confirm(
+            lang,
+            tr(K::DeleteProject),
+            n.clone(),
+            OsAction::ProjectDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -6822,18 +11444,27 @@ pub fn identity_project_items(lang: Lang, p: &IdentityProject, detail: Option<&I
 /// assignments edited at once, sent as the grants and revokes that changed.
 fn assignments_dialog(lang: Lang, title: K, project_id: &str, group: bool, before: &[AssignmentRow]) -> Dialog {
     let tr = |k| t(lang, k).to_string();
-    let actors = if group { ChoiceSet::IdentityGroups } else { ChoiceSet::IdentityUsers };
+    let actors = if group {
+        ChoiceSet::IdentityGroups
+    } else {
+        ChoiceSet::IdentityUsers
+    };
     let label = if group { K::Groups } else { K::Users };
     let (pid, before) = (project_id.to_string(), before.to_vec());
     let before2 = before.clone();
-    Dialog::form(tr(title), tr(K::Save), vec![Field::assignments("rows", tr(label), &before, actors)], move |v| {
-        let after: Vec<AssignmentRow> = serde_json::from_str(&v.get("rows")).unwrap_or_default();
-        let changes = assignment_changes(&pid, group, &before2, &after);
-        if changes.is_empty() {
-            return Err(t(lang, K::NothingChanged).to_string());
-        }
-        Ok(OsAction::Batch(changes))
-    })
+    Dialog::form(
+        tr(title),
+        tr(K::Save),
+        vec![Field::assignments("rows", tr(label), &before, actors)],
+        move |v| {
+            let after: Vec<AssignmentRow> = serde_json::from_str(&v.get("rows")).unwrap_or_default();
+            let changes = assignment_changes(&pid, group, &before2, &after);
+            if changes.is_empty() {
+                return Err(t(lang, K::NothingChanged).to_string());
+            }
+            Ok(OsAction::Batch(changes))
+        },
+    )
     .sized(DialogSize::Large)
 }
 
@@ -6848,8 +11479,13 @@ pub fn create_user_dialog(lang: Lang) -> Dialog {
         Field::text("email", tr(K::Email)),
         Field::password("password", tr(K::Password)).required(),
         Field::password("confirm", tr(K::ConfirmPassword)).required(),
-        Field::select("project", tr(K::PrimaryProject), Source::Set(ChoiceSet::IdentityProjects)),
-        Field::select("role", tr(K::Role), Source::Set(ChoiceSet::IdentityRoles)).show_if(|v| v.get("project").is_some_and(|p| !p.is_empty())),
+        Field::select(
+            "project",
+            tr(K::PrimaryProject),
+            Source::Set(ChoiceSet::IdentityProjects),
+        ),
+        Field::select("role", tr(K::Role), Source::Set(ChoiceSet::IdentityRoles))
+            .show_if(|v| v.get("project").is_some_and(|p| !p.is_empty())),
         Field::check("enabled", tr(K::EnabledCol), true),
         Field::check("lock_password", tr(K::LockPassword), false),
     ];
@@ -6897,29 +11533,63 @@ pub fn user_items(lang: Lang, u: &IdentityUser, primary: Option<String>) -> Vec<
             Field::text("name", tr(K::UserName)).value(u2.name.clone()).required(),
             Field::text("email", tr(K::Email)).value(u2.email.clone().unwrap_or_default()),
             Field::area("description", tr(K::Description)).value(u2.description.clone().unwrap_or_default()),
-            Field::select("project", tr(K::PrimaryProject), Source::Set(ChoiceSet::IdentityProjects)).value(primary.clone().unwrap_or_default()),
+            Field::select(
+                "project",
+                tr(K::PrimaryProject),
+                Source::Set(ChoiceSet::IdentityProjects),
+            )
+            .value(primary.clone().unwrap_or_default()),
         ];
         Dialog::form(tr(K::EditUser), tr(K::Save), fields, move |v| {
-            Ok(OsAction::UserUpdate { id: id.clone(), name: req(v, "name", K::UserName, lang)?, email: v.get("email"), description: v.get("description"), project_id: v.opt("project") })
+            Ok(OsAction::UserUpdate {
+                id: id.clone(),
+                name: req(v, "name", K::UserName, lang)?,
+                email: v.get("email"),
+                description: v.get("description"),
+                project_id: v.opt("project"),
+            })
         })
     }));
     let id = u.id.clone();
     items.push(MenuItem::dialog(tr(K::ChangePassword), move || {
         let id = id.clone();
-        let fields = vec![Field::password("password", tr(K::Password)).required(), Field::password("confirm", tr(K::ConfirmPassword)).required()];
+        let fields = vec![
+            Field::password("password", tr(K::Password)).required(),
+            Field::password("confirm", tr(K::ConfirmPassword)).required(),
+        ];
         Dialog::form(tr(K::ChangePassword), tr(K::Save), fields, move |v| {
             let password = v.get("password");
             if password != v.get("confirm") {
                 return Err(t(lang, K::PasswordsDiffer).to_string());
             }
-            Ok(OsAction::UserSetPassword { id: id.clone(), password })
+            Ok(OsAction::UserSetPassword {
+                id: id.clone(),
+                password,
+            })
         })
     }));
     let (id, name, enabled) = (u.id.clone(), u.name.clone(), u.enabled);
     let label = tr(if enabled { K::DisableUser } else { K::EnableUser });
-    items.push(MenuItem::dialog(label.clone(), move || Dialog::simple(lang, label.clone(), name.clone(), OsAction::UserSetEnabled { id: id.clone(), enabled: !enabled })));
+    items.push(MenuItem::dialog(label.clone(), move || {
+        Dialog::simple(
+            lang,
+            label.clone(),
+            name.clone(),
+            OsAction::UserSetEnabled {
+                id: id.clone(),
+                enabled: !enabled,
+            },
+        )
+    }));
     let (i, n) = (u.id.clone(), u.name.clone());
-    items.push(MenuItem::danger(tr(K::DeleteUser), move || Dialog::confirm(lang, tr(K::DeleteUser), n.clone(), OsAction::UserDelete { id: i.clone() })));
+    items.push(MenuItem::danger(tr(K::DeleteUser), move || {
+        Dialog::confirm(
+            lang,
+            tr(K::DeleteUser),
+            n.clone(),
+            OsAction::UserDelete { id: i.clone() },
+        )
+    }));
     items
 }
 
@@ -6933,7 +11603,11 @@ pub fn create_group_dialog(lang: Lang) -> Dialog {
     ];
     Dialog::form(tr(K::CreateGroup), tr(K::CreateGroup), fields, move |v| {
         // `domain_id` is set from the session by `run_action`.
-        Ok(OsAction::GroupCreate { name: req(v, "name", K::Name, lang)?, description: v.opt("description"), domain_id: String::new() })
+        Ok(OsAction::GroupCreate {
+            name: req(v, "name", K::Name, lang)?,
+            description: v.opt("description"),
+            domain_id: String::new(),
+        })
     })
 }
 
@@ -6947,15 +11621,32 @@ pub fn identity_group_items(lang: Lang, d: &IdentityGroupDetail) -> Vec<MenuItem
         0,
         MenuItem::dialog(tr(K::ManageMembers), move || {
             let (gid, before) = (gid.clone(), before.clone());
-            let field = Field::pick_many("users", tr(K::Users), Source::Set(ChoiceSet::IdentityUsers)).value(before.join(","));
+            let field =
+                Field::pick_many("users", tr(K::Users), Source::Set(ChoiceSet::IdentityUsers)).value(before.join(","));
             Dialog::form(tr(K::ManageMembers), tr(K::Save), vec![field], move |v| {
                 let after = v.list("users");
                 let mut changes: Vec<(String, OsAction)> = after
                     .iter()
                     .filter(|u| !before.contains(u))
-                    .map(|u| (format!("+ {u}"), OsAction::GroupAddUser { group_id: gid.clone(), user_id: u.clone() }))
+                    .map(|u| {
+                        (
+                            format!("+ {u}"),
+                            OsAction::GroupAddUser {
+                                group_id: gid.clone(),
+                                user_id: u.clone(),
+                            },
+                        )
+                    })
                     .collect();
-                changes.extend(before.iter().filter(|u| !after.contains(u)).map(|u| (format!("- {u}"), OsAction::GroupRemoveUser { group_id: gid.clone(), user_id: u.clone() })));
+                changes.extend(before.iter().filter(|u| !after.contains(u)).map(|u| {
+                    (
+                        format!("- {u}"),
+                        OsAction::GroupRemoveUser {
+                            group_id: gid.clone(),
+                            user_id: u.clone(),
+                        },
+                    )
+                }));
                 if changes.is_empty() {
                     return Err(t(lang, K::NothingChanged).to_string());
                 }
@@ -6980,9 +11671,20 @@ pub fn group_menu(lang: Lang, g: &IdentityGroup) -> Vec<MenuItem> {
                 Field::area("description", tr(K::Description)).value(g2.description.clone().unwrap_or_default()),
             ];
             Dialog::form(tr(K::EditGroup), tr(K::Save), fields, move |v| {
-                Ok(OsAction::GroupUpdate { id: id.clone(), name: req(v, "name", K::Name, lang)?, description: v.get("description") })
+                Ok(OsAction::GroupUpdate {
+                    id: id.clone(),
+                    name: req(v, "name", K::Name, lang)?,
+                    description: v.get("description"),
+                })
             })
         }),
-        MenuItem::danger(tr(K::DeleteGroup), move || Dialog::confirm(lang, tr(K::DeleteGroup), n.clone(), OsAction::GroupDelete { id: i.clone() })),
+        MenuItem::danger(tr(K::DeleteGroup), move || {
+            Dialog::confirm(
+                lang,
+                tr(K::DeleteGroup),
+                n.clone(),
+                OsAction::GroupDelete { id: i.clone() },
+            )
+        }),
     ]
 }

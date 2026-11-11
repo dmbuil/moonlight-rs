@@ -1,13 +1,13 @@
 use leptos::prelude::*;
 use leptos_meta::Title;
 
-use crate::api::{get_login_prefs, Login};
+use crate::api::{Login, get_login_prefs};
 use crate::components::layout::{LanguageMenu, MoonMark, ThemeMenu};
-use crate::i18n::{use_i18n, K};
-use crate::model::ErrorKind;
 use crate::components::select::Combo;
 use crate::i18n::Lang;
+use crate::i18n::{K, use_i18n};
 use crate::model::Choice;
+use crate::model::ErrorKind;
 use crate::prefs::{LoginPrefs, SsoChoice, WEBSSO_START};
 
 #[component]
@@ -28,16 +28,20 @@ pub fn LoginPage() -> impl IntoView {
         })
     };
     let error = move || {
-        action.value().get().and_then(Result::err).map(|e| {
-            match e.kind {
-                // Credentials were accepted but there is no project to scope to.
-                ErrorKind::Forbidden => i18n.t(K::NoProjects),
-                // `[login] max_failures` reached (roadmap 50).
-                ErrorKind::TooManyAttempts => i18n.t(K::LoginThrottled),
-                _ => i18n.t(K::LoginFailed),
-            }
-        })
-        .or_else(sso_error)
+        action
+            .value()
+            .get()
+            .and_then(Result::err)
+            .map(|e| {
+                match e.kind {
+                    // Credentials were accepted but there is no project to scope to.
+                    ErrorKind::Forbidden => i18n.t(K::NoProjects),
+                    // `[login] max_failures` reached (roadmap 50).
+                    ErrorKind::TooManyAttempts => i18n.t(K::LoginThrottled),
+                    _ => i18n.t(K::LoginFailed),
+                }
+            })
+            .or_else(sso_error)
     };
 
     view! {
@@ -102,8 +106,20 @@ fn LoginForm(action: ServerAction<Login>, prefs: LoginPrefs) -> impl IntoView {
         .into_any()
     } else {
         // The themed `Combo`; a hidden input carries its value into the form.
-        let picked = RwSignal::new(if prefs.domain_choices.contains(&prefs.default_domain) { prefs.default_domain.clone() } else { prefs.domain_choices[0].clone() });
-        let options: Vec<Choice> = prefs.domain_choices.iter().map(|d| Choice { value: d.clone(), label: d.clone(), ..Default::default() }).collect();
+        let picked = RwSignal::new(if prefs.domain_choices.contains(&prefs.default_domain) {
+            prefs.default_domain.clone()
+        } else {
+            prefs.domain_choices[0].clone()
+        });
+        let options: Vec<Choice> = prefs
+            .domain_choices
+            .iter()
+            .map(|d| Choice {
+                value: d.clone(),
+                label: d.clone(),
+                ..Default::default()
+            })
+            .collect();
         let name = Signal::derive(move || i18n.t(K::Domain).to_string());
         view! {
             <div class="login-field">
@@ -114,7 +130,11 @@ fn LoginForm(action: ServerAction<Login>, prefs: LoginPrefs) -> impl IntoView {
         }
         .into_any()
     };
-    let autocomplete = if prefs.password_autocomplete { "current-password" } else { "off" };
+    let autocomplete = if prefs.password_autocomplete {
+        "current-password"
+    } else {
+        "off"
+    };
     view! {
         {prefs.message.clone().map(|m| view! { <div class="alert alert-info login-message" role="note">{m}</div> })}
         <ActionForm action=action attr:class="login-form">
@@ -172,7 +192,10 @@ mod tests {
 
     #[test]
     fn sign_in_choices_show_their_label_or_a_translated_default() {
-        let c = |id: &str, label: &str| SsoChoice { id: id.into(), label: label.into() };
+        let c = |id: &str, label: &str| SsoChoice {
+            id: id.into(),
+            label: label.into(),
+        };
         assert_eq!(sso_label(&c("oidc", "ACME SSO"), Lang::EnUs), "ACME SSO");
         assert_eq!(sso_label(&c("credentials", ""), Lang::EnUs), "Keystone Credentials");
         assert_eq!(sso_label(&c("credentials", ""), Lang::EsEs), "Credenciales de Keystone");

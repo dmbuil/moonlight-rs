@@ -264,11 +264,20 @@ impl NetworkPrefs {
     pub fn provider_types(&self) -> Vec<ProviderType> {
         let known = crate::model::PROVIDER_NETWORK_TYPES;
         let all = self.supported_provider_types.iter().any(|t| t.trim() == "*");
-        let names: Vec<&str> = if all { known.iter().map(|(t, _)| *t).collect() } else { self.supported_provider_types.iter().map(|t| t.trim()).collect() };
+        let names: Vec<&str> = if all {
+            known.iter().map(|(t, _)| *t).collect()
+        } else {
+            self.supported_provider_types.iter().map(|t| t.trim()).collect()
+        };
         names
             .into_iter()
             .filter_map(|n| known.iter().find(|(t, _)| *t == n))
-            .map(|(t, range)| (t.to_string(), range.map(|r| self.segmentation_id_range.get(*t).map_or(r, |[lo, hi]| (*lo, *hi)))))
+            .map(|(t, range)| {
+                (
+                    t.to_string(),
+                    range.map(|r| self.segmentation_id_range.get(*t).map_or(r, |[lo, hi]| (*lo, *hi))),
+                )
+            })
             .collect()
     }
 
@@ -283,10 +292,16 @@ impl NetworkPrefs {
             }
         }
         for (t, [lo, hi]) in &self.segmentation_id_range {
-            let Some((_, range)) = known.iter().find(|(k, _)| k == t) else { return Err(format!("[network] segmentation_id_range: unknown type {t:?}")) };
-            let Some((min, max)) = range else { return Err(format!("[network] segmentation_id_range: {t} has no segmentation ID")) };
+            let Some((_, range)) = known.iter().find(|(k, _)| k == t) else {
+                return Err(format!("[network] segmentation_id_range: unknown type {t:?}"));
+            };
+            let Some((min, max)) = range else {
+                return Err(format!("[network] segmentation_id_range: {t} has no segmentation ID"));
+            };
             if lo > hi || lo < min || hi > max {
-                return Err(format!("[network] segmentation_id_range.{t}: [{lo}, {hi}] must be ordered and within {min}–{max}"));
+                return Err(format!(
+                    "[network] segmentation_id_range.{t}: [{lo}, {hi}] must be ordered and within {min}–{max}"
+                ));
             }
         }
         if self.provider_types().is_empty() {
@@ -329,8 +344,17 @@ impl NetworkPrefs {
         if net.addr.is_ipv6() && !self.enable_ipv6 {
             return Err(SubnetIssue::Ipv6Disabled);
         }
-        let allowed = if net.addr.is_ipv4() { &self.allowed_private_subnet_cidr.ipv4 } else { &self.allowed_private_subnet_cidr.ipv6 };
-        if allowed.is_empty() || allowed.iter().filter_map(|a| Cidr::parse(a).ok()).any(|a| a.contains(&net)) {
+        let allowed = if net.addr.is_ipv4() {
+            &self.allowed_private_subnet_cidr.ipv4
+        } else {
+            &self.allowed_private_subnet_cidr.ipv6
+        };
+        if allowed.is_empty()
+            || allowed
+                .iter()
+                .filter_map(|a| Cidr::parse(a).ok())
+                .any(|a| a.contains(&net))
+        {
             Ok(())
         } else {
             Err(SubnetIssue::Outside(allowed.clone()))
@@ -383,7 +407,11 @@ impl ImagePrefs {
 impl Default for ImagePrefs {
     fn default() -> Self {
         ImagePrefs {
-            disk_formats: ["raw", "qcow2", "vdi", "vhd", "vmdk", "iso", "aki", "ami", "ari", "docker", "ploop"].map(String::from).to_vec(),
+            disk_formats: [
+                "raw", "qcow2", "vdi", "vhd", "vmdk", "iso", "aki", "ami", "ari", "docker", "ploop",
+            ]
+            .map(String::from)
+            .to_vec(),
             default_visibility: "private".into(),
             allow_location: false,
             upload: ImageUpload::Off,
@@ -409,7 +437,11 @@ pub struct ConsolePrefs {
 
 impl Default for ConsolePrefs {
     fn default() -> Self {
-        ConsolePrefs { enabled: false, kind: ConsoleType::Auto, log_length: 35 }
+        ConsolePrefs {
+            enabled: false,
+            kind: ConsoleType::Auto,
+            log_length: 35,
+        }
     }
 }
 
@@ -458,7 +490,11 @@ impl Cidr {
             return false;
         }
         // Both versions sit at the top of 128 bits, so the prefix is the top `len` bits.
-        let mask = if self.len == 0 { 0 } else { u128::MAX << (128 - u32::from(self.len)) };
+        let mask = if self.len == 0 {
+            0
+        } else {
+            u128::MAX << (128 - u32::from(self.len))
+        };
         Self::bits(self.addr) & mask == Self::bits(other.addr) & mask
     }
 }
@@ -479,13 +515,24 @@ mod tests {
         assert_eq!(p.images.default_visibility, "private");
         assert!(p.images.disk_formats.contains(&"qcow2".to_string()));
         let partial: LaunchPrefs = serde_json::from_str(r#"{"config_drive": true}"#).unwrap();
-        assert_eq!(partial, LaunchPrefs { config_drive: true, ..Default::default() }, "one key: the rest default");
+        assert_eq!(
+            partial,
+            LaunchPrefs {
+                config_drive: true,
+                ..Default::default()
+            },
+            "one key: the rest default"
+        );
         assert_eq!(p.poll_rounds(), 120, "10 minutes at 5 s");
     }
 
     #[test]
     fn launch_sources_follow_the_switches() {
-        let l = LaunchPrefs { disable_volume: true, disable_instance_snapshot: true, ..Default::default() };
+        let l = LaunchPrefs {
+            disable_volume: true,
+            disable_instance_snapshot: true,
+            ..Default::default()
+        };
         assert_eq!(l.sources(), ["image", "volume_snapshot"]);
         assert_eq!(LaunchPrefs::default().sources().len(), 4);
     }
@@ -507,12 +554,18 @@ mod tests {
         let open = NetworkPrefs::default();
         assert!(open.check_subnet("203.0.113.0/24").is_ok(), "empty list: anything");
         let strict = NetworkPrefs {
-            allowed_private_subnet_cidr: AllowedCidrs { ipv4: vec!["10.0.0.0/8".into(), "192.168.0.0/16".into()], ipv6: vec![] },
+            allowed_private_subnet_cidr: AllowedCidrs {
+                ipv4: vec!["10.0.0.0/8".into(), "192.168.0.0/16".into()],
+                ipv6: vec![],
+            },
             enable_ipv6: false,
             ..Default::default()
         };
         assert!(strict.check_subnet("192.168.10.0/24").is_ok());
-        assert_eq!(strict.check_subnet("172.16.0.0/24"), Err(SubnetIssue::Outside(vec!["10.0.0.0/8".into(), "192.168.0.0/16".into()])));
+        assert_eq!(
+            strict.check_subnet("172.16.0.0/24"),
+            Err(SubnetIssue::Outside(vec!["10.0.0.0/8".into(), "192.168.0.0/16".into()]))
+        );
         assert_eq!(strict.check_subnet("fd00::/64"), Err(SubnetIssue::Ipv6Disabled));
         assert_eq!(strict.check_subnet("x"), Err(SubnetIssue::NotACidr));
     }

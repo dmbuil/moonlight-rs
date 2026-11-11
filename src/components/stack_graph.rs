@@ -44,7 +44,11 @@ pub fn initials(resource_type: &str) -> String {
     }
     let last = resource_type.rsplit("::").next().unwrap_or_default();
     let caps: String = last.chars().filter(char::is_ascii_uppercase).take(3).collect();
-    if caps.is_empty() { last.chars().take(2).collect::<String>().to_uppercase() } else { caps }
+    if caps.is_empty() {
+        last.chars().take(2).collect::<String>().to_uppercase()
+    } else {
+        caps
+    }
 }
 
 /// A line of the graph, between node IDs (resource names, or the stack's ID).
@@ -64,12 +68,20 @@ pub struct Edge {
 pub fn edges(stack_id: &str, resources: &[StackResource]) -> Vec<Edge> {
     let known = |n: &str| resources.iter().any(|r| r.name == n);
     let deps = resources.iter().flat_map(|r| {
-        r.depends_on.iter().filter(|d| known(d)).map(|d| Edge { from: r.name.clone(), to: d.clone(), depends: true })
+        r.depends_on.iter().filter(|d| known(d)).map(|d| Edge {
+            from: r.name.clone(),
+            to: d.clone(),
+            depends: true,
+        })
     });
     let roots = resources
         .iter()
         .filter(|r| !r.required_by.iter().any(|n| known(n)))
-        .map(|r| Edge { from: stack_id.to_string(), to: r.name.clone(), depends: false });
+        .map(|r| Edge {
+            from: stack_id.to_string(),
+            to: r.name.clone(),
+            depends: false,
+        });
     deps.chain(roots).collect()
 }
 
@@ -119,10 +131,17 @@ mod tests {
 
     #[test]
     fn edges_follow_dependencies_and_hang_the_roots_from_the_stack() {
-        let rs = [res("server", &["port"], &[]), res("port", &["net"], &["server"]), res("net", &[], &["port"])];
+        let rs = [
+            res("server", &["port"], &[]),
+            res("port", &["net"], &["server"]),
+            res("net", &[], &["port"]),
+        ];
         let e = edges("s1", &rs);
         let pairs: Vec<(&str, &str, bool)> = e.iter().map(|e| (e.from.as_str(), e.to.as_str(), e.depends)).collect();
-        assert_eq!(pairs, [("server", "port", true), ("port", "net", true), ("s1", "server", false)]);
+        assert_eq!(
+            pairs,
+            [("server", "port", true), ("port", "net", true), ("s1", "server", false)]
+        );
     }
 
     #[test]
@@ -130,7 +149,14 @@ mod tests {
         // Heat lists `required_by` names of resources that are not shown (e.g. deleted).
         let rs = [res("a", &["gone"], &["gone"])];
         let e = edges("s1", &rs);
-        assert_eq!(e, [Edge { from: "s1".into(), to: "a".into(), depends: false }]);
+        assert_eq!(
+            e,
+            [Edge {
+                from: "s1".into(),
+                to: "a".into(),
+                depends: false
+            }]
+        );
     }
 
     #[test]

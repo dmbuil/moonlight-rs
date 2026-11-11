@@ -4,7 +4,7 @@
 use leptos::prelude::*;
 
 use super::topo_layout::{self as geo, ViewBox};
-use crate::i18n::{use_i18n, K};
+use crate::i18n::{K, use_i18n};
 
 /// The view a canvas had, with the drawing size it was for: kept across the
 /// re-renders that don't change the layout (*Toggle Labels*, language), so they
@@ -121,7 +121,11 @@ fn laid_out(rect: Option<(f64, f64, f64, f64)>) -> bool {
 
 /// Runs `then` on the first animation frame where `rect` has a size, giving up
 /// (and running it anyway) after `tries` frames, about a second for 60.
-fn after_layout(rect: impl Fn() -> Option<(f64, f64, f64, f64)> + Copy + 'static, tries: u32, then: impl FnOnce() + 'static) {
+fn after_layout(
+    rect: impl Fn() -> Option<(f64, f64, f64, f64)> + Copy + 'static,
+    tries: u32,
+    then: impl FnOnce() + 'static,
+) {
     request_animation_frame(move || {
         if tries > 0 && !laid_out(rect()) {
             after_layout(rect, tries - 1, then);

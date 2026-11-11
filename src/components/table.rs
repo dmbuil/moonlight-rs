@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 
-use crate::i18n::{displaying, use_i18n, Lang, K};
+use crate::i18n::{K, Lang, displaying, use_i18n};
 use crate::model::{Capabilities, Requires};
 
 /// What a column sorts by: a number, or text.
@@ -35,7 +35,14 @@ pub struct Col<T> {
 
 impl<T> Clone for Col<T> {
     fn clone(&self) -> Self {
-        Self { header: self.header, cell: self.cell.clone(), sort: self.sort.clone(), class: self.class, requires: self.requires, server: self.server }
+        Self {
+            header: self.header,
+            cell: self.cell.clone(),
+            sort: self.sort.clone(),
+            class: self.class,
+            requires: self.requires,
+            server: self.server,
+        }
     }
 }
 
@@ -64,7 +71,14 @@ pub fn col<T, V>(header: K, cell: impl Fn(&T, Lang) -> V + Send + Sync + 'static
 where
     V: IntoView + 'static,
 {
-    Col { header, cell: Arc::new(move |t, l| cell(t, l).into_any()), sort: None, class: "", requires: Requires::Always, server: None }
+    Col {
+        header,
+        cell: Arc::new(move |t, l| cell(t, l).into_any()),
+        sort: None,
+        class: "",
+        requires: Requires::Always,
+        server: None,
+    }
 }
 
 /// The columns the cloud offers; read `caps` reactively so they follow detection.
@@ -163,12 +177,7 @@ pub fn retain_visible(open: &mut Vec<usize>, visible: &[usize]) -> bool {
 
 /// Indices of the rows to show, filtered by `query` and sorted by `sort`.
 /// Pure, so it is unit-tested.
-pub fn visible_rows(
-    haystacks: &[String],
-    keys: Option<&[SortKey]>,
-    query: &str,
-    ascending: bool,
-) -> Vec<usize> {
+pub fn visible_rows(haystacks: &[String], keys: Option<&[SortKey]>, query: &str, ascending: bool) -> Vec<usize> {
     let q = query.trim().to_lowercase();
     let terms: Vec<&str> = q.split_whitespace().collect();
     let mut idx: Vec<usize> = (0..haystacks.len())
@@ -226,7 +235,9 @@ where
     if let Some(s) = select {
         let present: Vec<&str> = keys.iter().flatten().map(|(id, _)| id.as_str()).collect();
         // Untracked check first so an unchanged selection doesn't notify the bulk button.
-        if s.picked.with_untracked(|p| p.iter().any(|(id, _)| !present.contains(&id.as_str()))) {
+        if s.picked
+            .with_untracked(|p| p.iter().any(|(id, _)| !present.contains(&id.as_str())))
+        {
             s.picked.update(|p| {
                 retain_present(p, &present);
             });
@@ -247,7 +258,9 @@ where
         rows.with_value(|rows| {
             haystacks.with_value(|h| {
                 let keys: Option<Vec<SortKey>> = s.and_then(|(ci, _)| {
-                    columns.with_value(|c| c[ci].sort.clone()).map(|f| rows.iter().map(|r| f(r)).collect())
+                    columns
+                        .with_value(|c| c[ci].sort.clone())
+                        .map(|f| rows.iter().map(|r| f(r)).collect())
                 });
                 visible_rows(h, keys.as_deref(), &q, s.is_none_or(|(_, asc)| asc))
             })
@@ -268,13 +281,21 @@ where
 
     // Selectable rows currently visible, for the header checkbox.
     let visible_keys = move || -> Vec<(String, String)> {
-        keys.with_value(|k| visible.get().into_iter().filter_map(|i| k.get(i).cloned().flatten()).collect())
+        keys.with_value(|k| {
+            visible
+                .get()
+                .into_iter()
+                .filter_map(|i| k.get(i).cloned().flatten())
+                .collect()
+        })
     };
     let select_header = move || {
         select.map(|s| {
             let state = move || {
                 let vis = visible_keys();
-                let n = s.picked.with(|p| vis.iter().filter(|r| p.iter().any(|(id, _)| *id == r.0)).count());
+                let n = s
+                    .picked
+                    .with(|p| vis.iter().filter(|r| p.iter().any(|(id, _)| *id == r.0)).count());
                 (n > 0 && n == vis.len(), n > 0 && n < vis.len(), vis.is_empty())
             };
             view! {
@@ -508,27 +529,59 @@ mod tests {
     fn a_server_sorted_header_cycles_like_a_client_one() {
         let first = next_server_sort(None, "name");
         assert_eq!(first, Some(("name".into(), false)), "ascending first");
-        assert_eq!(next_server_sort(Some(("name", false)), "name"), Some(("name".into(), true)));
-        assert_eq!(next_server_sort(Some(("name", true)), "name"), None, "then the API's default order");
-        assert_eq!(next_server_sort(Some(("status", true)), "name"), Some(("name".into(), false)), "another column starts ascending");
+        assert_eq!(
+            next_server_sort(Some(("name", false)), "name"),
+            Some(("name".into(), true))
+        );
+        assert_eq!(
+            next_server_sort(Some(("name", true)), "name"),
+            None,
+            "then the API's default order"
+        );
+        assert_eq!(
+            next_server_sort(Some(("status", true)), "name"),
+            Some(("name".into(), false)),
+            "another column starts ascending"
+        );
     }
 
     fn hay() -> Vec<String> {
-        ["web-prod-01 10.0.0.1 active", "db-primary 10.0.0.5 active", "ci-runner error"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
+        [
+            "web-prod-01 10.0.0.1 active",
+            "db-primary 10.0.0.5 active",
+            "ci-runner error",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     #[test]
     fn hides_columns_the_cloud_does_not_offer() {
-        let cols = || vec![col(K::Name, |_: &u8, _| ""), col(K::DnsName, |_: &u8, _| "").requires(Requires::NetExt("dns-integration"))];
+        let cols = || {
+            vec![
+                col(K::Name, |_: &u8, _| ""),
+                col(K::DnsName, |_: &u8, _| "").requires(Requires::NetExt("dns-integration")),
+            ]
+        };
         let headers = |c: &Capabilities| available(cols(), c).iter().map(|c| c.header).collect::<Vec<_>>();
-        let without = Capabilities { known: true, network_extensions: vec!["router".into()], ..Default::default() };
-        let with = Capabilities { known: true, network_extensions: vec!["dns-integration".into()], ..Default::default() };
+        let without = Capabilities {
+            known: true,
+            network_extensions: vec!["router".into()],
+            ..Default::default()
+        };
+        let with = Capabilities {
+            known: true,
+            network_extensions: vec!["dns-integration".into()],
+            ..Default::default()
+        };
         assert_eq!(headers(&without), [K::Name]);
         assert_eq!(headers(&with), [K::Name, K::DnsName]);
-        assert_eq!(headers(&Capabilities::default()), [K::Name, K::DnsName], "unknown: show everything");
+        assert_eq!(
+            headers(&Capabilities::default()),
+            [K::Name, K::DnsName],
+            "unknown: show everything"
+        );
     }
 
     #[test]

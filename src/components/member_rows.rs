@@ -8,8 +8,8 @@
 use leptos::prelude::*;
 
 use crate::components::select::Combo;
-use crate::i18n::{use_i18n, K};
-use crate::model::{removed_members, Choice, LbMember, MemberRow};
+use crate::i18n::{K, use_i18n};
+use crate::model::{Choice, LbMember, MemberRow, removed_members};
 
 /// One allocated row: its key, the row, and whether its details are open.
 type Entry = (usize, RwSignal<MemberRow>, RwSignal<bool>);
@@ -33,7 +33,13 @@ pub fn MemberRows(
     let start: Vec<MemberRow> = serde_json::from_str(&initial).unwrap_or_default();
     let next = StoredValue::new(start.len());
     // Each row in its own signal, so typing doesn't rebuild the list (and lose focus).
-    let rows: RwSignal<Vec<Entry>> = RwSignal::new(start.into_iter().enumerate().map(|(i, r)| (i, RwSignal::new(r), RwSignal::new(false))).collect());
+    let rows: RwSignal<Vec<Entry>> = RwSignal::new(
+        start
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| (i, RwSignal::new(r), RwSignal::new(false)))
+            .collect(),
+    );
     let current = move || rows.with(|r| r.iter().map(|(_, row, _)| row.get()).collect::<Vec<MemberRow>>());
     let sync = move || {
         let list: Vec<MemberRow> = rows.with_untracked(|r| r.iter().map(|(_, row, _)| row.get_untracked()).collect());
@@ -55,10 +61,15 @@ pub fn MemberRows(
         if !p.trim().is_empty() {
             return p;
         }
-        rows.with_untracked(|r| r.first().map(|(_, row, _)| row.get_untracked().port)).unwrap_or_else(|| "80".into())
+        rows.with_untracked(|r| r.first().map(|(_, row, _)| row.get_untracked().port))
+            .unwrap_or_else(|| "80".into())
     };
     let add_instance = move |c: Choice| {
-        let (address, subnet) = c.value.split_once('@').map(|(a, s)| (a.to_string(), s.to_string())).unwrap_or((c.value.clone(), String::new()));
+        let (address, subnet) = c
+            .value
+            .split_once('@')
+            .map(|(a, s)| (a.to_string(), s.to_string()))
+            .unwrap_or((c.value.clone(), String::new()));
         push(MemberRow {
             address,
             subnet_id: subnet,
@@ -71,14 +82,25 @@ pub fn MemberRows(
         });
     };
     let add_external = move |_| {
-        push(MemberRow { typed: true, port: port_for_new(), weight: "1".into(), admin_up: true, ..Default::default() });
+        push(MemberRow {
+            typed: true,
+            port: port_for_new(),
+            weight: "1".into(),
+            admin_up: true,
+            ..Default::default()
+        });
     };
     let existing = StoredValue::new(existing);
     // Members a save would delete: Octavia matches by address and port, so a row
     // whose port no longer parses counts as removed too.
     let removed = move || {
         let keep: Vec<_> = current().iter().filter_map(|r| r.spec().ok()).collect();
-        existing.with_value(|e| removed_members(e, &keep).into_iter().map(|m| format!("{} ({}:{})", m.name, m.address, m.port.unwrap_or(0))).collect::<Vec<_>>())
+        existing.with_value(|e| {
+            removed_members(e, &keep)
+                .into_iter()
+                .map(|m| format!("{} ({}:{})", m.name, m.address, m.port.unwrap_or(0)))
+                .collect::<Vec<_>>()
+        })
     };
     let show_allocated = RwSignal::new(true);
     let show_available = RwSignal::new(true);
@@ -87,7 +109,14 @@ pub fn MemberRows(
     // be a member again on another port.
     let available = move || {
         let q = filter.get().to_lowercase();
-        targets.get().map(|t| t.into_iter().filter(|c| q.split_whitespace().all(|w| c.cells.join(" ").to_lowercase().contains(w))).collect::<Vec<_>>())
+        targets.get().map(|t| {
+            t.into_iter()
+                .filter(|c| {
+                    q.split_whitespace()
+                        .all(|w| c.cells.join(" ").to_lowercase().contains(w))
+                })
+                .collect::<Vec<_>>()
+        })
     };
     let star = || view! { <span class="req" aria-hidden="true">" *"</span> };
 
@@ -188,7 +217,12 @@ pub fn MemberRows(
 
 /// One allocated member and, when its chevron is open, its details row.
 #[component]
-fn AllocatedRow(item: Entry, subnets: Signal<Option<Vec<Choice>>>, sync: Callback<()>, remove: Callback<usize>) -> impl IntoView {
+fn AllocatedRow(
+    item: Entry,
+    subnets: Signal<Option<Vec<Choice>>>,
+    sync: Callback<()>,
+    remove: Callback<usize>,
+) -> impl IntoView {
     let i18n = use_i18n();
     let (i, row, open) = item;
     let field = move |f: fn(&mut MemberRow, String)| {

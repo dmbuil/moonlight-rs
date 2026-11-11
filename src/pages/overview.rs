@@ -4,9 +4,9 @@ use leptos_router::hooks::use_query_map;
 
 use crate::api::{get_usage, overview};
 use crate::components::dialog::data_version;
-use crate::components::table::{col, DataTable, TimingChip};
-use crate::components::widgets::{age_cell, data_url, render, ErrorBox, PageHeader, Skeleton};
-use crate::i18n::{bytes, grouped, use_i18n, used_of, K};
+use crate::components::table::{DataTable, TimingChip, col};
+use crate::components::widgets::{ErrorBox, PageHeader, Skeleton, age_cell, data_url, render};
+use crate::i18n::{K, bytes, grouped, use_i18n, used_of};
 use crate::model::{Quota, QuotaGroup, QuotaKey, QuotaUnit, ServerUsage, UsageSummary};
 
 fn group_label(g: QuotaGroup) -> K {
@@ -59,7 +59,13 @@ pub fn Donut(q: Quota, #[prop(optional)] label: Option<K>) -> impl IntoView {
     let r = ratio(&q);
     let circumference = 2.0 * std::f64::consts::PI * 30.0;
     let dash = format!("{:.2} {:.2}", r * circumference, circumference);
-    let level = if r >= 0.9 { "full" } else if r >= 0.7 { "high" } else { "normal" };
+    let level = if r >= 0.9 {
+        "full"
+    } else if r >= 0.7 {
+        "high"
+    } else {
+        "normal"
+    };
     let label = label.unwrap_or_else(|| quota_label(q.key));
     let used = fmt_amount(q.used, q.unit);
     let limit = q.limit.map(|l| fmt_amount(l, q.unit));
@@ -142,7 +148,11 @@ pub fn UsageTotals(usage: UsageSummary, csv: String) -> impl IntoView {
     // the language, read reactively (not in the component body). Grouped by
     // thousands for reading (roadmap 86); the CSV stays plain.
     let (instances, ram) = (usage.active_instances() as f64, mib(usage.active_ram_mb()));
-    let hours = [(K::VcpuHours, usage.vcpu_hours()), (K::GbHours, usage.gb_hours()), (K::RamHours, usage.ram_mb_hours())];
+    let hours = [
+        (K::VcpuHours, usage.vcpu_hours()),
+        (K::GbHours, usage.gb_hours()),
+        (K::RamHours, usage.ram_mb_hours()),
+    ];
     view! {
         <div class="usage-totals">
             <dl>
@@ -163,7 +173,10 @@ fn UsageSection() -> impl IntoView {
     let i18n = use_i18n();
     let query = use_query_map();
     let period = move || query.with(|q| (q.get("start").unwrap_or_default(), q.get("end").unwrap_or_default()));
-    let data = Resource::new(move || (period(), data_version()), |((start, end), _)| get_usage(start, end));
+    let data = Resource::new(
+        move || (period(), data_version()),
+        |((start, end), _)| get_usage(start, end),
+    );
     view! {
         <h2 class="section-title">{move || i18n.t(K::UsageSummary)}</h2>
         <Transition fallback=|| view! { <Skeleton rows=3/> }>
@@ -199,7 +212,12 @@ mod tests {
 
     #[test]
     fn quota_ratio_and_units() {
-        let q = |used, limit, unit| Quota { key: QuotaKey::Ram, used, limit, unit };
+        let q = |used, limit, unit| Quota {
+            key: QuotaKey::Ram,
+            used,
+            limit,
+            unit,
+        };
         assert_eq!(ratio(&q(5, Some(10), QuotaUnit::Count)), 0.5);
         assert_eq!(ratio(&q(5, None, QuotaUnit::Count)), 0.0);
         assert_eq!(ratio(&q(50, Some(10), QuotaUnit::Count)), 1.0);

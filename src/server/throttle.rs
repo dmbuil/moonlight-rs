@@ -26,7 +26,10 @@ impl Throttle {
     pub fn new(max: u32, window: Duration) -> Self {
         // `time_to_live` restarts on every insert, so the window counts from
         // the last failure, not the first.
-        Throttle { failures: Cache::builder().max_capacity(100_000).time_to_live(window).build(), max }
+        Throttle {
+            failures: Cache::builder().max_capacity(100_000).time_to_live(window).build(),
+            max,
+        }
     }
 
     /// True when any key has reached the limit: refuse without calling Keystone.
@@ -68,7 +71,10 @@ impl Throttle {
 /// like Keystone's lookup) and, when `[log] client_ip_header` gives one, the
 /// client address. The username key comes first.
 pub fn keys(domain: &str, username: &str, client: Option<&str>) -> Vec<String> {
-    let mut out = vec![format!("user:{}", super::os::hash_key(&[&domain.to_lowercase(), &username.to_lowercase()]))];
+    let mut out = vec![format!(
+        "user:{}",
+        super::os::hash_key(&[&domain.to_lowercase(), &username.to_lowercase()])
+    )];
     if let Some(ip) = client.filter(|ip| !ip.is_empty() && *ip != "-") {
         out.push(format!("ip:{}", super::os::hash_key(&[ip])));
     }
@@ -89,11 +95,17 @@ mod tests {
         assert!(!t.blocked(&alice).await, "2 of 3");
         t.failed(&alice).await;
         assert!(t.blocked(&alice).await, "3 of 3");
-        assert!(t.blocked(&keys("default", "ALICE", None)).await, "the username key is case-insensitive");
+        assert!(
+            t.blocked(&keys("default", "ALICE", None)).await,
+            "the username key is case-insensitive"
+        );
         let bob_same_ip = keys("Default", "bob", Some("203.0.113.9"));
         assert!(t.blocked(&bob_same_ip).await, "the address is blocked for every user");
         t.succeeded(&alice[0]).await;
-        assert!(!t.blocked(&keys("Default", "alice", None)).await, "success clears the user");
+        assert!(
+            !t.blocked(&keys("Default", "alice", None)).await,
+            "success clears the user"
+        );
         assert!(t.blocked(&bob_same_ip).await, "but not the address");
     }
 

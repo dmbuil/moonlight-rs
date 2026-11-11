@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 
-use crate::i18n::{cookie_value, K};
+use crate::i18n::{K, cookie_value};
 
 /// Name of the cookie that remembers the chosen theme.
 pub const THEME_COOKIE: &str = "ml_theme";
@@ -114,8 +114,14 @@ pub fn initial_theme() -> Theme {
     #[cfg(all(feature = "hydrate", not(feature = "ssr")))]
     {
         use wasm_bindgen::JsCast;
-        let doc = web_sys::window().and_then(|w| w.document()).and_then(|d| d.dyn_into::<web_sys::HtmlDocument>().ok());
-        let from_cookie = doc.as_ref().and_then(|d| d.cookie().ok()).and_then(|c| cookie_value(&c, THEME_COOKIE)).and_then(|v| Theme::parse(&v));
+        let doc = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.dyn_into::<web_sys::HtmlDocument>().ok());
+        let from_cookie = doc
+            .as_ref()
+            .and_then(|d| d.cookie().ok())
+            .and_then(|c| cookie_value(&c, THEME_COOKIE))
+            .and_then(|v| Theme::parse(&v));
         // No cookie: the server rendered the configured default as `data-theme`.
         let rendered = || {
             doc.as_ref()
@@ -143,6 +149,9 @@ mod tests {
         assert_eq!(Theme::parse("sepia"), None);
         assert_eq!(Theme::System.attr(), None);
         assert_eq!(Theme::Dark.attr(), Some("dark"));
-        assert_eq!(cookie_value("ml_lang=es; ml_theme=dark", THEME_COOKIE).as_deref(), Some("dark"));
+        assert_eq!(
+            cookie_value("ml_lang=es; ml_theme=dark", THEME_COOKIE).as_deref(),
+            Some("dark")
+        );
     }
 }

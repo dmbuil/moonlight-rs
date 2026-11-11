@@ -5,20 +5,22 @@
 
 use leptos::prelude::*;
 
-use super::details::{mono, param, Card, DetailHeader, Kv};
+use super::details::{Card, DetailHeader, Kv, mono, param};
 use super::lists::{link, status_pill};
 use crate::api::*;
 use crate::components::dialog::data_version;
 use crate::components::ops;
-use crate::components::table::{col, Col, DataTable};
-use crate::components::widgets::{dash, render, utc_time, Copyable, ErrorBox, Pill, Skeleton, Tone};
-use crate::i18n::{key_manager_term, t, use_i18n, Lang, K};
+use crate::components::table::{Col, DataTable, col};
+use crate::components::widgets::{Copyable, ErrorBox, Pill, Skeleton, Tone, dash, render, utc_time};
+use crate::i18n::{K, Lang, key_manager_term, t, use_i18n};
 use crate::model::*;
 
 /// A secret's expiration (UTC): *Never*, or the date, flagged when it is
 /// within 30 days (warning) or past (error).
 pub fn expiry_cell(l: Lang, expiration: Option<&str>) -> AnyView {
-    let Some(e) = expiration else { return t(l, K::Never).into_any() };
+    let Some(e) = expiration else {
+        return t(l, K::Never).into_any();
+    };
     let text = utc_time(e);
     match expiry(Some(e), chrono::Utc::now().naive_utc()) {
         Expiry::Past => view! { <Pill tone=Tone::Err label=format!("{} · {text}", t(l, K::Expired))/> }.into_any(),
@@ -29,8 +31,15 @@ pub fn expiry_cell(l: Lang, expiration: Option<&str>) -> AnyView {
 
 /// `aes-256-cbc`-style summary of a secret's algorithm, bit length and mode.
 pub fn cipher(x: &SecretRow) -> String {
-    let parts: Vec<String> = [x.algorithm.clone(), x.bit_length.map(|b| b.to_string()), x.mode.clone()].into_iter().flatten().collect();
-    if parts.is_empty() { "-".into() } else { parts.join(" / ") }
+    let parts: Vec<String> = [x.algorithm.clone(), x.bit_length.map(|b| b.to_string()), x.mode.clone()]
+        .into_iter()
+        .flatten()
+        .collect();
+    if parts.is_empty() {
+        "-".into()
+    } else {
+        parts.join(" / ")
+    }
 }
 
 fn secret_consumer_columns() -> Vec<Col<SecretConsumer>> {
@@ -44,7 +53,10 @@ fn secret_consumer_columns() -> Vec<Col<SecretConsumer>> {
 fn container_secret_columns() -> Vec<Col<ContainerSecret>> {
     vec![
         col(K::Role, |s: &ContainerSecret, l| key_manager_term(l, &s.role)).sort_text(|s| s.role.clone()),
-        col(K::Secret, |s: &ContainerSecret, _| link(format!("/project/key_manager/secrets/{}", s.id), s.name.clone())).sort_text(|s| s.name.clone()),
+        col(K::Secret, |s: &ContainerSecret, _| {
+            link(format!("/project/key_manager/secrets/{}", s.id), s.name.clone())
+        })
+        .sort_text(|s| s.name.clone()),
     ]
 }
 
@@ -130,13 +142,18 @@ fn AclRows(acl: KmAcl) -> impl IntoView {
         acl.users
             .iter()
             .map(|id| match acl.user_names.iter().find(|(i, _)| i == id) {
-                Some((_, n)) => view! { <div>{n.clone()}" "<span class="mono muted">{id.clone()}</span></div> }.into_any(),
+                Some((_, n)) => {
+                    view! { <div>{n.clone()}" "<span class="mono muted">{id.clone()}</span></div> }.into_any()
+                }
                 None => view! { <div class="mono">{id.clone()}</div> }.into_any(),
             })
             .collect_view()
             .into_any()
     };
-    let private = move || (project_access == Some(false)).then(|| view! { " " <Pill tone=Tone::Warn label=t(i18n.lang(), K::AccessPrivate)/> });
+    let private = move || {
+        (project_access == Some(false))
+            .then(|| view! { " " <Pill tone=Tone::Warn label=t(i18n.lang(), K::AccessPrivate)/> })
+    };
     view! {
         <Kv label=K::ProjectAccess>{move || yes_no(i18n.lang(), project_access)}{private}</Kv>
         <Kv label=K::ReadUsers>{users}</Kv>
@@ -174,7 +191,10 @@ fn octavia_columns(via: bool) -> Vec<Col<OctaviaUse>> {
             None => "-".into_any(),
         })
         .sort_text(|u| u.lb_name.clone()),
-        col(K::Type, |u: &OctaviaUse, l| t(l, if u.kind == "pool" { K::Pool } else { K::Listener }).into_any()).sort_text(|u| u.kind.clone()),
+        col(K::Type, |u: &OctaviaUse, l| {
+            t(l, if u.kind == "pool" { K::Pool } else { K::Listener }).into_any()
+        })
+        .sort_text(|u| u.kind.clone()),
         col(K::Name, |u: &OctaviaUse, _| u.name.clone().into_any()).sort_text(|u| u.name.clone()),
     ];
     if via {
@@ -251,7 +271,10 @@ fn PayloadCard(id: String) -> impl IntoView {
 }
 
 /// The warning before the payload is shown: Cancel, or *Show Payload*.
-fn confirm_modal(cancel: impl Fn() + Copy + Send + Sync + 'static, confirm: impl Fn() + Copy + Send + Sync + 'static) -> AnyView {
+fn confirm_modal(
+    cancel: impl Fn() + Copy + Send + Sync + 'static,
+    confirm: impl Fn() + Copy + Send + Sync + 'static,
+) -> AnyView {
     let i18n = use_i18n();
     view! {
         <div class="modal-backdrop" on:click=move |_| cancel()>
@@ -278,7 +301,9 @@ fn confirm_modal(cancel: impl Fn() + Copy + Send + Sync + 'static, confirm: impl
 /// The payload, its content type and *Hide Payload*.
 fn payload_view(p: SecretPayload, hide: impl Fn() + Copy + Send + Sync + 'static) -> AnyView {
     let i18n = use_i18n();
-    let note = p.base64.then(|| view! { <p class="muted">{move || i18n.t(K::PayloadBase64Note)}</p> });
+    let note = p
+        .base64
+        .then(|| view! { <p class="muted">{move || i18n.t(K::PayloadBase64Note)}</p> });
     let (content_type, value) = (p.content_type.clone(), p.payload.0.clone());
     view! {
         <p class="muted">{move || i18n.t(K::PayloadWarning)}</p>

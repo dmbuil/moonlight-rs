@@ -9,14 +9,14 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos_router::components::A;
 
-use super::details::{mono, param, yes_no, Card, DetailHeader, Kv, Tabs};
+use super::details::{Card, DetailHeader, Kv, Tabs, mono, param, yes_no};
 use super::lists::{admin_state, link, status_pill};
 use crate::api::*;
-use crate::components::dialog::{data_version, CreateButton, Dialog, RowActions};
+use crate::components::dialog::{CreateButton, Dialog, RowActions, data_version};
 use crate::components::ops;
-use crate::components::table::{col, DataTable};
-use crate::components::widgets::{dash, poll_while_busy, render, short_time, Copyable, Skeleton};
-use crate::i18n::{use_i18n, Lang, K};
+use crate::components::table::{DataTable, col};
+use crate::components::widgets::{Copyable, Skeleton, dash, poll_while_busy, render, short_time};
+use crate::i18n::{K, Lang, use_i18n};
 use crate::model::*;
 
 fn num(n: Option<i64>) -> String {
@@ -33,7 +33,11 @@ fn refs(items: &[Ref], tab: RwSignal<usize>, to: usize) -> AnyView {
     if items.is_empty() {
         return "-".into_any();
     }
-    items.iter().map(|r| view! { <span class="ref">{tab_link(r, tab, to)}</span> }).collect_view().into_any()
+    items
+        .iter()
+        .map(|r| view! { <span class="ref">{tab_link(r, tab, to)}</span> })
+        .collect_view()
+        .into_any()
 }
 
 /// Operating and provisioning status side by side, as Horizon shows them.
@@ -78,9 +82,18 @@ pub fn LoadBalancerDetailPage() -> impl IntoView {
 fn overview(d: LoadBalancerDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (op, prov) = (d.row.operating_status.clone(), d.row.provisioning_status.clone());
-    let network = d.vip_network.clone().map(|n| view! { <A href=format!("/project/networks/{}", n.id)>{n.name}</A> }.into_any());
-    let subnet = d.vip_subnet.clone().map(|s| view! { <A href=format!("/project/networks/subnets/{}", s.id)>{s.name}</A> }.into_any());
-    let port = d.vip_port_id.clone().map(|p| link(format!("/project/networks/ports/{p}"), p));
+    let network = d
+        .vip_network
+        .clone()
+        .map(|n| view! { <A href=format!("/project/networks/{}", n.id)>{n.name}</A> }.into_any());
+    let subnet = d
+        .vip_subnet
+        .clone()
+        .map(|s| view! { <A href=format!("/project/networks/subnets/{}", s.id)>{s.name}</A> }.into_any());
+    let port = d
+        .vip_port_id
+        .clone()
+        .map(|p| link(format!("/project/networks/ports/{p}"), p));
     let or_dash = |v: Option<AnyView>| v.unwrap_or_else(|| "-".into_any());
     view! {
         <div class="cards">
@@ -130,18 +143,35 @@ fn listeners(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.listeners.clone(), d.clone(), d.clone());
     let columns = vec![
-        col(K::Name, |l: &LbListener, _| view! { <span class="strong">{l.name.clone()}</span> }).sort_text(|l| l.name.clone()),
+        col(
+            K::Name,
+            |l: &LbListener, _| view! { <span class="strong">{l.name.clone()}</span> },
+        )
+        .sort_text(|l| l.name.clone()),
         col(K::Protocol, |l: &LbListener, _| mono(l.protocol.clone())).sort_text(|l| l.protocol.clone()),
-        col(K::Port, |l: &LbListener, _| num(l.port)).sort_num(|l| l.port.unwrap_or(0)).class("num"),
-        col(K::DefaultPool, move |l: &LbListener, _| l.default_pool.as_ref().map(|p| tab_link(p, tab, 2)).unwrap_or_else(|| "-".into_any())),
+        col(K::Port, |l: &LbListener, _| num(l.port))
+            .sort_num(|l| l.port.unwrap_or(0))
+            .class("num"),
+        col(K::DefaultPool, move |l: &LbListener, _| {
+            l.default_pool
+                .as_ref()
+                .map(|p| tab_link(p, tab, 2))
+                .unwrap_or_else(|| "-".into_any())
+        }),
         col(K::ConnectionLimit, |l: &LbListener, lang| match l.connection_limit {
             Some(n) => n.to_string(),
             None => crate::i18n::t(lang, K::Unlimited).to_string(),
         })
         .class("num"),
-        col(K::Status, |l: &LbListener, lang| statuses(&l.operating_status, &l.provisioning_status, lang)),
+        col(K::Status, |l: &LbListener, lang| {
+            statuses(&l.operating_status, &l.provisioning_status, lang)
+        }),
         col(K::AdminState, |l: &LbListener, lang| admin_state(lang, l.admin_up)),
-        col(K::Actions, move |l: &LbListener, lang| view! { <RowActions items=ops::listener_items(lang, &da, l)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |l: &LbListener, lang| view! { <RowActions items=ops::listener_items(lang, &da, l)/> },
+        )
+        .class("actions"),
     ];
     view! {
         {create_button(K::CreateListener, move || ops::listener_dialog(i18n.lang(), &dd, None))}
@@ -153,16 +183,35 @@ fn pools(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.pools.clone(), d.clone(), d.clone());
     let columns = vec![
-        col(K::Name, |p: &LbPool, _| view! { <span class="strong">{p.name.clone()}</span> }).sort_text(|p| p.name.clone()),
+        col(
+            K::Name,
+            |p: &LbPool, _| view! { <span class="strong">{p.name.clone()}</span> },
+        )
+        .sort_text(|p| p.name.clone()),
         col(K::Protocol, |p: &LbPool, _| mono(p.protocol.clone())),
         col(K::Algorithm, |p: &LbPool, _| mono(p.algorithm.clone())),
-        col(K::SessionPersistence, |p: &LbPool, _| dash(p.session_persistence.clone())),
+        col(K::SessionPersistence, |p: &LbPool, _| {
+            dash(p.session_persistence.clone())
+        }),
         col(K::Listeners, move |p: &LbPool, _| refs(&p.listeners, tab, 1)),
-        col(K::Members, |p: &LbPool, _| p.members.to_string()).sort_num(|p| p.members as i64).class("num"),
-        col(K::HealthMonitor, move |p: &LbPool, _| p.monitor.as_ref().map(|m| tab_link(m, tab, 4)).unwrap_or_else(|| "-".into_any())),
-        col(K::Status, |p: &LbPool, lang| statuses(&p.operating_status, &p.provisioning_status, lang)),
+        col(K::Members, |p: &LbPool, _| p.members.to_string())
+            .sort_num(|p| p.members as i64)
+            .class("num"),
+        col(K::HealthMonitor, move |p: &LbPool, _| {
+            p.monitor
+                .as_ref()
+                .map(|m| tab_link(m, tab, 4))
+                .unwrap_or_else(|| "-".into_any())
+        }),
+        col(K::Status, |p: &LbPool, lang| {
+            statuses(&p.operating_status, &p.provisioning_status, lang)
+        }),
         col(K::AdminState, |p: &LbPool, lang| admin_state(lang, p.admin_up)),
-        col(K::Actions, move |p: &LbPool, lang| view! { <RowActions items=ops::pool_items(lang, &da, p)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |p: &LbPool, lang| view! { <RowActions items=ops::pool_items(lang, &da, p)/> },
+        )
+        .class("actions"),
     ];
     view! {
         {create_button(K::CreatePool, move || ops::pool_dialog(i18n.lang(), &dd, None))}
@@ -176,19 +225,33 @@ fn members(d: LoadBalancerDetail) -> impl IntoView {
     // Members go into a pool: none yet, no button.
     let can_add = !d.pools.is_empty();
     let columns = vec![
-        col(K::Name, |m: &LbMember, _| view! { <span class="strong">{m.name.clone()}</span> }).sort_text(|m| m.name.clone()),
+        col(
+            K::Name,
+            |m: &LbMember, _| view! { <span class="strong">{m.name.clone()}</span> },
+        )
+        .sort_text(|m| m.name.clone()),
         col(K::Pool, |m: &LbMember, _| m.pool.name.clone()).sort_text(|m| m.pool.name.clone()),
         col(K::IpAddress, |m: &LbMember, _| mono(m.address.clone())).sort_text(|m| m.address.clone()),
-        col(K::Port, |m: &LbMember, _| num(m.port)).sort_num(|m| m.port.unwrap_or(0)).class("num"),
-        col(K::Weight, |m: &LbMember, _| num(m.weight)).sort_num(|m| m.weight.unwrap_or(0)).class("num"),
+        col(K::Port, |m: &LbMember, _| num(m.port))
+            .sort_num(|m| m.port.unwrap_or(0))
+            .class("num"),
+        col(K::Weight, |m: &LbMember, _| num(m.weight))
+            .sort_num(|m| m.weight.unwrap_or(0))
+            .class("num"),
         col(K::Subnet, |m: &LbMember, _| match m.subnet.clone() {
             Some(s) => view! { <A href=format!("/project/networks/subnets/{}", s.id)>{s.name}</A> }.into_any(),
             None => "-".into_any(),
         }),
         col(K::Backup, |m: &LbMember, lang| yes_no(lang, m.backup)),
-        col(K::Status, |m: &LbMember, lang| statuses(&m.operating_status, &m.provisioning_status, lang)),
+        col(K::Status, |m: &LbMember, lang| {
+            statuses(&m.operating_status, &m.provisioning_status, lang)
+        }),
         col(K::AdminState, |m: &LbMember, lang| admin_state(lang, m.admin_up)),
-        col(K::Actions, move |m: &LbMember, lang| view! { <RowActions items=ops::member_items(lang, &da, m)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |m: &LbMember, lang| view! { <RowActions items=ops::member_items(lang, &da, m)/> },
+        )
+        .class("actions"),
     ];
     view! {
         {can_add.then(|| create_button(K::AddMember, move || ops::member_dialog(i18n.lang(), &dd, None)))}
@@ -202,17 +265,29 @@ fn monitors(d: LoadBalancerDetail) -> impl IntoView {
     // One monitor per pool: only pools without one can get a new monitor.
     let can_add = d.pools.iter().any(|p| p.monitor.is_none());
     let columns = vec![
-        col(K::Name, |m: &LbMonitor, _| view! { <span class="strong">{m.name.clone()}</span> }).sort_text(|m| m.name.clone()),
+        col(
+            K::Name,
+            |m: &LbMonitor, _| view! { <span class="strong">{m.name.clone()}</span> },
+        )
+        .sort_text(|m| m.name.clone()),
         col(K::Type, |m: &LbMonitor, _| mono(m.kind.clone())),
         col(K::DelaySeconds, |m: &LbMonitor, _| num(m.delay)).class("num"),
         col(K::TimeoutSeconds, |m: &LbMonitor, _| num(m.timeout)).class("num"),
         col(K::MaxRetries, |m: &LbMonitor, _| num(m.max_retries)).class("num"),
         col(K::MaxRetriesDown, |m: &LbMonitor, _| num(m.max_retries_down)).class("num"),
         col(K::HttpCheck, |m: &LbMonitor, _| mono(dash(m.http_check.clone()))),
-        col(K::Pools, |m: &LbMonitor, _| m.pools.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ")),
-        col(K::Status, |m: &LbMonitor, lang| statuses(&m.operating_status, &m.provisioning_status, lang)),
+        col(K::Pools, |m: &LbMonitor, _| {
+            m.pools.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ")
+        }),
+        col(K::Status, |m: &LbMonitor, lang| {
+            statuses(&m.operating_status, &m.provisioning_status, lang)
+        }),
         col(K::AdminState, |m: &LbMonitor, lang| admin_state(lang, m.admin_up)),
-        col(K::Actions, move |m: &LbMonitor, lang| view! { <RowActions items=ops::monitor_items(lang, &da, m)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |m: &LbMonitor, lang| view! { <RowActions items=ops::monitor_items(lang, &da, m)/> },
+        )
+        .class("actions"),
     ];
     view! {
         {can_add.then(|| create_button(K::CreateHealthMonitor, move || ops::monitor_dialog(i18n.lang(), &dd, None)))}
@@ -238,17 +313,33 @@ fn l7(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let can_create = !ops::l7_listeners(&d).is_empty();
     let can_add_rule = !d.l7policies.is_empty();
     let policies = d.l7policies.clone();
-    let rules: Vec<(LbL7Policy, LbL7Rule)> = d.l7policies.iter().flat_map(|p| p.rules.iter().map(move |r| (p.clone(), r.clone()))).collect();
+    let rules: Vec<(LbL7Policy, LbL7Rule)> = d
+        .l7policies
+        .iter()
+        .flat_map(|p| p.rules.iter().map(move |r| (p.clone(), r.clone())))
+        .collect();
     let policy_columns = vec![
-        col(K::Name, |p: &LbL7Policy, _| view! { <span class="strong">{p.name.clone()}</span> }).sort_text(|p| p.name.clone()),
+        col(
+            K::Name,
+            |p: &LbL7Policy, _| view! { <span class="strong">{p.name.clone()}</span> },
+        )
+        .sort_text(|p| p.name.clone()),
         col(K::Listener, move |p: &LbL7Policy, _| tab_link(&p.listener, tab, 1)).sort_text(|p| p.listener.name.clone()),
-        col(K::Position, |p: &LbL7Policy, _| num(p.position)).class("num").sort_num(|p| p.position.unwrap_or(0)),
+        col(K::Position, |p: &LbL7Policy, _| num(p.position))
+            .class("num")
+            .sort_num(|p| p.position.unwrap_or(0)),
         col(K::Action, |p: &LbL7Policy, _| mono(p.action.clone())),
         col(K::L7Target, move |p: &LbL7Policy, _| l7_target(p, tab)),
         col(K::Rules, |p: &LbL7Policy, _| p.rules.len().to_string()).class("num"),
-        col(K::Status, |p: &LbL7Policy, lang| statuses(&p.operating_status, &p.provisioning_status, lang)),
+        col(K::Status, |p: &LbL7Policy, lang| {
+            statuses(&p.operating_status, &p.provisioning_status, lang)
+        }),
         col(K::AdminState, |p: &LbL7Policy, lang| admin_state(lang, p.admin_up)),
-        col(K::Actions, move |p: &LbL7Policy, lang| view! { <RowActions items=ops::l7_policy_items(lang, &da, p)/> }).class("actions"),
+        col(
+            K::Actions,
+            move |p: &LbL7Policy, lang| view! { <RowActions items=ops::l7_policy_items(lang, &da, p)/> },
+        )
+        .class("actions"),
     ];
     let rule_columns = vec![
         col(K::L7Policy, |(p, _): &(LbL7Policy, LbL7Rule), _| p.name.clone()).sort_text(|(p, _)| p.name.clone()),

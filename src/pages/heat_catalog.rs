@@ -4,19 +4,21 @@
 
 use leptos::prelude::*;
 
-use super::details::{mono, param, yes_no, Card, DetailHeader, Kv};
+use super::details::{Card, DetailHeader, Kv, mono, param, yes_no};
 use super::lists::link;
 use crate::api::*;
 use crate::components::dialog::data_version;
-use crate::components::table::{col, Col, DataTable};
-use crate::components::widgets::{dash, render, PageHeader, Skeleton};
-use crate::i18n::{use_i18n, K};
+use crate::components::table::{Col, DataTable, col};
+use crate::components::widgets::{PageHeader, Skeleton, dash, render};
+use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
 fn type_columns() -> Vec<Col<ResourceTypeRow>> {
     vec![
-        col(K::Type, |x: &ResourceTypeRow, _| link(format!("/project/resource_types/{}", x.name), x.name.clone()))
-            .sort_text(|x| x.name.clone()),
+        col(K::Type, |x: &ResourceTypeRow, _| {
+            link(format!("/project/resource_types/{}", x.name), x.name.clone())
+        })
+        .sort_text(|x| x.name.clone()),
         col(K::Description, |x: &ResourceTypeRow, _| dash(x.description.clone())),
     ]
 }
@@ -50,7 +52,10 @@ fn property_columns() -> Vec<Col<TypeProperty>> {
         col(K::Name, |p: &TypeProperty, _| mono(p.name.clone())).sort_text(|p| p.name.clone()),
         col(K::Type, |p: &TypeProperty, _| p.kind.clone().into_any()).sort_text(|p| p.kind.clone()),
         col(K::RequiredProp, |p: &TypeProperty, l| yes_no(l, p.required).into_any()).sort_num(|p| p.required as i64),
-        col(K::UpdateAllowed, |p: &TypeProperty, l| yes_no(l, p.update_allowed).into_any()).sort_num(|p| p.update_allowed as i64),
+        col(K::UpdateAllowed, |p: &TypeProperty, l| {
+            yes_no(l, p.update_allowed).into_any()
+        })
+        .sort_num(|p| p.update_allowed as i64),
         col(K::DefaultValue, |p: &TypeProperty, _| match p.default.clone() {
             Some(d) => mono(d),
             None => "-".into_any(),
@@ -59,7 +64,11 @@ fn property_columns() -> Vec<Col<TypeProperty>> {
             if p.constraints.is_empty() {
                 "-".into_any()
             } else {
-                let items = p.constraints.iter().map(|c| view! { <li class="mono">{c.clone()}</li> }).collect_view();
+                let items = p
+                    .constraints
+                    .iter()
+                    .map(|c| view! { <li class="mono">{c.clone()}</li> })
+                    .collect_view();
                 view! { <ul class="plain">{items}</ul> }.into_any()
             }
         }),
@@ -81,7 +90,10 @@ pub fn ResourceTypeDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_resource_type(id));
-    let (props, attrs) = (StoredValue::new(property_columns()), StoredValue::new(attribute_columns()));
+    let (props, attrs) = (
+        StoredValue::new(property_columns()),
+        StoredValue::new(attribute_columns()),
+    );
     view! {
         <Transition fallback=|| view! { <Skeleton rows=8/> }>
             {move || render(data.get(), move |td| {
@@ -114,10 +126,14 @@ pub fn ResourceTypeDetailPage() -> impl IntoView {
 
 fn version_columns() -> Vec<Col<TemplateVersion>> {
     vec![
-        col(K::Version, |v: &TemplateVersion, _| link(format!("/project/template_versions/{}", v.version), v.version.clone()))
-            .sort_text(|v| v.version.clone()),
+        col(K::Version, |v: &TemplateVersion, _| {
+            link(format!("/project/template_versions/{}", v.version), v.version.clone())
+        })
+        .sort_text(|v| v.version.clone()),
         col(K::Type, |v: &TemplateVersion, _| mono(v.kind.to_uppercase())).sort_text(|v| v.kind.clone()),
-        col(K::Aliases, |v: &TemplateVersion, _| dash((!v.aliases.is_empty()).then(|| v.aliases.join(", ")))),
+        col(K::Aliases, |v: &TemplateVersion, _| {
+            dash((!v.aliases.is_empty()).then(|| v.aliases.join(", ")))
+        }),
     ]
 }
 

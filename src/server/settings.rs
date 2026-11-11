@@ -12,9 +12,12 @@ use toml::Table;
 
 use crate::i18n::Lang;
 use crate::model::{Plugin, WriteMode};
-use crate::prefs::{AdminPrefs, ConsolePrefs, ImagePrefs, LaunchPrefs, LoginPrefs, NetworkPrefs, PagedLists, Prefs, SsoChoice, VISIBILITIES};
-use crate::theme::Theme;
+use crate::prefs::{
+    AdminPrefs, ConsolePrefs, ImagePrefs, LaunchPrefs, LoginPrefs, NetworkPrefs, PagedLists, Prefs, SsoChoice,
+    VISIBILITIES,
+};
 use crate::server::config::Config;
+use crate::theme::Theme;
 
 /// Command line: where to read `moonlight.conf` from (see `sources`).
 #[derive(clap::Parser, Debug, Default)]
@@ -78,7 +81,13 @@ pub struct Keystone {
 
 impl Default for Keystone {
     fn default() -> Self {
-        Keystone { url: None, default_domain: "Default".into(), default_region: None, interface: "public".into(), multidomain: false }
+        Keystone {
+            url: None,
+            default_domain: "Default".into(),
+            default_region: None,
+            interface: "public".into(),
+            multidomain: false,
+        }
     }
 }
 
@@ -94,7 +103,10 @@ pub struct Tls {
 
 impl Default for Tls {
     fn default() -> Self {
-        Tls { ca_file: None, verify: true }
+        Tls {
+            ca_file: None,
+            verify: true,
+        }
     }
 }
 
@@ -385,7 +397,11 @@ impl Log {
     }
     /// The log file, if one is set (blank counts as unset).
     pub fn file(&self) -> Option<&Path> {
-        self.file.as_deref().map(str::trim).filter(|f| !f.is_empty()).map(Path::new)
+        self.file
+            .as_deref()
+            .map(str::trim)
+            .filter(|f| !f.is_empty())
+            .map(Path::new)
     }
 }
 
@@ -420,16 +436,22 @@ impl<'de> Deserialize<'de> for KeepSetting {
                 Ok(KeepSetting::Flag(v))
             }
             fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<KeepSetting, E> {
-                u32::try_from(v).map(KeepSetting::Count).map_err(|_| E::custom(format!("keep: {v} is not a number of files")))
+                u32::try_from(v)
+                    .map(KeepSetting::Count)
+                    .map_err(|_| E::custom(format!("keep: {v} is not a number of files")))
             }
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<KeepSetting, E> {
-                u32::try_from(v).map(KeepSetting::Count).map_err(|_| E::custom(format!("keep: {v} is not a number of files")))
+                u32::try_from(v)
+                    .map(KeepSetting::Count)
+                    .map_err(|_| E::custom(format!("keep: {v} is not a number of files")))
             }
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<KeepSetting, E> {
                 match v.trim().to_ascii_lowercase().as_str() {
                     "true" | "yes" | "enabled" | "on" => Ok(KeepSetting::Flag(true)),
                     "false" | "no" | "disabled" | "off" => Ok(KeepSetting::Flag(false)),
-                    _ => Err(E::custom(format!("keep: {v:?} is not one of true/yes/enabled/on or false/no/disabled/off"))),
+                    _ => Err(E::custom(format!(
+                        "keep: {v:?} is not one of true/yes/enabled/on or false/no/disabled/off"
+                    ))),
                 }
             }
         }
@@ -504,21 +526,25 @@ pub fn default_candidates(home: Option<&Path>) -> (Vec<PathBuf>, Vec<PathBuf>) {
     }
     dirs.push("/etc/moonlight".into());
     dirs.push("/etc".into());
-    (dirs.iter().map(|d| d.join("moonlight.conf")).collect(), dirs.iter().map(|d| d.join("moonlight.conf.d")).collect())
+    (
+        dirs.iter().map(|d| d.join("moonlight.conf")).collect(),
+        dirs.iter().map(|d| d.join("moonlight.conf.d")).collect(),
+    )
 }
 
 /// The files to read, lowest priority first. Paths given on the command line
 /// must exist; the defaults are only looked for when none were given.
 pub fn sources(cli: &Cli, defaults: &(Vec<PathBuf>, Vec<PathBuf>)) -> Result<Vec<PathBuf>, String> {
-    let pick = |given: &[PathBuf], default: &[PathBuf], is: fn(&Path) -> bool, what: &str| -> Result<Vec<PathBuf>, String> {
-        if given.is_empty() {
-            return Ok(default.iter().find(|p| is(p)).cloned().into_iter().collect());
-        }
-        match given.iter().find(|p| !is(p)) {
-            Some(p) => Err(format!("{what} {} not found", p.display())),
-            None => Ok(given.to_vec()),
-        }
-    };
+    let pick =
+        |given: &[PathBuf], default: &[PathBuf], is: fn(&Path) -> bool, what: &str| -> Result<Vec<PathBuf>, String> {
+            if given.is_empty() {
+                return Ok(default.iter().find(|p| is(p)).cloned().into_iter().collect());
+            }
+            match given.iter().find(|p| !is(p)) {
+                Some(p) => Err(format!("{what} {} not found", p.display())),
+                None => Ok(given.to_vec()),
+            }
+        };
     let mut out = pick(&cli.config_file, &defaults.0, Path::is_file, "--config-file")?;
     for dir in pick(&cli.config_dir, &defaults.1, Path::is_dir, "--config-dir")? {
         let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -548,14 +574,20 @@ pub fn merge(base: &mut Table, over: Table) {
 fn env_layer(get: &dyn Fn(&str) -> Option<String>) -> Table {
     let mut t = Table::new();
     for &(var, section, key) in ENV {
-        let Some(v) = get(var).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) else { continue };
+        let Some(v) = get(var).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()) else {
+            continue;
+        };
         let v = match key {
             "secure_cookies" | "multidomain" => toml::Value::Boolean(v == "true" || v == "1"),
             // Not a number: left a string, so loading names the setting.
             "trusted_proxies" => v.parse().map_or(toml::Value::String(v), toml::Value::Integer),
             // Comma-separated: `load-balancer,orchestration`.
             "enabled" => toml::Value::Array(
-                v.split(',').map(str::trim).filter(|p| !p.is_empty()).map(|p| toml::Value::String(p.into())).collect(),
+                v.split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| toml::Value::String(p.into()))
+                    .collect(),
             ),
             _ => toml::Value::String(v),
         };
@@ -574,17 +606,24 @@ pub fn load(files: &[PathBuf], env: &dyn Fn(&str) -> Option<String>) -> Result<S
     for f in files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
         toml::from_str::<Settings>(&text).map_err(|e| format!("{}: {e}", f.display()))?;
-        merge(&mut all, toml::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?);
+        merge(
+            &mut all,
+            toml::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?,
+        );
     }
     merge(&mut all, env_layer(env));
-    toml::Value::Table(all).try_into().map_err(|e| format!("configuration: {e}"))
+    toml::Value::Table(all)
+        .try_into()
+        .map_err(|e| format!("configuration: {e}"))
 }
 
 /// An optional `http(s)` URL setting: empty → `None`, anything else must parse.
 fn url_setting(name: &str, value: Option<&str>) -> Result<Option<String>, String> {
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),
-        Some(v) if (v.starts_with("https://") || v.starts_with("http://")) && !v.contains(char::is_whitespace) => Ok(Some(v.into())),
+        Some(v) if (v.starts_with("https://") || v.starts_with("http://")) && !v.contains(char::is_whitespace) => {
+            Ok(Some(v.into()))
+        }
         Some(v) => Err(format!("{name} must be an http(s) URL (got {v:?})")),
     }
 }
@@ -606,26 +645,40 @@ fn is_choice_id(id: &str) -> bool {
 
 /// Validates `[websso]`: the choices, the mapping, and the URLs Keystone needs.
 /// `None` when disabled (the rest of the section is then ignored).
-fn websso(w: &WebSso, keystone_url: &str, public_origin: Option<&str>) -> Result<Option<(super::websso::WebSso, Vec<SsoChoice>, String)>, String> {
+fn websso(
+    w: &WebSso,
+    keystone_url: &str,
+    public_origin: Option<&str>,
+) -> Result<Option<(super::websso::WebSso, Vec<SsoChoice>, String)>, String> {
     if !w.enabled {
         return Ok(None);
     }
     // Keystone posts the token back to an `origin` it must list in
     // `[federation] trusted_dashboard`, byte for byte: guessing it from `Host`
     // would break behind a proxy.
-    let origin = public_origin.ok_or("[websso] enabled needs [session] public_url (Keystone sends the token back to it)")?;
+    let origin =
+        public_origin.ok_or("[websso] enabled needs [session] public_url (Keystone sends the token back to it)")?;
     let mut choices: Vec<SsoChoice> = Vec::new();
     for c in &w.choices {
         let id = c.id.trim();
         if !is_choice_id(id) {
-            return Err(format!("[websso] choices: {id:?} is not a valid ID (letters, digits, '.', '_', '-')"));
+            return Err(format!(
+                "[websso] choices: {id:?} is not a valid ID (letters, digits, '.', '_', '-')"
+            ));
         }
         if choices.iter().any(|x| x.id == id) {
             return Err(format!("[websso] choices: {id:?} appears twice"));
         }
-        choices.push(SsoChoice { id: id.into(), label: c.label.trim().into() });
+        choices.push(SsoChoice {
+            id: id.into(),
+            label: c.label.trim().into(),
+        });
     }
-    let federated: Vec<String> = choices.iter().map(|c| c.id.clone()).filter(|id| id != SsoChoice::CREDENTIALS).collect();
+    let federated: Vec<String> = choices
+        .iter()
+        .map(|c| c.id.clone())
+        .filter(|id| id != SsoChoice::CREDENTIALS)
+        .collect();
     if federated.is_empty() {
         return Err("[websso] choices needs at least one federation protocol besides \"credentials\"".into());
     }
@@ -645,9 +698,16 @@ fn websso(w: &WebSso, keystone_url: &str, public_origin: Option<&str>) -> Result
         }
         idp_mapping.insert(id.clone(), (idp.to_string(), protocol.to_string()));
     }
-    let keystone = url_setting("[websso] keystone_url", w.keystone_url.as_deref())?.unwrap_or_else(|| keystone_url.to_string());
-    let ws = super::websso::WebSso::new(&keystone, origin, federated, idp_mapping, url_setting("[websso] logout_url", w.logout_url.as_deref())?)
-        .map_err(|e| format!("[websso] keystone_url: {e}"))?;
+    let keystone =
+        url_setting("[websso] keystone_url", w.keystone_url.as_deref())?.unwrap_or_else(|| keystone_url.to_string());
+    let ws = super::websso::WebSso::new(
+        &keystone,
+        origin,
+        federated,
+        idp_mapping,
+        url_setting("[websso] logout_url", w.logout_url.as_deref())?,
+    )
+    .map_err(|e| format!("[websso] keystone_url: {e}"))?;
     Ok(Some((ws, choices, initial)))
 }
 
@@ -669,13 +729,21 @@ fn plugins(names: &[String]) -> Result<Vec<Plugin>, String> {
 impl Settings {
     /// Validates the settings the server runs with (the cookie key is decoded by `config::init`).
     pub fn config(&self) -> Result<Config, String> {
-        let url = self.keystone.url.as_deref().map(str::trim).filter(|s| !s.is_empty()).ok_or(
-            "[keystone] url is not set (moonlight.conf or MOONLIGHT_KEYSTONE_URL; see moonlight.conf.example)",
-        )?;
+        let url = self
+            .keystone
+            .url
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or(
+                "[keystone] url is not set (moonlight.conf or MOONLIGHT_KEYSTONE_URL; see moonlight.conf.example)",
+            )?;
         let mode = self.writes.mode.trim();
         let interface = self.keystone.interface.trim();
         if !["public", "internal", "admin"].contains(&interface) {
-            return Err(format!("[keystone] interface must be public, internal or admin (got {interface:?})"));
+            return Err(format!(
+                "[keystone] interface must be public, internal or admin (got {interface:?})"
+            ));
         }
         let ca_file = self.tls.ca_file.as_deref().map(str::trim).filter(|s| !s.is_empty());
         if let Some(f) = ca_file
@@ -687,25 +755,51 @@ impl Settings {
             return Err("[session] timeout_minutes must be at least 1".into());
         }
         let l = &self.login;
-        let domain_choices: Vec<String> = l.domain_choices.iter().map(|d| d.trim().to_string()).filter(|d| !d.is_empty()).collect();
+        let domain_choices: Vec<String> = l
+            .domain_choices
+            .iter()
+            .map(|d| d.trim().to_string())
+            .filter(|d| !d.is_empty())
+            .collect();
         if l.domain_hidden && !domain_choices.is_empty() {
             return Err("[login] domain_hidden and domain_choices cannot be used together".into());
         }
         let message = match l.message_file.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            Some(f) => Some(std::fs::read_to_string(f).map_err(|e| format!("[login] message_file {f}: {e}"))?.trim().to_string()).filter(|m| !m.is_empty()),
+            Some(f) => Some(
+                std::fs::read_to_string(f)
+                    .map_err(|e| format!("[login] message_file {f}: {e}"))?
+                    .trim()
+                    .to_string(),
+            )
+            .filter(|m| !m.is_empty()),
             None => None,
         };
         let theme = self.ui.default_theme.trim();
-        let default_theme = Theme::parse(theme).ok_or_else(|| format!("[ui] default_theme must be system, light or dark (got {theme:?})"))?;
-        let default_language = match self.ui.default_language.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            Some(l) => Some(Lang::parse(l).ok_or_else(|| format!("[ui] default_language must be en or es (got {l:?})"))?),
+        let default_theme = Theme::parse(theme)
+            .ok_or_else(|| format!("[ui] default_theme must be system, light or dark (got {theme:?})"))?;
+        let default_language = match self
+            .ui
+            .default_language
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(l) => {
+                Some(Lang::parse(l).ok_or_else(|| format!("[ui] default_language must be en or es (got {l:?})"))?)
+            }
             None => None,
         };
         if self.ui.poll_interval_ms < 1000 {
-            return Err(format!("[ui] poll_interval_ms must be at least 1000 (got {})", self.ui.poll_interval_ms));
+            return Err(format!(
+                "[ui] poll_interval_ms must be at least 1000 (got {})",
+                self.ui.poll_interval_ms
+            ));
         }
         if self.ui.page_size > MAX_PAGE_SIZE {
-            return Err(format!("[ui] page_size must be 0 (no paging) or 1-{MAX_PAGE_SIZE}, the APIs' usual cap (got {})", self.ui.page_size));
+            return Err(format!(
+                "[ui] page_size must be 0 (no paging) or 1-{MAX_PAGE_SIZE}, the APIs' usual cap (got {})",
+                self.ui.page_size
+            ));
         }
         let paged_lists = match self.ui.paged_lists.trim() {
             "admin" => PagedLists::Admin,
@@ -718,7 +812,11 @@ impl Settings {
         let mut filter_first = Vec::new();
         for name in &self.admin.filter_first {
             let Some((_, list)) = crate::model::PagedList::KEYS.iter().find(|(k, _)| *k == name.trim()) else {
-                let known = crate::model::PagedList::KEYS.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(", ");
+                let known = crate::model::PagedList::KEYS
+                    .iter()
+                    .map(|(k, _)| *k)
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 return Err(format!("[admin] filter_first: unknown list {name:?} (one of {known})"));
             };
             if !filter_first.contains(list) {
@@ -726,24 +824,36 @@ impl Settings {
             }
         }
         let net = &self.network;
-        for (version, list) in [("ipv4", &net.allowed_private_subnet_cidr.ipv4), ("ipv6", &net.allowed_private_subnet_cidr.ipv6)] {
+        for (version, list) in [
+            ("ipv4", &net.allowed_private_subnet_cidr.ipv4),
+            ("ipv6", &net.allowed_private_subnet_cidr.ipv6),
+        ] {
             for c in list {
-                let cidr = crate::prefs::Cidr::parse(c).map_err(|e| format!("[network] allowed_private_subnet_cidr.{version}: {e}"))?;
+                let cidr = crate::prefs::Cidr::parse(c)
+                    .map_err(|e| format!("[network] allowed_private_subnet_cidr.{version}: {e}"))?;
                 if cidr.addr.is_ipv4() != (version == "ipv4") {
-                    return Err(format!("[network] allowed_private_subnet_cidr.{version}: {c} is not {version}"));
+                    return Err(format!(
+                        "[network] allowed_private_subnet_cidr.{version}: {c} is not {version}"
+                    ));
                 }
             }
         }
         net.check_provider_types()?;
         for d in &net.default_dns_nameservers {
-            d.trim().parse::<std::net::IpAddr>().map_err(|_| format!("[network] default_dns_nameservers: {d:?} is not an IP address"))?;
+            d.trim()
+                .parse::<std::net::IpAddr>()
+                .map_err(|_| format!("[network] default_dns_nameservers: {d:?} is not an IP address"))?;
         }
         let img = &self.images;
         if img.disk_formats.iter().all(|f| f.trim().is_empty()) {
             return Err("[images] disk_formats cannot be empty".into());
         }
         if !VISIBILITIES.contains(&img.default_visibility.as_str()) {
-            return Err(format!("[images] default_visibility must be one of {} (got {:?})", VISIBILITIES.join(", "), img.default_visibility));
+            return Err(format!(
+                "[images] default_visibility must be one of {} (got {:?})",
+                VISIBILITIES.join(", "),
+                img.default_visibility
+            ));
         }
         if img.max_upload_gb == 0 {
             return Err("[images] max_upload_gb must be at least 1".into());
@@ -751,8 +861,17 @@ impl Settings {
         if self.console.log_length == 0 {
             return Err("[console] log_length must be at least 1".into());
         }
-        let client_ip_header = match self.log.client_ip_header.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            Some(h) => Some(http::HeaderName::from_bytes(h.as_bytes()).map_err(|_| format!("[log] client_ip_header {h:?} is not a header name"))?),
+        let client_ip_header = match self
+            .log
+            .client_ip_header
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(h) => Some(
+                http::HeaderName::from_bytes(h.as_bytes())
+                    .map_err(|_| format!("[log] client_ip_header {h:?} is not a header name"))?,
+            ),
             None => None,
         };
         let yaml_name = self.api_access.clouds_yaml_name.trim();
@@ -760,11 +879,14 @@ impl Settings {
             return Err("[api_access] clouds_yaml_name cannot be empty".into());
         }
         let keystone_url = url.trim_end_matches('/').to_string();
-        let public_origin = url_setting("[session] public_url", self.session.public_url.as_deref())?.map(|u| origin_of("[session] public_url", &u)).transpose()?;
-        let (websso, websso_choices, websso_initial) = match websso(&self.websso, &keystone_url, public_origin.as_deref())? {
-            Some((w, choices, initial)) => (Some(w), choices, initial),
-            None => (None, vec![], String::new()),
-        };
+        let public_origin = url_setting("[session] public_url", self.session.public_url.as_deref())?
+            .map(|u| origin_of("[session] public_url", &u))
+            .transpose()?;
+        let (websso, websso_choices, websso_initial) =
+            match websso(&self.websso, &keystone_url, public_origin.as_deref())? {
+                Some((w, choices, initial)) => (Some(w), choices, initial),
+                None => (None, vec![], String::new()),
+            };
         Ok(Config {
             keystone_url,
             default_domain: self.keystone.default_domain.clone(),
@@ -778,7 +900,8 @@ impl Settings {
             websso,
             show_error_details: self.ui.show_error_details,
             show_requests: self.ui.show_requests,
-            writes: WriteMode::parse(mode).ok_or_else(|| format!("[writes] mode must be off, dry-run or on (got {mode:?})"))?,
+            writes: WriteMode::parse(mode)
+                .ok_or_else(|| format!("[writes] mode must be off, dry-run or on (got {mode:?})"))?,
             help_url: url_setting("[ui] help_url", self.ui.help_url.as_deref())?,
             change_password_url: url_setting("[ui] change_password_url", self.ui.change_password_url.as_deref())?,
             plugins: plugins(&self.plugins.enabled)?,
@@ -803,7 +926,11 @@ impl Settings {
             client_ip_header,
             trusted_proxies: self.log.trusted_proxies,
             clouds_yaml_name: yaml_name.to_string(),
-            clouds_yaml_profile: self.api_access.clouds_yaml_profile.clone().filter(|p| !p.trim().is_empty()),
+            clouds_yaml_profile: self
+                .api_access
+                .clouds_yaml_profile
+                .clone()
+                .filter(|p| !p.trim().is_empty()),
             prefs: Prefs {
                 poll_interval_ms: self.ui.poll_interval_ms,
                 bug_url: url_setting("[ui] bug_url", self.ui.bug_url.as_deref())?,
@@ -812,16 +939,33 @@ impl Settings {
                 paged_lists,
                 launch: self.launch.clone(),
                 network: NetworkPrefs {
-                    default_dns_nameservers: net.default_dns_nameservers.iter().map(|d| d.trim().to_string()).collect(),
+                    default_dns_nameservers: net
+                        .default_dns_nameservers
+                        .iter()
+                        .map(|d| d.trim().to_string())
+                        .collect(),
                     ..net.clone()
                 },
                 images: ImagePrefs {
-                    disk_formats: img.disk_formats.iter().map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect(),
-                    reserved_properties: img.reserved_properties.iter().map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).collect(),
+                    disk_formats: img
+                        .disk_formats
+                        .iter()
+                        .map(|f| f.trim().to_string())
+                        .filter(|f| !f.is_empty())
+                        .collect(),
+                    reserved_properties: img
+                        .reserved_properties
+                        .iter()
+                        .map(|k| k.trim().to_string())
+                        .filter(|k| !k.is_empty())
+                        .collect(),
                     ..img.clone()
                 },
                 console: self.console.clone(),
-                admin: AdminPrefs { flavor_edit: self.admin.flavor_edit, filter_first },
+                admin: AdminPrefs {
+                    flavor_edit: self.admin.flavor_edit,
+                    filter_first,
+                },
             },
         })
     }
@@ -864,7 +1008,12 @@ mod tests {
         let s = |v: &[PathBuf]| v.iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
         assert_eq!(
             s(&files),
-            ["/home/u/.moonlight/moonlight.conf", "/home/u/moonlight.conf", "/etc/moonlight/moonlight.conf", "/etc/moonlight.conf"]
+            [
+                "/home/u/.moonlight/moonlight.conf",
+                "/home/u/moonlight.conf",
+                "/etc/moonlight/moonlight.conf",
+                "/etc/moonlight.conf"
+            ]
         );
         assert_eq!(s(&dirs)[3], "/etc/moonlight.conf.d");
         assert_eq!(default_candidates(None).0.len(), 2);
@@ -873,11 +1022,20 @@ mod tests {
     #[test]
     fn dir_files_are_read_alphabetically_after_the_files_and_later_wins() {
         let t = Tmp::new("order");
-        let main = t.file("moonlight.conf", "[keystone]\nurl = \"https://main\"\ndefault_region = \"r1\"\n");
+        let main = t.file(
+            "moonlight.conf",
+            "[keystone]\nurl = \"https://main\"\ndefault_region = \"r1\"\n",
+        );
         t.file("d/20-site.conf", "[keystone]\nurl = \"https://site\"\n");
-        t.file("d/10-base.conf", "[keystone]\nurl = \"https://base\"\ndefault_domain = \"Corp\"\n");
+        t.file(
+            "d/10-base.conf",
+            "[keystone]\nurl = \"https://base\"\ndefault_domain = \"Corp\"\n",
+        );
         t.file("d/README", "not toml");
-        let cli = Cli { config_file: vec![main.clone()], config_dir: vec![t.0.join("d")] };
+        let cli = Cli {
+            config_file: vec![main.clone()],
+            config_dir: vec![t.0.join("d")],
+        };
         let files = sources(&cli, &(vec![], vec![])).unwrap();
         let names: Vec<_> = files.iter().map(|p| p.file_name().unwrap().to_str().unwrap()).collect();
         assert_eq!(names, ["moonlight.conf", "10-base.conf", "20-site.conf"]);
@@ -894,48 +1052,117 @@ mod tests {
         let home = t.file(".moonlight/moonlight.conf", "");
         let etc = t.file("etc/moonlight.conf", "");
         let missing = t.0.join("nope/moonlight.conf");
-        let defaults = (vec![missing.clone(), home.clone(), etc.clone()], vec![t.0.join("nope.d")]);
+        let defaults = (
+            vec![missing.clone(), home.clone(), etc.clone()],
+            vec![t.0.join("nope.d")],
+        );
         assert_eq!(sources(&Cli::default(), &defaults).unwrap(), [home]);
-        let cli = Cli { config_file: vec![etc.clone()], ..Default::default() };
+        let cli = Cli {
+            config_file: vec![etc.clone()],
+            ..Default::default()
+        };
         assert_eq!(sources(&cli, &defaults).unwrap(), [etc]);
-        let cli = Cli { config_file: vec![missing], ..Default::default() };
+        let cli = Cli {
+            config_file: vec![missing],
+            ..Default::default()
+        };
         assert!(sources(&cli, &defaults).unwrap_err().contains("not found"));
     }
 
     #[test]
     fn environment_overrides_files() {
         let t = Tmp::new("env");
-        let f = t.file("m.conf", "[writes]\nmode = \"off\"\n[session]\nsecure_cookies = true\n[keystone]\nurl = \"https://file\"\n");
-        let env: HashMap<&str, &str> =
-            [("MOONLIGHT_WRITES", "on"), ("MOONLIGHT_SECURE_COOKIES", "0"), ("MOONLIGHT_KEYSTONE_URL", " "), ("RUST_LOG", "debug"), ("MOONLIGHT_TRUSTED_PROXIES", "0")]
-                .into();
+        let f = t.file(
+            "m.conf",
+            "[writes]\nmode = \"off\"\n[session]\nsecure_cookies = true\n[keystone]\nurl = \"https://file\"\n",
+        );
+        let env: HashMap<&str, &str> = [
+            ("MOONLIGHT_WRITES", "on"),
+            ("MOONLIGHT_SECURE_COOKIES", "0"),
+            ("MOONLIGHT_KEYSTONE_URL", " "),
+            ("RUST_LOG", "debug"),
+            ("MOONLIGHT_TRUSTED_PROXIES", "0"),
+        ]
+        .into();
         let s = load(&[f], &|k| env.get(k).map(|v| v.to_string())).unwrap();
         assert_eq!(s.writes.mode, "on");
         assert!(!s.session.secure_cookies);
-        assert_eq!(s.keystone.url.as_deref(), Some("https://file"), "empty variables are ignored");
+        assert_eq!(
+            s.keystone.url.as_deref(),
+            Some("https://file"),
+            "empty variables are ignored"
+        );
         assert_eq!((s.log.filter.as_str(), s.log.trusted_proxies), ("debug", 0));
         let bad: HashMap<&str, &str> = [("MOONLIGHT_TRUSTED_PROXIES", "two")].into();
-        assert!(load(&[], &|k| bad.get(k).map(|v| v.to_string())).unwrap_err().contains("trusted_proxies"));
+        assert!(
+            load(&[], &|k| bad.get(k).map(|v| v.to_string()))
+                .unwrap_err()
+                .contains("trusted_proxies")
+        );
     }
 
     #[test]
     fn the_log_goes_to_stdout_unless_a_file_is_set() {
         let d = Log::default();
-        assert_eq!((d.file(), d.rotation, d.keep_current(), d.max_files(), d.stdout, d.format), (None, Rotation::Daily, true, 7, false, LogFormat::Text));
+        assert_eq!(
+            (
+                d.file(),
+                d.rotation,
+                d.keep_current(),
+                d.max_files(),
+                d.stdout,
+                d.format
+            ),
+            (None, Rotation::Daily, true, 7, false, LogFormat::Text)
+        );
         let log = |t: &str| toml::from_str::<Settings>(t).map(|s| s.log).map_err(|e| e.to_string());
-        assert_eq!(log("[log]\nfile = \" \"\n").unwrap().file(), None, "blank = stdout only");
+        assert_eq!(
+            log("[log]\nfile = \" \"\n").unwrap().file(),
+            None,
+            "blank = stdout only"
+        );
         let full = log("[log]\nfile = \"/var/log/moonlight/moonlight.log\"\nrotation = \"hourly\"\nkeep = \"no\"\nmax_files = 24\nstdout = true\nformat = \"json\"\n").unwrap();
         assert_eq!(full.file(), Some(Path::new("/var/log/moonlight/moonlight.log")));
-        assert_eq!((full.rotation, full.keep_current(), full.max_files(), full.stdout, full.format), (Rotation::Hourly, false, 24, true, LogFormat::Json));
+        assert_eq!(
+            (
+                full.rotation,
+                full.keep_current(),
+                full.max_files(),
+                full.stdout,
+                full.format
+            ),
+            (Rotation::Hourly, false, 24, true, LogFormat::Json)
+        );
         assert!(log("[log]\nrotation = \"weekly\"\n").unwrap_err().contains("rotation"));
         // `keep` (roadmap 84): a yes/no in any of its spellings, or the old count.
-        for (v, on) in [("true", true), ("\"yes\"", true), ("\"Enabled\"", true), ("\"on\"", true), ("false", false), ("\"no\"", false), ("\"disabled\"", false), ("\"off\"", false)] {
+        for (v, on) in [
+            ("true", true),
+            ("\"yes\"", true),
+            ("\"Enabled\"", true),
+            ("\"on\"", true),
+            ("false", false),
+            ("\"no\"", false),
+            ("\"disabled\"", false),
+            ("\"off\"", false),
+        ] {
             let l = log(&format!("[log]\nkeep = {v}\n")).unwrap();
-            assert_eq!((l.keep_current(), l.max_files(), l.legacy_keep()), (on, 7, None), "keep = {v}");
+            assert_eq!(
+                (l.keep_current(), l.max_files(), l.legacy_keep()),
+                (on, 7, None),
+                "keep = {v}"
+            );
         }
         let old = log("[log]\nkeep = 3\n").unwrap();
-        assert_eq!((old.keep_current(), old.max_files(), old.legacy_keep()), (true, 3, Some(3)), "the old count is max_files and keeps the current file");
-        assert_eq!(log("[log]\nkeep = 3\nmax_files = 5\n").unwrap().max_files(), 5, "max_files wins");
+        assert_eq!(
+            (old.keep_current(), old.max_files(), old.legacy_keep()),
+            (true, 3, Some(3)),
+            "the old count is max_files and keeps the current file"
+        );
+        assert_eq!(
+            log("[log]\nkeep = 3\nmax_files = 5\n").unwrap().max_files(),
+            5,
+            "max_files wins"
+        );
         assert!(log("[log]\nkeep = \"maybe\"\n").unwrap_err().contains("keep"));
         assert!(log("[log]\nkeep = -1\n").unwrap_err().contains("keep"));
         assert!(log("[log]\nformat = \"xml\"\n").unwrap_err().contains("format"));
@@ -948,42 +1175,91 @@ mod tests {
     fn invalid_values_are_rejected_with_their_origin() {
         let t = Tmp::new("invalid");
         let typo = t.file("typo.conf", "[writes]\nmodee = \"on\"\n");
-        assert!(load(&[typo], &no_env).unwrap_err().starts_with(&t.0.join("typo.conf").display().to_string()));
-        let bad = t.file("bad.conf", "[keystone]\nurl = \"https://k/\"\n[writes]\nmode = \"yes\"\n");
+        assert!(
+            load(&[typo], &no_env)
+                .unwrap_err()
+                .starts_with(&t.0.join("typo.conf").display().to_string())
+        );
+        let bad = t.file(
+            "bad.conf",
+            "[keystone]\nurl = \"https://k/\"\n[writes]\nmode = \"yes\"\n",
+        );
         let s = load(&[bad], &no_env).unwrap();
         assert!(s.config().unwrap_err().contains("[writes] mode"));
         assert!(Settings::default().config().unwrap_err().contains("[keystone] url"));
-        let ok = Settings { keystone: Keystone { url: Some("https://k/".into()), ..Default::default() }, ..Default::default() };
+        let ok = Settings {
+            keystone: Keystone {
+                url: Some("https://k/".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         let c = ok.config().unwrap();
         assert_eq!((c.keystone_url.as_str(), c.writes), ("https://k", WriteMode::DryRun));
     }
 
     fn parse(text: &str) -> Result<Config, String> {
-        toml::from_str::<Settings>(&format!("[keystone]\nurl = \"https://k\"\n{text}")).map_err(|e| e.to_string())?.config()
+        toml::from_str::<Settings>(&format!("[keystone]\nurl = \"https://k\"\n{text}"))
+            .map_err(|e| e.to_string())?
+            .config()
     }
 
     #[test]
     fn admin_section_is_horizons_flavor_edit_and_filter_first() {
         use crate::model::PagedList;
         let none = parse("").unwrap().prefs.admin;
-        assert!(!none.flavor_edit && none.filter_first.is_empty(), "both off by default, as Horizon");
-        let a = parse("[admin]\nflavor_edit = true\nfilter_first = [\"instances\", \" volumes \", \"instances\"]").unwrap().prefs.admin;
+        assert!(
+            !none.flavor_edit && none.filter_first.is_empty(),
+            "both off by default, as Horizon"
+        );
+        let a = parse("[admin]\nflavor_edit = true\nfilter_first = [\"instances\", \" volumes \", \"instances\"]")
+            .unwrap()
+            .prefs
+            .admin;
         assert!(a.flavor_edit);
-        assert_eq!(a.filter_first, [PagedList::Instances, PagedList::Volumes], "trimmed, each once");
+        assert_eq!(
+            a.filter_first,
+            [PagedList::Instances, PagedList::Volumes],
+            "trimmed, each once"
+        );
         let err = parse("[admin]\nfilter_first = [\"flavors\"]").unwrap_err();
-        assert!(err.contains("filter_first") && err.contains("floating_ips"), "names the known lists: {err}");
-        assert!(parse("[admin]\nfilter_data_first = true").is_err(), "unknown keys are refused");
+        assert!(
+            err.contains("filter_first") && err.contains("floating_ips"),
+            "names the known lists: {err}"
+        );
+        assert!(
+            parse("[admin]\nfilter_data_first = true").is_err(),
+            "unknown keys are refused"
+        );
     }
 
     #[test]
     fn page_size_and_paged_lists_are_validated() {
         assert_eq!(parse("[ui]\npage_size = 999").unwrap().prefs.page_size, 999);
-        assert_eq!(parse("[ui]\npage_size = 0").unwrap().prefs.page_size_for(true), None, "0 = no paging");
-        assert!(parse("[ui]\npage_size = 1000").unwrap_err().contains("page_size"), "limit = page_size + 1 must stay within the APIs' default cap of 1000");
-        assert_eq!(parse("[ui]\npaged_lists = \"all\"").unwrap().prefs.paged_lists, PagedLists::All);
-        assert!(parse("[ui]\npaged_lists = \"some\"").unwrap_err().contains("paged_lists"));
+        assert_eq!(
+            parse("[ui]\npage_size = 0").unwrap().prefs.page_size_for(true),
+            None,
+            "0 = no paging"
+        );
+        assert!(
+            parse("[ui]\npage_size = 1000").unwrap_err().contains("page_size"),
+            "limit = page_size + 1 must stay within the APIs' default cap of 1000"
+        );
+        assert_eq!(
+            parse("[ui]\npaged_lists = \"all\"").unwrap().prefs.paged_lists,
+            PagedLists::All
+        );
+        assert!(
+            parse("[ui]\npaged_lists = \"some\"")
+                .unwrap_err()
+                .contains("paged_lists")
+        );
         let admin = parse("").unwrap().prefs;
-        assert_eq!((admin.page_size_for(true), admin.page_size_for(false)), (Some(100), None), "Project panels stay whole by default");
+        assert_eq!(
+            (admin.page_size_for(true), admin.page_size_for(false)),
+            (Some(100), None),
+            "Project panels stay whole by default"
+        );
         let all = parse("[ui]\npaged_lists = \"all\"").unwrap().prefs;
         assert_eq!(all.page_size_for(false), Some(100));
     }
@@ -991,26 +1267,76 @@ mod tests {
     #[test]
     fn a_file_with_only_the_url_gets_every_default() {
         let c = parse("").unwrap();
-        assert_eq!((c.default_domain.as_str(), c.interface.as_str(), c.writes), ("Default", "public", WriteMode::DryRun));
-        assert_eq!((c.ca_file.clone(), c.verify_tls, c.secure_cookies, c.revoke_on_logout), (None, true, true, true), "safe by default");
+        assert_eq!(
+            (c.default_domain.as_str(), c.interface.as_str(), c.writes),
+            ("Default", "public", WriteMode::DryRun)
+        );
+        assert_eq!(
+            (c.ca_file.clone(), c.verify_tls, c.secure_cookies, c.revoke_on_logout),
+            (None, true, true, true),
+            "safe by default"
+        );
         assert!(!c.show_error_details, "internal URIs stay in the log by default");
-        assert!(!c.show_requests, "results without the REST requests by default (roadmap 78)");
+        assert!(
+            !c.show_requests,
+            "results without the REST requests by default (roadmap 78)"
+        );
         assert!(parse("[ui]\nshow_requests = true").unwrap().show_requests);
-        assert_eq!(parse("").unwrap().prefs.background_batch_from, 10, "bulk actions of 10 items or more run in the background (roadmap 87)");
-        assert_eq!(parse("[ui]\nbackground_batch_from = 0").unwrap().prefs.background_batch_from, 0);
-        assert_eq!((c.prefs.page_size, c.prefs.paged_lists), (100, PagedLists::Admin), "Admin lists, 100 rows a page (roadmap 88)");
-        assert_eq!((c.session_timeout.num_minutes(), c.token_margin.num_seconds(), c.password_expiry_warning_days), (60, 60, None));
+        assert_eq!(
+            parse("").unwrap().prefs.background_batch_from,
+            10,
+            "bulk actions of 10 items or more run in the background (roadmap 87)"
+        );
+        assert_eq!(
+            parse("[ui]\nbackground_batch_from = 0")
+                .unwrap()
+                .prefs
+                .background_batch_from,
+            0
+        );
+        assert_eq!(
+            (c.prefs.page_size, c.prefs.paged_lists),
+            (100, PagedLists::Admin),
+            "Admin lists, 100 rows a page (roadmap 88)"
+        );
+        assert_eq!(
+            (
+                c.session_timeout.num_minutes(),
+                c.token_margin.num_seconds(),
+                c.password_expiry_warning_days
+            ),
+            (60, 60, None)
+        );
         assert_eq!(c.login, LoginPrefs::default());
         assert_eq!((c.default_theme, c.default_language), (Theme::System, None));
-        assert_eq!((c.help_url.clone(), c.change_password_url.clone(), c.client_ip_header.clone()), (None, None, None));
-        assert_eq!(c.trusted_proxies, 1, "the address the nearest proxy saw, not the client's claim");
-        assert_eq!((c.clouds_yaml_name.as_str(), c.clouds_yaml_profile.clone()), ("openstack", None));
+        assert_eq!(
+            (
+                c.help_url.clone(),
+                c.change_password_url.clone(),
+                c.client_ip_header.clone()
+            ),
+            (None, None, None)
+        );
+        assert_eq!(
+            c.trusted_proxies, 1,
+            "the address the nearest proxy saw, not the client's claim"
+        );
+        assert_eq!(
+            (c.clouds_yaml_name.as_str(), c.clouds_yaml_profile.clone()),
+            ("openstack", None)
+        );
         assert_eq!(c.prefs, Prefs::default());
         assert!(c.plugins.is_empty());
-        assert!(!c.key_manager_payload, "secret payloads stay out of the browser by default");
+        assert!(
+            !c.key_manager_payload,
+            "secret payloads stay out of the browser by default"
+        );
         // An empty section is the same as a missing one.
         let empty = parse("[tls]\n[session]\n[login]\n[ui]\n[launch]\n[network]\n[network.allowed_private_subnet_cidr]\n[images]\n[console]\n[api_access]\n[log]\n").unwrap();
-        assert_eq!((empty.prefs, empty.login, empty.session_timeout), (c.prefs, c.login, c.session_timeout));
+        assert_eq!(
+            (empty.prefs, empty.login, empty.session_timeout),
+            (c.prefs, c.login, c.session_timeout)
+        );
     }
 
     #[test]
@@ -1024,21 +1350,54 @@ mod tests {
              [images]\ndefault_visibility = \"shared\"\n[console]\nenabled = true\ntype = \"spice\"\n[api_access]\nclouds_yaml_name = \"acme\"\n[log]\nclient_ip_header = \"X-Forwarded-For\"\ntrusted_proxies = 2\n",
         )
         .unwrap();
-        assert_eq!((c.interface.as_str(), c.session_timeout.num_minutes(), c.token_margin.num_seconds()), ("internal", 30, 0));
+        assert_eq!(
+            (
+                c.interface.as_str(),
+                c.session_timeout.num_minutes(),
+                c.token_margin.num_seconds()
+            ),
+            ("internal", 30, 0)
+        );
         assert_eq!(c.password_expiry_warning_days, Some(7));
         assert_eq!((c.login.domain_choices.len(), c.login.password_reveal), (2, false));
         assert_eq!((c.default_theme, c.default_language), (Theme::Dark, Some(Lang::EsEs)));
-        assert_eq!((c.prefs.poll_interval_ms, c.prefs.bug_url.as_deref()), (2500, Some("https://bugs.example")));
-        assert!(c.prefs.launch.requires_keypair && c.prefs.launch.create_volume, "unset keys keep their default");
+        assert_eq!(
+            (c.prefs.poll_interval_ms, c.prefs.bug_url.as_deref()),
+            (2500, Some("https://bugs.example"))
+        );
+        assert!(
+            c.prefs.launch.requires_keypair && c.prefs.launch.create_volume,
+            "unset keys keep their default"
+        );
         assert_eq!(c.prefs.launch.flavor_sort, crate::prefs::FlavorSort::Vcpus);
         assert_eq!(c.prefs.network.allowed_private_subnet_cidr.ipv4, ["10.0.0.0/8"]);
-        assert_eq!((c.prefs.images.default_visibility.as_str(), c.clouds_yaml_name.as_str()), ("shared", "acme"));
-        assert_eq!((c.client_ip_header.unwrap().as_str(), c.trusted_proxies), ("x-forwarded-for", 2));
+        assert_eq!(
+            (c.prefs.images.default_visibility.as_str(), c.clouds_yaml_name.as_str()),
+            ("shared", "acme")
+        );
+        assert_eq!(
+            (c.client_ip_header.unwrap().as_str(), c.trusted_proxies),
+            ("x-forwarded-for", 2)
+        );
         let console = &c.prefs.console;
-        assert_eq!((console.enabled, console.kind, console.log_length), (true, crate::prefs::ConsoleType::Spice, 35));
-        assert!(parse("[key_manager]\nallow_payload = true\n").unwrap().key_manager_payload);
-        assert_eq!(parse("").unwrap().lookup_ttl.as_secs(), 30, "name lookups cached 30 s by default (roadmap 66)");
-        assert!(parse("[cache]\nlookup_seconds = 0\n").unwrap().lookup_ttl.is_zero(), "0 turns the cache off");
+        assert_eq!(
+            (console.enabled, console.kind, console.log_length),
+            (true, crate::prefs::ConsoleType::Spice, 35)
+        );
+        assert!(
+            parse("[key_manager]\nallow_payload = true\n")
+                .unwrap()
+                .key_manager_payload
+        );
+        assert_eq!(
+            parse("").unwrap().lookup_ttl.as_secs(),
+            30,
+            "name lookups cached 30 s by default (roadmap 66)"
+        );
+        assert!(
+            parse("[cache]\nlookup_seconds = 0\n").unwrap().lookup_ttl.is_zero(),
+            "0 turns the cache off"
+        );
     }
 
     #[test]
@@ -1053,14 +1412,23 @@ mod tests {
         assert!(err("[ui]\ndefault_language = \"fr\"\n").contains("default_language"));
         assert!(err("[ui]\npoll_interval_ms = 10\n").contains("poll_interval_ms"));
         assert!(err("[launch]\ndisable_image = true\ndisable_instance_snapshot = true\ndisable_volume = true\ndisable_volume_snapshot = true\n").contains("boot source"));
-        assert!(err("[launch]\nflavor_sort = \"price\"\n").contains("flavor_sort"), "unknown enum value");
+        assert!(
+            err("[launch]\nflavor_sort = \"price\"\n").contains("flavor_sort"),
+            "unknown enum value"
+        );
         assert!(err("[network]\nallowed_private_subnet_cidr = { ipv4 = [\"fd00::/8\"] }\n").contains("is not ipv4"));
         assert!(err("[network]\ndefault_dns_nameservers = [\"dns.example\"]\n").contains("not an IP address"));
         assert!(err("[network]\nipv6 = false\n").contains("unknown field"));
         assert!(err("[images]\ndisk_formats = []\n").contains("disk_formats"));
-        assert!(err("[images]\nreserved_properties = 1\n").contains("reserved_properties"), "must be a list");
+        assert!(
+            err("[images]\nreserved_properties = 1\n").contains("reserved_properties"),
+            "must be a list"
+        );
         assert!(err("[images]\nmax_upload_gb = 0\n").contains("max_upload_gb"));
-        assert!(err("[images]\nupload = \"ftp\"\n").contains("upload"), "only off, proxy or direct");
+        assert!(
+            err("[images]\nupload = \"ftp\"\n").contains("upload"),
+            "only off, proxy or direct"
+        );
         assert!(err("[console]\nlog_length = 0\n").contains("log_length"));
         assert!(err("[console]\ntype = \"rdp\"\n").contains("rdp"));
         assert!(err("[images]\ndefault_visibility = \"everyone\"\n").contains("default_visibility"));
@@ -1073,7 +1441,10 @@ mod tests {
         let t = Tmp::new("motd");
         let f = t.file("motd.txt", "  Maintenance on Sunday 02:00-04:00 UTC.\n");
         let c = parse(&format!("[login]\nmessage_file = {:?}\n", f.display().to_string())).unwrap();
-        assert_eq!(c.login.message.as_deref(), Some("Maintenance on Sunday 02:00-04:00 UTC."));
+        assert_eq!(
+            c.login.message.as_deref(),
+            Some("Maintenance on Sunday 02:00-04:00 UTC.")
+        );
     }
 
     #[test]
@@ -1084,22 +1455,58 @@ mod tests {
         let d = parse("").unwrap();
         assert_eq!(c.prefs, d.prefs);
         assert_eq!(c.login, d.login);
-        assert_eq!((c.interface, c.ca_file, c.verify_tls), (d.interface, d.ca_file, d.verify_tls));
-        assert_eq!((c.session_timeout, c.token_margin, c.password_expiry_warning_days), (d.session_timeout, d.token_margin, d.password_expiry_warning_days));
-        assert_eq!((c.default_theme, c.default_language, c.client_ip_header), (d.default_theme, d.default_language, d.client_ip_header));
-        assert_eq!((c.help_url, c.change_password_url, c.clouds_yaml_name, c.clouds_yaml_profile), (d.help_url, d.change_password_url, d.clouds_yaml_name, d.clouds_yaml_profile));
+        assert_eq!(
+            (c.interface, c.ca_file, c.verify_tls),
+            (d.interface, d.ca_file, d.verify_tls)
+        );
+        assert_eq!(
+            (c.session_timeout, c.token_margin, c.password_expiry_warning_days),
+            (d.session_timeout, d.token_margin, d.password_expiry_warning_days)
+        );
+        assert_eq!(
+            (c.default_theme, c.default_language, c.client_ip_header),
+            (d.default_theme, d.default_language, d.client_ip_header)
+        );
+        assert_eq!(
+            (
+                c.help_url,
+                c.change_password_url,
+                c.clouds_yaml_name,
+                c.clouds_yaml_profile
+            ),
+            (
+                d.help_url,
+                d.change_password_url,
+                d.clouds_yaml_name,
+                d.clouds_yaml_profile
+            )
+        );
         assert_eq!(c.writes, WriteMode::DryRun);
     }
 
     #[test]
     fn provider_network_types_and_ranges_are_horizons_settings() {
         let c = parse("[network]\nsupported_provider_types = [\"vxlan\", \"vlan\"]\n[network.segmentation_id_range]\nvlan = [1000, 1999]\n").unwrap();
-        assert_eq!(c.prefs.network.provider_types(), [("vxlan".to_string(), Some((1, (1 << 24) - 1))), ("vlan".to_string(), Some((1000, 1999)))], "listed order, narrowed range");
-        assert_eq!(parse("").unwrap().prefs.network.provider_types().len(), crate::model::PROVIDER_NETWORK_TYPES.len(), "\"*\" by default");
+        assert_eq!(
+            c.prefs.network.provider_types(),
+            [
+                ("vxlan".to_string(), Some((1, (1 << 24) - 1))),
+                ("vlan".to_string(), Some((1000, 1999)))
+            ],
+            "listed order, narrowed range"
+        );
+        assert_eq!(
+            parse("").unwrap().prefs.network.provider_types().len(),
+            crate::model::PROVIDER_NETWORK_TYPES.len(),
+            "\"*\" by default"
+        );
         for (bad, why) in [
             ("[network]\nsupported_provider_types = [\"opflex\"]\n", "unknown type"),
             ("[network]\nsupported_provider_types = []\n", "cannot be empty"),
-            ("[network.segmentation_id_range]\nflat = [1, 2]\n", "has no segmentation ID"),
+            (
+                "[network.segmentation_id_range]\nflat = [1, 2]\n",
+                "has no segmentation ID",
+            ),
             ("[network.segmentation_id_range]\nvlan = [10, 5000]\n", "within 1–4094"),
             ("[network.segmentation_id_range]\nvlan = [20, 10]\n", "ordered"),
         ] {
@@ -1111,28 +1518,56 @@ mod tests {
     #[test]
     fn plugins_are_opt_in_known_and_settable_from_the_environment() {
         let ok = |enabled: &[&str]| Settings {
-            keystone: Keystone { url: Some("https://k".into()), ..Default::default() },
-            plugins: Plugins { enabled: enabled.iter().map(|s| s.to_string()).collect() },
+            keystone: Keystone {
+                url: Some("https://k".into()),
+                ..Default::default()
+            },
+            plugins: Plugins {
+                enabled: enabled.iter().map(|s| s.to_string()).collect(),
+            },
             ..Default::default()
         };
         assert!(ok(&[]).config().unwrap().plugins.is_empty(), "none unless listed");
-        assert_eq!(ok(&["orchestration", "load-balancer", "orchestration"]).config().unwrap().plugins, [Plugin::Orchestration, Plugin::LoadBalancer]);
-        assert!(ok(&["loadbalancer"]).config().unwrap_err().contains("unknown plugin \"loadbalancer\""));
+        assert_eq!(
+            ok(&["orchestration", "load-balancer", "orchestration"])
+                .config()
+                .unwrap()
+                .plugins,
+            [Plugin::Orchestration, Plugin::LoadBalancer]
+        );
+        assert!(
+            ok(&["loadbalancer"])
+                .config()
+                .unwrap_err()
+                .contains("unknown plugin \"loadbalancer\"")
+        );
         let t = Tmp::new("plugins");
         let f = t.file("m.conf", "[plugins]\nenabled = [\"orchestration\"]\n");
         let env: HashMap<&str, &str> = [("MOONLIGHT_PLUGINS", " load-balancer, ,orchestration ")].into();
         let s = load(std::slice::from_ref(&f), &|k| env.get(k).map(|v| v.to_string())).unwrap();
-        assert_eq!(s.plugins.enabled, ["load-balancer", "orchestration"], "the environment replaces the list");
+        assert_eq!(
+            s.plugins.enabled,
+            ["load-balancer", "orchestration"],
+            "the environment replaces the list"
+        );
         assert_eq!(load(&[f], &no_env).unwrap().plugins.enabled, ["orchestration"]);
     }
 
     #[test]
     fn websso_is_off_by_default_and_validated_when_on() {
         let c = parse("").unwrap();
-        assert_eq!((c.websso, c.login.websso_choices.len()), (None, 0), "password sign-in only by default");
+        assert_eq!(
+            (c.websso, c.login.websso_choices.len()),
+            (None, 0),
+            "password sign-in only by default"
+        );
         let off = parse("[websso]\nchoices = [{ id = \"bad id\" }]\n").unwrap();
         assert_eq!(off.websso, None, "the section is ignored while disabled");
-        let on = |rest: &str| parse(&format!("[session]\npublic_url = \"https://cloud.example.com/x\"\n[websso]\nenabled = true\n{rest}"));
+        let on = |rest: &str| {
+            parse(&format!(
+                "[session]\npublic_url = \"https://cloud.example.com/x\"\n[websso]\nenabled = true\n{rest}"
+            ))
+        };
         let full = on(concat!(
             "choices = [{ id = \"credentials\" }, { id = \"oidc\", label = \" OpenID Connect \" }, { id = \"acme\", label = \"ACME\" }]\n",
             "initial_choice = \"oidc\"\n",
@@ -1141,7 +1576,12 @@ mod tests {
             "[websso.idp_mapping]\nacme = { idp = \"acme\", protocol = \"openid\" }\n",
         ))
         .unwrap();
-        let ids: Vec<_> = full.login.websso_choices.iter().map(|c| (c.id.as_str(), c.label.as_str())).collect();
+        let ids: Vec<_> = full
+            .login
+            .websso_choices
+            .iter()
+            .map(|c| (c.id.as_str(), c.label.as_str()))
+            .collect();
         assert_eq!(ids, [("credentials", ""), ("oidc", "OpenID Connect"), ("acme", "ACME")]);
         assert_eq!(full.login.websso_initial, "oidc");
         let ws = full.websso.unwrap();
@@ -1152,44 +1592,84 @@ mod tests {
             "origin = public_url's origin + /auth/websso; [websso] keystone_url wins"
         );
         let short = on("choices = [{ id = \"saml2\" }]\n").unwrap();
-        assert_eq!(short.login.websso_initial, "saml2", "the first choice when initial_choice is unset");
-        assert!(short.websso.unwrap().start_url("saml2").unwrap().starts_with("https://k/v3/auth/OS-FEDERATION/websso/saml2?"), "[keystone] url by default");
+        assert_eq!(
+            short.login.websso_initial, "saml2",
+            "the first choice when initial_choice is unset"
+        );
+        assert!(
+            short
+                .websso
+                .unwrap()
+                .start_url("saml2")
+                .unwrap()
+                .starts_with("https://k/v3/auth/OS-FEDERATION/websso/saml2?"),
+            "[keystone] url by default"
+        );
         let err = |rest: &str| on(rest).unwrap_err();
-        assert!(parse("[websso]\nenabled = true\nchoices = [{ id = \"oidc\" }]\n").unwrap_err().contains("public_url"), "no origin to send the token back to");
+        assert!(
+            parse("[websso]\nenabled = true\nchoices = [{ id = \"oidc\" }]\n")
+                .unwrap_err()
+                .contains("public_url"),
+            "no origin to send the token back to"
+        );
         assert!(err("").contains("at least one federation protocol"));
         assert!(err("choices = [{ id = \"credentials\" }]\n").contains("at least one federation protocol"));
         assert!(err("choices = [{ id = \"oidc\" }, { id = \"oidc\" }]\n").contains("twice"));
         assert!(err("choices = [{ id = \"o/idc\" }]\n").contains("not a valid ID"));
         assert!(err("choices = [{ id = \"oidc\" }]\ninitial_choice = \"saml2\"\n").contains("initial_choice"));
         assert!(err("choices = [{ id = \"oidc\" }]\nkeystone_url = \"ftp://k\"\n").contains("keystone_url"));
-        assert!(err("choices = [{ id = \"oidc\" }]\n[websso.idp_mapping]\ncredentials = { idp = \"a\", protocol = \"b\" }\n").contains("not a federation choice"));
-        assert!(err("choices = [{ id = \"oidc\" }]\n[websso.idp_mapping]\noidc = { idp = \" \", protocol = \"b\" }\n").contains("cannot be empty"));
+        assert!(
+            err(
+                "choices = [{ id = \"oidc\" }]\n[websso.idp_mapping]\ncredentials = { idp = \"a\", protocol = \"b\" }\n"
+            )
+            .contains("not a federation choice")
+        );
+        assert!(
+            err("choices = [{ id = \"oidc\" }]\n[websso.idp_mapping]\noidc = { idp = \" \", protocol = \"b\" }\n")
+                .contains("cannot be empty")
+        );
     }
 
     #[test]
     fn url_settings_are_optional_but_must_be_http() {
         assert_eq!(url_setting("X", None), Ok(None));
         assert_eq!(url_setting("X", Some("  ")), Ok(None));
-        assert_eq!(url_setting("X", Some(" https://help.example/ ")), Ok(Some("https://help.example/".into())));
+        assert_eq!(
+            url_setting("X", Some(" https://help.example/ ")),
+            Ok(Some("https://help.example/".into()))
+        );
         assert!(url_setting("X", Some("javascript:alert(1)")).is_err());
         assert!(url_setting("X", Some("https://a b")).is_err());
     }
 
     #[test]
     fn the_cookie_key_is_never_printed() {
-        let s = Session { cookie_key: Some("c2VjcmV0".into()), ..Default::default() };
+        let s = Session {
+            cookie_key: Some("c2VjcmV0".into()),
+            ..Default::default()
+        };
         assert!(!format!("{s:?}").contains("c2VjcmV0"));
     }
 
     #[test]
     fn public_url_becomes_an_origin() {
         let o = |u| super::origin_of("u", u).unwrap();
-        assert_eq!(o("https://Cloud.Example.com/dashboard/?x=1"), "https://cloud.example.com");
+        assert_eq!(
+            o("https://Cloud.Example.com/dashboard/?x=1"),
+            "https://cloud.example.com"
+        );
         assert_eq!(o("http://10.0.0.5:3000"), "http://10.0.0.5:3000");
-        assert_eq!(o("https://cloud.example:443/"), "https://cloud.example", "default port dropped, as browsers do");
+        assert_eq!(
+            o("https://cloud.example:443/"),
+            "https://cloud.example",
+            "default port dropped, as browsers do"
+        );
         assert_eq!(o("http://cloud.example:80"), "http://cloud.example");
-        assert_eq!(o("https://admin:pw@CLOUD.example:8443/x"), "https://cloud.example:8443", "user info dropped");
+        assert_eq!(
+            o("https://admin:pw@CLOUD.example:8443/x"),
+            "https://cloud.example:8443",
+            "user info dropped"
+        );
         assert!(super::origin_of("u", "https://").unwrap_err().starts_with("u:"));
     }
-
 }

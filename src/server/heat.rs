@@ -7,38 +7,62 @@
 use openstack_sdk::AsyncOpenStack;
 use serde_json::Value;
 
-use super::actions::{stack_body, template_body, Exec, JsonRequest};
+use super::actions::{Exec, JsonRequest, stack_body, template_body};
 use crate::model::*;
 
 type R<T> = Result<T, AppError>;
 
 /// `POST validate` with the template and environment.
 pub fn validate_request(src: &TemplateSource) -> R<JsonRequest> {
-    Ok(JsonRequest::orchestration(http::Method::POST, "validate", Some(Value::Object(template_body(src)?))))
+    Ok(JsonRequest::orchestration(
+        http::Method::POST,
+        "validate",
+        Some(Value::Object(template_body(src)?)),
+    ))
 }
 
 /// `POST stacks/preview` with the same body as a create.
 pub fn preview_request(spec: &StackSpec) -> R<JsonRequest> {
-    Ok(JsonRequest::orchestration(http::Method::POST, "stacks/preview", Some(stack_body(spec, true)?)))
+    Ok(JsonRequest::orchestration(
+        http::Method::POST,
+        "stacks/preview",
+        Some(stack_body(spec, true)?),
+    ))
 }
 
 /// A template's parameters: from Heat, or (dry-run, or a URL Heat must fetch)
 /// read from the text.
-pub async fn validate(mode: WriteMode, os: Option<&AsyncOpenStack>, src: &TemplateSource) -> R<ConsoleReply<TemplateInfo>> {
+pub async fn validate(
+    mode: WriteMode,
+    os: Option<&AsyncOpenStack>,
+    src: &TemplateSource,
+) -> R<ConsoleReply<TemplateInfo>> {
     let mut x = Exec::new(mode, os);
     let data = match x.call(validate_request(src)?).await? {
         Some(v) => validate_info(&v),
         None => local_info(&src.template),
     };
-    Ok(ConsoleReply { mode: x.mode(), requests: x.requests(), data: Some(data) })
+    Ok(ConsoleReply {
+        mode: x.mode(),
+        requests: x.requests(),
+        data: Some(data),
+    })
 }
 
 /// The resources the stack would create; `None` in dry-run.
-pub async fn preview(mode: WriteMode, os: Option<&AsyncOpenStack>, spec: &StackSpec) -> R<ConsoleReply<Vec<PreviewResource>>> {
+pub async fn preview(
+    mode: WriteMode,
+    os: Option<&AsyncOpenStack>,
+    spec: &StackSpec,
+) -> R<ConsoleReply<Vec<PreviewResource>>> {
     let mut x = Exec::new(mode, os);
     let reply = x.call(preview_request(spec)?).await?;
     x.hide_params(&spec.hidden);
-    Ok(ConsoleReply { mode: x.mode(), requests: x.requests(), data: reply.map(|v| preview_resources(&v)) })
+    Ok(ConsoleReply {
+        mode: x.mode(),
+        requests: x.requests(),
+        data: reply.map(|v| preview_resources(&v)),
+    })
 }
 
 /// A JSON or YAML scalar as text; lists of scalars joined with commas (Heat's
@@ -70,7 +94,12 @@ fn kind(t: &str) -> String {
 /// Parameters follow `ParameterGroups`, then the rest by name (the JSON map loses
 /// the template's order).
 pub fn validate_info(v: &Value) -> TemplateInfo {
-    let s = |x: &Value, k: &str| x.get(k).and_then(Value::as_str).map(str::to_string).filter(|t| !t.is_empty());
+    let s = |x: &Value, k: &str| {
+        x.get(k)
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|t| !t.is_empty())
+    };
     let empty = serde_json::Map::new();
     let params = v.get("Parameters").and_then(Value::as_object).unwrap_or(&empty);
     let mut order: Vec<String> = v
@@ -78,7 +107,12 @@ pub fn validate_info(v: &Value) -> TemplateInfo {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .flat_map(|g| g.get("parameters").and_then(Value::as_array).cloned().unwrap_or_default())
+        .flat_map(|g| {
+            g.get("parameters")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        })
         .filter_map(|n| n.as_str().map(str::to_string))
         .filter(|n| params.contains_key(n))
         .collect();
@@ -90,19 +124,28 @@ pub fn validate_info(v: &Value) -> TemplateInfo {
         .filter_map(|name| {
             let p = params.get(&name)?;
             // `NoEcho` is the string "true" in most releases, a boolean in some.
-            let hidden = matches!(p.get("NoEcho"), Some(Value::Bool(true))) || s(p, "NoEcho").is_some_and(|x| x.eq_ignore_ascii_case("true"));
+            let hidden = matches!(p.get("NoEcho"), Some(Value::Bool(true)))
+                || s(p, "NoEcho").is_some_and(|x| x.eq_ignore_ascii_case("true"));
             Some(TemplateParam {
                 label: s(p, "Label").filter(|l| *l != name),
                 description: s(p, "Description"),
                 kind: kind(&s(p, "Type").unwrap_or_default()),
                 default: p.get("Default").and_then(text),
                 hidden,
-                allowed: p.get("AllowedValues").and_then(Value::as_array).map(|a| a.iter().filter_map(text).collect()).unwrap_or_default(),
+                allowed: p
+                    .get("AllowedValues")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(text).collect())
+                    .unwrap_or_default(),
                 name,
             })
         })
         .collect();
-    TemplateInfo { description: s(v, "Description"), params, local: false }
+    TemplateInfo {
+        description: s(v, "Description"),
+        params,
+        local: false,
+    }
 }
 
 /// The parameters of a HOT (or CFN) template read from its text, in template
@@ -116,15 +159,29 @@ pub fn local_info(template: &str) -> TemplateInfo {
             Yaml::Integer(i) => Value::from(*i),
             Yaml::Boolean(b) => Value::Bool(*b),
             Yaml::Array(a) => Value::Array(a.iter().map(json).collect()),
-            Yaml::Hash(h) => Value::Object(h.iter().filter_map(|(k, v)| Some((k.as_str()?.to_string(), json(v)))).collect()),
+            Yaml::Hash(h) => Value::Object(
+                h.iter()
+                    .filter_map(|(k, v)| Some((k.as_str()?.to_string(), json(v))))
+                    .collect(),
+            ),
             _ => Value::Null,
         }
     }
-    let Some(doc) = YamlLoader::load_from_str(template).ok().and_then(|d| d.into_iter().next()) else {
-        return TemplateInfo { local: true, ..TemplateInfo::default() };
+    let Some(doc) = YamlLoader::load_from_str(template)
+        .ok()
+        .and_then(|d| d.into_iter().next())
+    else {
+        return TemplateInfo {
+            local: true,
+            ..TemplateInfo::default()
+        };
     };
     let hot = !doc["heat_template_version"].is_badvalue();
-    let (params_key, desc_key) = if hot { ("parameters", "description") } else { ("Parameters", "Description") };
+    let (params_key, desc_key) = if hot {
+        ("parameters", "description")
+    } else {
+        ("Parameters", "Description")
+    };
     let params = match &doc[params_key] {
         Yaml::Hash(h) => h
             .iter()
@@ -133,7 +190,11 @@ pub fn local_info(template: &str) -> TemplateInfo {
                 let p = json(p);
                 let g = |hot_key: &str, cfn_key: &str| p.get(if hot { hot_key } else { cfn_key }).cloned();
                 let allowed = if hot {
-                    p.get("constraints").and_then(Value::as_array).into_iter().flatten().find_map(|c| c.get("allowed_values")?.as_array().cloned())
+                    p.get("constraints")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .find_map(|c| c.get("allowed_values")?.as_array().cloned())
                 } else {
                     p.get("AllowedValues").and_then(Value::as_array).cloned()
                 };
@@ -155,7 +216,11 @@ pub fn local_info(template: &str) -> TemplateInfo {
             .collect(),
         _ => vec![],
     };
-    TemplateInfo { description: doc[desc_key].as_str().map(str::to_string), params, local: true }
+    TemplateInfo {
+        description: doc[desc_key].as_str().map(str::to_string),
+        params,
+        local: true,
+    }
 }
 
 /// `stacks/preview`'s resources; nested stacks come as nested lists.
@@ -165,8 +230,16 @@ pub fn preview_resources(v: &Value) -> Vec<PreviewResource> {
             match x {
                 Value::Array(a) => walk(a, depth + 1, out),
                 Value::Object(_) => out.push(PreviewResource {
-                    name: x.get("resource_name").and_then(Value::as_str).unwrap_or_default().to_string(),
-                    kind: x.get("resource_type").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    name: x
+                        .get("resource_name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    kind: x
+                        .get("resource_type")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     depth,
                 }),
                 _ => {}
@@ -175,7 +248,15 @@ pub fn preview_resources(v: &Value) -> Vec<PreviewResource> {
     }
     let stack = v.get("stack").unwrap_or(v);
     let mut out = vec![];
-    walk(stack.get("resources").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]), 0, &mut out);
+    walk(
+        stack
+            .get("resources")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]),
+        0,
+        &mut out,
+    );
     out
 }
 
@@ -207,7 +288,11 @@ resources: {}
 "#;
 
     fn src(t: &str) -> TemplateSource {
-        TemplateSource { template: t.into(), url: None, environment: None }
+        TemplateSource {
+            template: t.into(),
+            url: None,
+            environment: None,
+        }
     }
 
     #[test]
@@ -220,9 +305,16 @@ resources: {}
         assert_eq!(i.params[0].allowed, ["m1.small", "m1.large"]);
         assert_eq!(i.params[0].label.as_deref(), Some("Flavor"));
         assert!(i.params[1].hidden && i.params[1].default.is_none());
-        assert_eq!((i.params[2].kind.as_str(), i.params[2].default.as_deref()), ("comma_delimited_list", Some("80,443")));
+        assert_eq!(
+            (i.params[2].kind.as_str(), i.params[2].default.as_deref()),
+            ("comma_delimited_list", Some("80,443"))
+        );
         assert_eq!(i.params[3].default.as_deref(), Some("2"));
-        assert_eq!(local_info("not: [valid").params, vec![], "Heat reports the error when sent");
+        assert_eq!(
+            local_info("not: [valid").params,
+            vec![],
+            "Heat reports the error when sent"
+        );
     }
 
     #[test]
@@ -242,16 +334,25 @@ resources: {}
         assert_eq!(names, ["flavor", "count", "ports", "zeta"]);
         assert_eq!(i.params[3].label, None, "a label equal to the name adds nothing");
         assert!(i.params[3].hidden && !i.params[0].hidden, "NoEcho is a string");
-        assert_eq!((i.params[1].kind.as_str(), i.params[1].default.as_deref()), ("number", Some("2")));
+        assert_eq!(
+            (i.params[1].kind.as_str(), i.params[1].default.as_deref()),
+            ("number", Some("2"))
+        );
         assert_eq!(i.params[2].kind, "comma_delimited_list");
     }
 
     #[tokio::test]
     async fn dry_run_previews_validate_and_reads_the_template() {
         let r = validate(WriteMode::DryRun, None, &src(HOT)).await.unwrap();
-        assert_eq!((r.requests[0].method.as_str(), r.requests[0].path.as_str()), ("POST", "/validate"));
+        assert_eq!(
+            (r.requests[0].method.as_str(), r.requests[0].path.as_str()),
+            ("POST", "/validate")
+        );
         assert_eq!(r.data.unwrap().params.len(), 4, "parameters read locally");
-        assert!(validate(WriteMode::Off, None, &src(HOT)).await.is_err(), "a POST: refused with writes off");
+        assert!(
+            validate(WriteMode::Off, None, &src(HOT)).await.is_err(),
+            "a POST: refused with writes off"
+        );
     }
 
     #[tokio::test]
@@ -264,7 +365,10 @@ resources: {}
             ..StackSpec::default()
         };
         let r = preview(WriteMode::DryRun, None, &spec).await.unwrap();
-        assert_eq!((r.requests[0].method.as_str(), r.requests[0].path.as_str(), r.data), ("POST", "/stacks/preview", None));
+        assert_eq!(
+            (r.requests[0].method.as_str(), r.requests[0].path.as_str(), r.data),
+            ("POST", "/stacks/preview", None)
+        );
         let body: Value = serde_json::from_str(r.requests[0].body.as_deref().unwrap()).unwrap();
         assert_eq!(body["parameters"]["db_password"], "********");
         assert_eq!(body["stack_name"], "web");
@@ -276,7 +380,13 @@ resources: {}
             {"resource_name": "server", "resource_type": "OS::Nova::Server"},
             [{"resource_name": "0", "resource_type": "OS::Cinder::Volume"}]
         ]}}));
-        let rows: Vec<_> = out.iter().map(|r| (r.name.as_str(), r.kind.as_str(), r.depth)).collect();
-        assert_eq!(rows, [("server", "OS::Nova::Server", 0), ("0", "OS::Cinder::Volume", 1)]);
+        let rows: Vec<_> = out
+            .iter()
+            .map(|r| (r.name.as_str(), r.kind.as_str(), r.depth))
+            .collect();
+        assert_eq!(
+            rows,
+            [("server", "OS::Nova::Server", 0), ("0", "OS::Cinder::Volume", 1)]
+        );
     }
 }

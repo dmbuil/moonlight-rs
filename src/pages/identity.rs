@@ -8,22 +8,21 @@ use leptos::prelude::*;
 
 use std::sync::Arc;
 
-use super::details::{param, Card, DetailHeader, Kv};
+use super::details::Tabs;
+use super::details::{Card, DetailHeader, Kv, param};
 use super::lists::link;
 use crate::api::*;
-use super::details::Tabs;
-use crate::components::dialog::{caps, data_version, BulkButton, CreateButton, MenuItem, RowActions};
-use crate::components::ops;
+use crate::components::dialog::{BulkButton, CreateButton, MenuItem, RowActions, caps, data_version};
 use crate::components::layout::set_active_project;
-use crate::components::table::{col, Col, DataTable, Select};
-use crate::components::widgets::{dash, render, utc_time, PageHeader, Skeleton};
-use crate::i18n::{t, use_i18n, Lang, K};
+use crate::components::ops;
+use crate::components::table::{Col, DataTable, Select, col};
+use crate::components::widgets::{PageHeader, Skeleton, dash, render, utc_time};
+use crate::i18n::{K, Lang, t, use_i18n};
 use crate::model::*;
 
 fn yes_no(l: Lang, b: bool) -> &'static str {
     t(l, if b { K::Yes } else { K::No })
 }
-
 
 /// *Set as Active Project* on the user's projects other than the current one.
 fn project_items(l: Lang, p: &IdentityProject) -> Vec<MenuItem> {
@@ -31,7 +30,9 @@ fn project_items(l: Lang, p: &IdentityProject) -> Vec<MenuItem> {
         return vec![];
     }
     let id = p.id.clone();
-    vec![MenuItem::action(t(l, K::SetActiveProject), move || set_active_project(id.clone()))]
+    vec![MenuItem::action(t(l, K::SetActiveProject), move || {
+        set_active_project(id.clone())
+    })]
 }
 
 fn project_columns() -> Vec<Col<IdentityProject>> {
@@ -47,7 +48,10 @@ fn project_columns() -> Vec<Col<IdentityProject>> {
         })
         .sort_text(|p| p.name.clone()),
         col(K::Description, |p: &IdentityProject, _| dash(p.description.clone())),
-        col(K::ProjectId, |p: &IdentityProject, _| view! { <span class="mono">{p.id.clone()}</span> }),
+        col(
+            K::ProjectId,
+            |p: &IdentityProject, _| view! { <span class="mono">{p.id.clone()}</span> },
+        ),
         col(K::DomainName, |p: &IdentityProject, _| p.domain.clone()).sort_text(|p| p.domain.clone()),
         col(K::EnabledCol, |p: &IdentityProject, l| yes_no(l, p.enabled)),
         col(K::Actions, |p: &IdentityProject, l| {
@@ -69,7 +73,10 @@ pub fn IdentityProjectsPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_identity_projects());
     let columns: StoredValue<Vec<Col<IdentityProject>>> = StoredValue::new(project_columns());
-    let select = Select { key: |p: &IdentityProject| (!p.current).then(|| (p.id.clone(), p.name.clone())), picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: |p: &IdentityProject| (!p.current).then(|| (p.id.clone(), p.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
     let make: fn(String) -> OsAction = |id| OsAction::ProjectDelete { id };
     let admin = move || needs::IDENTITY_ADMIN.met(&caps());
     view! {
@@ -96,14 +103,24 @@ pub fn IdentityProjectsPage() -> impl IntoView {
 
 fn user_columns() -> Vec<Col<IdentityUser>> {
     vec![
-        col(K::UserName, |u: &IdentityUser, _| link(format!("/identity/users/{}", u.id), u.name.clone())).sort_text(|u| u.name.clone()),
+        col(K::UserName, |u: &IdentityUser, _| {
+            link(format!("/identity/users/{}", u.id), u.name.clone())
+        })
+        .sort_text(|u| u.name.clone()),
         col(K::Description, |u: &IdentityUser, _| dash(u.description.clone())),
         col(K::Email, |u: &IdentityUser, _| dash(u.email.clone())),
-        col(K::UserId, |u: &IdentityUser, _| view! { <span class="mono">{u.id.clone()}</span> }),
+        col(
+            K::UserId,
+            |u: &IdentityUser, _| view! { <span class="mono">{u.id.clone()}</span> },
+        ),
         col(K::EnabledCol, |u: &IdentityUser, l| yes_no(l, u.enabled)),
         col(K::DomainName, |u: &IdentityUser, _| u.domain.clone()).sort_text(|u| u.domain.clone()),
         col(K::Actions, |u: &IdentityUser, l| {
-            let items = if needs::IDENTITY_ADMIN.met(&caps()) { ops::user_items(l, u, None) } else { vec![] };
+            let items = if needs::IDENTITY_ADMIN.met(&caps()) {
+                ops::user_items(l, u, None)
+            } else {
+                vec![]
+            };
             view! { <RowActions items=items/> }
         })
         .class("actions"),
@@ -117,7 +134,10 @@ pub fn IdentityUsersPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_identity_users());
     let columns: StoredValue<Vec<Col<IdentityUser>>> = StoredValue::new(user_columns());
-    let select = Select { key: |u: &IdentityUser| Some((u.id.clone(), u.name.clone())), picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: |u: &IdentityUser| Some((u.id.clone(), u.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
     let make: fn(String) -> OsAction = |id| OsAction::UserDelete { id };
     let admin = move || needs::IDENTITY_ADMIN.met(&caps());
     view! {
@@ -144,11 +164,21 @@ pub fn IdentityUsersPage() -> impl IntoView {
 
 fn group_list_columns() -> Vec<Col<IdentityGroup>> {
     vec![
-        col(K::Name, |g: &IdentityGroup, _| link(format!("/identity/groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone()),
+        col(K::Name, |g: &IdentityGroup, _| {
+            link(format!("/identity/groups/{}", g.id), g.name.clone())
+        })
+        .sort_text(|g| g.name.clone()),
         col(K::Description, |g: &IdentityGroup, _| dash(g.description.clone())),
-        col(K::GroupId, |g: &IdentityGroup, _| view! { <span class="mono">{g.id.clone()}</span> }),
+        col(
+            K::GroupId,
+            |g: &IdentityGroup, _| view! { <span class="mono">{g.id.clone()}</span> },
+        ),
         col(K::DomainName, |g: &IdentityGroup, _| g.domain.clone()),
-        col(K::Actions, |g: &IdentityGroup, l| view! { <RowActions items=ops::group_menu(l, g)/> }).class("actions"),
+        col(
+            K::Actions,
+            |g: &IdentityGroup, l| view! { <RowActions items=ops::group_menu(l, g)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -158,7 +188,10 @@ pub fn IdentityGroupsPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| list_identity_groups());
     let columns: StoredValue<Vec<Col<IdentityGroup>>> = StoredValue::new(group_list_columns());
-    let select = Select { key: |g: &IdentityGroup| Some((g.id.clone(), g.name.clone())), picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: |g: &IdentityGroup| Some((g.id.clone(), g.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
     let make: fn(String) -> OsAction = |id| OsAction::GroupDelete { id };
     view! {
         <PageHeader>
@@ -178,10 +211,21 @@ pub fn IdentityGroupsPage() -> impl IntoView {
 
 fn role_columns() -> Vec<Col<IdentityRole>> {
     vec![
-        col(K::RoleName, |r: &IdentityRole, _| view! { <span class="strong">{r.name.clone()}</span> }).sort_text(|r| r.name.clone()),
-        col(K::RoleId, |r: &IdentityRole, _| view! { <span class="mono">{r.id.clone()}</span> }),
+        col(
+            K::RoleName,
+            |r: &IdentityRole, _| view! { <span class="strong">{r.name.clone()}</span> },
+        )
+        .sort_text(|r| r.name.clone()),
+        col(
+            K::RoleId,
+            |r: &IdentityRole, _| view! { <span class="mono">{r.id.clone()}</span> },
+        ),
         col(K::ImpliedRoles, |r: &IdentityRole, _| dash(Some(r.implies.join(", ")))),
-        col(K::Actions, |r: &IdentityRole, l| view! { <RowActions items=ops::role_items(l, r)/> }).class("actions"),
+        col(
+            K::Actions,
+            |r: &IdentityRole, l| view! { <RowActions items=ops::role_items(l, r)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -194,7 +238,10 @@ pub fn IdentityRolesPage() -> impl IntoView {
     // Built once, outside the view: inline in `view!` closures the column types
     // made type-checking crawl (AGENTS.md §6).
     let columns: StoredValue<Vec<Col<IdentityRole>>> = StoredValue::new(role_columns());
-    let select = Select { key: |r: &IdentityRole| Some((r.id.clone(), r.name.clone())), picked: RwSignal::new(Vec::new()) };
+    let select = Select {
+        key: |r: &IdentityRole| Some((r.id.clone(), r.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
     let make: fn(String) -> OsAction = |id| OsAction::RoleDelete { id };
     view! {
         <PageHeader>
@@ -214,14 +261,32 @@ pub fn IdentityRolesPage() -> impl IntoView {
 
 fn app_credential_columns() -> Vec<Col<AppCredential>> {
     vec![
-        col(K::Name, |a: &AppCredential, _| link(format!("/identity/application_credentials/{}", a.id), a.name.clone())).sort_text(|a| a.name.clone()),
-        col(K::ProjectId, |a: &AppCredential, _| view! { <span class="mono">{dash(a.project_id.clone())}</span> }),
+        col(K::Name, |a: &AppCredential, _| {
+            link(format!("/identity/application_credentials/{}", a.id), a.name.clone())
+        })
+        .sort_text(|a| a.name.clone()),
+        col(
+            K::ProjectId,
+            |a: &AppCredential, _| view! { <span class="mono">{dash(a.project_id.clone())}</span> },
+        ),
         col(K::Description, |a: &AppCredential, _| dash(a.description.clone())),
-        col(K::Expiration, |a: &AppCredential, l| a.expires_at.as_deref().map(utc_time).unwrap_or_else(|| t(l, K::Never).to_string()))
-            .sort_text(|a| a.expires_at.clone().unwrap_or_default()),
-        col(K::Id, |a: &AppCredential, _| view! { <span class="mono">{a.id.clone()}</span> }),
+        col(K::Expiration, |a: &AppCredential, l| {
+            a.expires_at
+                .as_deref()
+                .map(utc_time)
+                .unwrap_or_else(|| t(l, K::Never).to_string())
+        })
+        .sort_text(|a| a.expires_at.clone().unwrap_or_default()),
+        col(
+            K::Id,
+            |a: &AppCredential, _| view! { <span class="mono">{a.id.clone()}</span> },
+        ),
         col(K::Roles, |a: &AppCredential, _| a.roles.join(", ")),
-        col(K::Actions, |a: &AppCredential, l| view! { <RowActions items=ops::app_credential_items(l, a)/> }).class("actions"),
+        col(
+            K::Actions,
+            |a: &AppCredential, l| view! { <RowActions items=ops::app_credential_items(l, a)/> },
+        )
+        .class("actions"),
     ]
 }
 
@@ -234,8 +299,14 @@ pub fn AppCredentialsPage() -> impl IntoView {
     // Built once, outside the view: inline in `view!` closures the column types
     // made type-checking crawl (AGENTS.md §6).
     let columns: StoredValue<Vec<Col<AppCredential>>> = StoredValue::new(app_credential_columns());
-    let select = Select { key: |a: &AppCredential| Some((a.id.clone(), a.name.clone())), picked: RwSignal::new(Vec::new()) };
-    let make: fn(String) -> OsAction = |id| OsAction::AppCredentialDelete { user_id: String::new(), id };
+    let select = Select {
+        key: |a: &AppCredential| Some((a.id.clone(), a.name.clone())),
+        picked: RwSignal::new(Vec::new()),
+    };
+    let make: fn(String) -> OsAction = |id| OsAction::AppCredentialDelete {
+        user_id: String::new(),
+        id,
+    };
     view! {
         <PageHeader>
             <BulkButton label=K::DeleteAppCredentials picked=select.picked
@@ -298,7 +369,9 @@ fn project_overview(d: &IdentityProjectDetail) -> AnyView {
     let quotas_href = if current {
         Some("/project/quotas".to_string())
     } else {
-        needs::ADMIN.met(&caps()).then(|| format!("/identity/projects/{}/quotas", p.id))
+        needs::ADMIN
+            .met(&caps())
+            .then(|| format!("/identity/projects/{}/quotas", p.id))
     };
     let domain_id = dash(d.domain_id.clone());
     view! {
@@ -321,19 +394,38 @@ fn project_overview(d: &IdentityProjectDetail) -> AnyView {
 
 fn member_columns() -> Vec<Col<ProjectMember>> {
     vec![
-        col(K::UserName, |m: &ProjectMember, _| link(format!("/identity/users/{}", m.id), m.name.clone())).sort_text(|m| m.name.clone()),
-        col(K::UserId, |m: &ProjectMember, _| view! { <span class="mono">{m.id.clone()}</span> }),
+        col(K::UserName, |m: &ProjectMember, _| {
+            link(format!("/identity/users/{}", m.id), m.name.clone())
+        })
+        .sort_text(|m| m.name.clone()),
+        col(
+            K::UserId,
+            |m: &ProjectMember, _| view! { <span class="mono">{m.id.clone()}</span> },
+        ),
         col(K::Roles, |m: &ProjectMember, _| dash(Some(m.roles.join(", ")))),
         col(K::RolesFromGroups, |m: &ProjectMember, _| {
-            dash(Some(m.group_roles.iter().map(|(r, g)| format!("{r} ({g})")).collect::<Vec<_>>().join(", ")))
+            dash(Some(
+                m.group_roles
+                    .iter()
+                    .map(|(r, g)| format!("{r} ({g})"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ))
         }),
     ]
 }
 
 fn group_columns() -> Vec<Col<ProjectGroup>> {
     vec![
-        col(K::Name, |g: &ProjectGroup, _| view! { <span class="strong">{g.name.clone()}</span> }).sort_text(|g| g.name.clone()),
-        col(K::GroupId, |g: &ProjectGroup, _| view! { <span class="mono">{g.id.clone()}</span> }),
+        col(
+            K::Name,
+            |g: &ProjectGroup, _| view! { <span class="strong">{g.name.clone()}</span> },
+        )
+        .sort_text(|g| g.name.clone()),
+        col(
+            K::GroupId,
+            |g: &ProjectGroup, _| view! { <span class="mono">{g.id.clone()}</span> },
+        ),
         col(K::Roles, |g: &ProjectGroup, _| g.roles.join(", ")),
     ]
 }
@@ -382,7 +474,11 @@ fn user_overview(d: &IdentityUserDetail) -> AnyView {
     let u = d.user.clone();
     let (enabled, locked) = (u.enabled, d.lock_password);
     let domain_id = dash(d.domain_id.clone());
-    let expires = d.password_expires_at.as_deref().map(utc_time).unwrap_or_else(|| "-".into());
+    let expires = d
+        .password_expires_at
+        .as_deref()
+        .map(utc_time)
+        .unwrap_or_else(|| "-".into());
     let primary = match &d.primary_project {
         Some(p) => link(format!("/identity/projects/{}", p.id), p.name.clone()),
         None => "-".into_any(),
@@ -411,7 +507,14 @@ fn user_overview(d: &IdentityUserDetail) -> AnyView {
 fn assignment_columns() -> Vec<Col<RoleAssignmentRow>> {
     vec![
         col(K::ProjectOrDomain, |a: &RoleAssignmentRow, l| {
-            let kind = t(l, match a.scope_kind.as_str() { "domain" => K::Domain, "system" => K::System, _ => K::Project });
+            let kind = t(
+                l,
+                match a.scope_kind.as_str() {
+                    "domain" => K::Domain,
+                    "system" => K::System,
+                    _ => K::Project,
+                },
+            );
             let label = format!("{kind}: {}", a.scope);
             match &a.project_id {
                 Some(p) => link(format!("/identity/projects/{p}"), label),
@@ -426,8 +529,14 @@ fn assignment_columns() -> Vec<Col<RoleAssignmentRow>> {
 
 fn ref_group_columns() -> Vec<Col<Ref>> {
     vec![
-        col(K::Name, |g: &Ref, _| link(format!("/identity/groups/{}", g.id), g.name.clone())).sort_text(|g| g.name.clone()),
-        col(K::GroupId, |g: &Ref, _| view! { <span class="mono">{g.id.clone()}</span> }),
+        col(K::Name, |g: &Ref, _| {
+            link(format!("/identity/groups/{}", g.id), g.name.clone())
+        })
+        .sort_text(|g| g.name.clone()),
+        col(
+            K::GroupId,
+            |g: &Ref, _| view! { <span class="mono">{g.id.clone()}</span> },
+        ),
     ]
 }
 
@@ -468,9 +577,15 @@ pub fn IdentityGroupDetailPage() -> impl IntoView {
 
 fn group_member_columns() -> Vec<Col<IdentityUser>> {
     vec![
-        col(K::UserName, |u: &IdentityUser, _| link(format!("/identity/users/{}", u.id), u.name.clone())).sort_text(|u| u.name.clone()),
+        col(K::UserName, |u: &IdentityUser, _| {
+            link(format!("/identity/users/{}", u.id), u.name.clone())
+        })
+        .sort_text(|u| u.name.clone()),
         col(K::Email, |u: &IdentityUser, _| dash(u.email.clone())),
-        col(K::UserId, |u: &IdentityUser, _| view! { <span class="mono">{u.id.clone()}</span> }),
+        col(
+            K::UserId,
+            |u: &IdentityUser, _| view! { <span class="mono">{u.id.clone()}</span> },
+        ),
         col(K::EnabledCol, |u: &IdentityUser, l| yes_no(l, u.enabled)),
     ]
 }
@@ -517,23 +632,38 @@ pub fn AppCredentialDetailPage() -> impl IntoView {
 fn access_rule_columns() -> Vec<Col<AccessRule>> {
     vec![
         col(K::Service, |r: &AccessRule, _| r.service.clone()),
-        col(K::Method, |r: &AccessRule, _| view! { <span class="mono">{r.method.clone()}</span> }),
-        col(K::Path, |r: &AccessRule, _| view! { <span class="mono">{r.path.clone()}</span> }),
+        col(
+            K::Method,
+            |r: &AccessRule, _| view! { <span class="mono">{r.method.clone()}</span> },
+        ),
+        col(
+            K::Path,
+            |r: &AccessRule, _| view! { <span class="mono">{r.path.clone()}</span> },
+        ),
     ]
 }
 
 fn domain_columns() -> Vec<Col<IdentityDomain>> {
     vec![
-        col(K::Name, |d: &IdentityDomain, _| view! { <span class:strong=d.context>{d.name.clone()}</span> }).sort_text(|d| d.name.clone()),
+        col(
+            K::Name,
+            |d: &IdentityDomain, _| view! { <span class:strong=d.context>{d.name.clone()}</span> },
+        )
+        .sort_text(|d| d.name.clone()),
         col(K::Description, |d: &IdentityDomain, _| dash(d.description.clone())),
-        col(K::DomainId, |d: &IdentityDomain, _| view! { <span class="mono">{d.id.clone()}</span> }),
+        col(
+            K::DomainId,
+            |d: &IdentityDomain, _| view! { <span class="mono">{d.id.clone()}</span> },
+        ),
         col(K::EnabledCol, |d: &IdentityDomain, l| yes_no(l, d.enabled)),
         col(K::Actions, |d: &IdentityDomain, l| {
             let items = if d.context {
                 vec![]
             } else {
                 let id = d.id.clone();
-                vec![MenuItem::action(t(l, K::SetDomainContext), move || switch_domain_context(Some(id.clone())))]
+                vec![MenuItem::action(t(l, K::SetDomainContext), move || {
+                    switch_domain_context(Some(id.clone()))
+                })]
             };
             view! { <RowActions items=items/> }
         })

@@ -6,7 +6,7 @@
 
 use leptos::prelude::*;
 
-use crate::i18n::{use_i18n, K};
+use crate::i18n::{K, use_i18n};
 use crate::model::{AssignmentRow, Choice};
 
 /// `actors`: the users or groups that can be added; `roles`: every role (ID →
@@ -37,8 +37,19 @@ pub fn AssignmentRows(
     };
     let add = move |c: Choice| {
         // Horizon gives a new member the `member` role; else the first role.
-        let default = roles.get_untracked().and_then(|rs| rs.iter().find(|r| r.label == "member").or(rs.first()).map(|r| r.value.clone()));
-        rows.update(|r| r.push(AssignmentRow { actor_id: c.value, label: c.label, role_ids: default.into_iter().collect() }));
+        let default = roles.get_untracked().and_then(|rs| {
+            rs.iter()
+                .find(|r| r.label == "member")
+                .or(rs.first())
+                .map(|r| r.value.clone())
+        });
+        rows.update(|r| {
+            r.push(AssignmentRow {
+                actor_id: c.value,
+                label: c.label,
+                role_ids: default.into_iter().collect(),
+            })
+        });
         sync();
     };
     let remove = move |actor: String| {
@@ -48,11 +59,17 @@ pub fn AssignmentRows(
     let available = move || {
         let q = filter.get().to_lowercase();
         let taken: Vec<String> = rows.with(|r| r.iter().map(|x| x.actor_id.clone()).collect());
-        actors.get().map(|a| a.into_iter().filter(|c| !taken.contains(&c.value) && c.label.to_lowercase().contains(q.trim())).collect::<Vec<_>>())
+        actors.get().map(|a| {
+            a.into_iter()
+                .filter(|c| !taken.contains(&c.value) && c.label.to_lowercase().contains(q.trim()))
+                .collect::<Vec<_>>()
+        })
     };
     let total_available = move || {
         let taken: Vec<String> = rows.with(|r| r.iter().map(|x| x.actor_id.clone()).collect());
-        actors.get().map(|a| a.iter().filter(|c| !taken.contains(&c.value)).count())
+        actors
+            .get()
+            .map(|a| a.iter().filter(|c| !taken.contains(&c.value)).count())
     };
 
     // The Allocated/Available picker's layout (`pick.rs`, as in a group's
