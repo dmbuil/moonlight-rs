@@ -20,6 +20,8 @@ moonlight.conf.d/
 # Server logs ([log] in moonlight.conf): they name the cloud's endpoints and users.
 *.log
 moonlight.log*
+# The container's log folder (README, Container image), owned by uid 10001 and unreadable here.
+logs/
 
 # Tool caches.
 .rumdl_cache/
