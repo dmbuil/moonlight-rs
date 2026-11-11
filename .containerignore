@@ -13,6 +13,9 @@ moonlight.conf.d/
 .env.*
 *.log
 moonlight.log*
+# A host folder mounted as /var/log/moonlight (README, Container image): owned by the container's
+# uid 10001, so podman can't read it and the build stops at COPY.
+logs/
 *.bak
 *.orig
 *~
