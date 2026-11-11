@@ -408,6 +408,9 @@ too, so disabling a plugin also closes its API.
 
 ## Web security
 
+[SECURITY.md](SECURITY.md) covers the threat model, every measure with its limits, the accepted
+risks and the deployment checklist. The browser-facing ones, in short:
+
 | Measure                                       | Where                                                                  |
 | --------------------------------------------- | ---------------------------------------------------------------------- |
 | Same-origin check on every non-GET request    | `server::same_origin_only`: `Sec-Fetch-Site`, else `Origin` vs `[session] public_url` or `Host` (roadmap 48) |

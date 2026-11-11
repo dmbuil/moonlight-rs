@@ -114,6 +114,11 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 99 | ✅ 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | — | S | 31 |
 | 100 | ✅ Network Topology: a note instead of the drawing when the project sees too many networks | — | S | 20, 29 |
 | 101 | ✅ Phone view: fold the header's bars and menus into one or two buttons | — | M | 39, 96 |
+| 102 | 🔒 WebSSO login CSRF: the start route becomes a same-origin POST; optional strict origin | P1 | S | 80 |
+| 103 | Tables keep filter, sort and drawers across refetches; keyed rows; debounced search | P2 | M | 46, 88 |
+| 104 | Full lists send a page size of 1000; lookup-cache misses coalesce | P2 | S | 66 |
+| 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
+| 106 | Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -136,7 +141,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 105**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6465,6 +6470,291 @@ hidden today below 720px (`.badge-ro { display: none; }`), must stay visible in 
 **Decided with the user (2026-11-10).** Two buttons for now (☰ *Navigation* and *Account*),
 the fold at the existing 720px breakpoint, and the slim bar shows the project name as well as
 the current place.
+
+## 102. WebSSO login CSRF: the start route becomes a same-origin POST; optional strict origin
+
+**Goal.** Found by the 2026-11-11 security review. The WebSSO callback (`POST /auth/websso`,
+item 80) is the one cross-site POST `same_origin_only` lets through, guarded by the
+`__Host-ml_sso` nonce cookie and `websso::origin_allowed`. Neither guard stops a *login CSRF*
+today, where a victim ends up signed in as the attacker and whatever they then create (a key
+pair, a secret, an application credential) lands in the attacker's project:
+
+- `origin_allowed` accepts `Origin: null` and a missing `Origin`, because Keystone's
+  auto-submit page was seen posting `null` on the test cloud (`Referrer-Policy: no-referrer`).
+  Any attacker page can send `Origin: null` too (a form POST under a `no-referrer` policy), so
+  the origin check adds nothing against a hostile page.
+- The nonce is set by an unauthenticated `GET /auth/websso/start?choice=…`. A hostile page
+  can load that URL in a hidden iframe in the victim's browser: `X-Frame-Options: DENY` stops
+  the frame from rendering, but the `Set-Cookie` (`SameSite=None; Secure`) still lands. The
+  attacker then posts their own unscoped token to the callback with a fresh nonce, and wins.
+
+Fix the planting step, which works in every browser: the nonce must only exist when the user
+submitted Moonlight's own login page. Then offer, as a second layer, a strict origin check
+operators can turn on when their Keystone sends its real `Origin`. The residual risk after
+both is a race against a victim who is at the identity provider at that moment; the design
+allows nothing smaller, since Keystone's POST carries only `token`.
+
+**Implementation.**
+
+1. **Start route as a same-origin POST.** In `main.rs` register `websso::START` with
+   `axum::routing::post`; `websso::start` takes `axum::Form<BTreeMap<String, String>>` and reads
+   `choice` from it (same `303` to `WebSso::start_url`, same `400`/`404`). `same_origin_only`
+   then covers it with no new code: an iframe, image or `window.open` from another site sends
+   `Sec-Fetch-Site: cross-site` (or a foreign `Origin` on old browsers) and gets `403`.
+   `websso::is_callback` keeps exempting only `POST /auth/websso`; a test must assert the start
+   path is *not* exempt.
+2. **Login page.** `pages/login.rs` renders the federated button as an `<a rel="external">`
+   inside the password `ActionForm`. Forms cannot nest and `ActionForm` intercepts submits, so
+   render two sibling forms: the `ActionForm` when the *Authenticate using* choice is
+   `credentials`, else a plain `<form method="post" action=WEBSSO_START>` with
+   `<input type="hidden" name="choice">` bound to the choice signal and the *Sign In* button.
+   `leptos_router` does not intercept plain form submissions (checked: no `submit` handling in
+   0.8), so no `rel="external"` equivalent is needed; verify once in the browser.
+3. **`[websso] strict_origin`** (default `false`): `settings.rs::WebSso`, `websso::WebSso`,
+   `moonlight.conf.example`, `CONFIGURATION.md`. When `true`, `origin_allowed` refuses `null`
+   and a missing header and accepts only `WebSso::keystone_origin()`. Log the `Origin` value
+   of every successful callback at `info` (it is Keystone's, never secret) so an operator can
+   see whether their Keystone sends its origin before turning the setting on. Keep the
+   default off: the test cloud sends `null`.
+4. **Docs.** `websso.rs` module header (it currently says the nonce guards against login
+   CSRF: say what it guards and what remains), the *Web security* table in `ARCHITECTURE.md`,
+   `CONFIGURATION.md`'s `[websso]` section. State the residual race plainly.
+
+**Tests.** `websso.rs`: the start handler's choice-to-redirect logic as a pure function (both
+URL shapes, unknown choice refused) so the handler is thin; `is_callback` exempts only the
+callback; `origin_allowed` with `strict_origin` on and off (`null`, absent, Keystone's,
+another port, another host). `server/mod.rs`: the existing `same_origin` table already covers
+the cross-site `POST` refusal; add a row for `POST /auth/websso/start` with
+`Sec-Fetch-Site: cross-site` and `Sec-Fetch-Dest: iframe`. Settings: the new key's default
+and parsing. Browser (test cloud, which federates): the password form still signs in, the
+federated button reaches the identity provider and back, and a hand-made cross-site form
+posting to the start route gets `403`.
+
+**Open questions.** None. Decided with the user (2026-11-11): both layers, strict origin off
+by default.
+
+## 103. Tables keep filter, sort and drawers across refetches; keyed rows; debounced search
+
+**Goal.** Found by the 2026-11-11 design and performance assessment. Every list page mounts its
+`DataTable` inside the `render(data.get(), …)` closure (`pages/lists.rs`, `pages/instances.rs`,
+`components/pager.rs::paged_table`), and the filter, sort and open-drawer signals are created
+inside `DataTable` itself (`components/table.rs`). So each refetch, which is every `data_version`
+bump after a dialog and every round of `poll_while_busy` (item 46, 5 s), builds a brand-new
+table: the filter text is wiped, the sort returns to default, drawers close, the whole row DOM
+is thrown away and redrawn. Rows are unkeyed (`collect_view` over `visible`), so each keystroke
+in the filter rebuilds every visible row, each with its `RowActions` menu built even while
+closed: a project with a thousand instances rebuilds thousands of buttons per character.
+Horizon keeps the filter and sort while its tables auto-refresh. Expected: typed filter, chosen
+sort and open drawers survive a refetch and a polling round; typing in the filter is smooth on
+large lists; a refetch only touches the rows that changed.
+
+**Implementation.**
+
+1. **Hoist the state.** A `TableState { filter, sort, open }` of `RwSignal`s, created once by the
+   page outside the `render` closure (next to `select`) and passed to `DataTable` as an optional
+   prop; `DataTable` creates its own when none is given, so the detail-page tables
+   (`pages/details.rs`) are untouched. `open` is a `Vec<usize>` of row positions today: key it
+   by the row's key (`Select::key`, or a new `key: fn(&T) -> String` prop for tables without a
+   checkbox column) so a drawer stays open when a refetch reorders rows; `retain_visible` /
+   `toggle_open` become keyed, their unit tests follow.
+2. **Keyed rows.** Render the body with `<For each=… key=…>` over the visible rows so Leptos
+   diffs by key instead of replacing the `<tbody>`; cells are closures of the row, so a changed
+   row re-renders only itself. The cleanest shape is one long-lived table per page fed with
+   `rows: Signal<Vec<T>>` from the resource; if that fights `render`'s `Result` handling, keep
+   the rebuild on *error → ok* transitions only. Measure before/after with the browser
+   performance panel on Instances with polling on.
+3. **Debounce the filter** (~150 ms): the input writes a local signal, a
+   `set_timeout_with_handle` copies it into `filter`; `visible`, the empty state and the
+   `displaying` count keep reading `filter`.
+4. **Lazy menus.** `RowActions` (`components/dialog.rs`) takes a `Vec<MenuItem>` built per row
+   at render time; take a `Fn() -> Vec<MenuItem>` (or a `StoredValue`) and build the items when
+   the menu opens. Every page's actions column changes signature; `rg "RowActions"`.
+5. **Hydration.** The hoisted signals start empty, so the first client render stays identical to
+   the SSR output; check the console for hydration warnings on Instances and Images.
+6. **Verify** (dry-run, dev server): on Instances with a server in a transitional state, type a
+   filter, open a drawer and change the sort, then wait a polling round: all three survive; on
+   Images or Flavors with hundreds of rows, typing is not laggy. Then `cargo nextest` for the
+   keyed helpers.
+
+Open: whether `paged_table` (item 88) needs the same hoisting. Its filter is already a page-level
+query signal, so only the client-side sort and drawers apply there.
+
+## 104. Full lists send a page size of 1000; lookup-cache misses coalesce
+
+**Goal.** Also from the 2026-11-11 assessment. Two server-side fixes that touch almost every
+page:
+
+- `list_all!` / `list_where!` (`server/fetch.rs`) run `paged(ep, Pagination::All)`, and the SDK's
+  `Pagination::page_limit()` returns `usize::MAX` for both variants (`openstack_sdk_core`
+  0.22.8, `api/paged/pagination.rs`), so **no `limit` is sent**: each service answers with its
+  own default page size and the SDK follows `next` links one by one. Glance's default is 25
+  (`limit_param_default`), so two thousand images cost about 80 sequential GETs whenever the
+  lookup cache is cold, inside the 20 s request budget, and `counted` reports the whole list as
+  one call. Nova and Cinder default to 1000 (`osapi_max_limit`), Keystone and Neutron are
+  unpaged unless the operator turns paging on.
+- `cached()` in `fetch.rs` is get-then-insert: a page load plus a polling round, or two tabs,
+  that miss the same key at the same time all fetch the same list.
+
+Expected: a full list takes as few round trips as the service allows; concurrent misses on one
+key share one fetch.
+
+**Implementation.**
+
+1. **Page size.** `const LIST_PAGE: u32 = 1000;` set through the builder: every generated list
+   builder Moonlight uses has `.limit(u32)` (`push_opt("limit", …)` in
+   `openstack-sdk-<service>-0.22.8/src/…/list*.rs`) except availability zones, services,
+   aggregates, limits, roles, role inferences, application credentials, a user's projects and
+   flavor access, which are unpaged anyway. A macro can't probe for a method, so flip the
+   default: `list_all!` / `list_where!` call `builder.limit(LIST_PAGE)` and the nine unpaged
+   modules move to a new `list_unpaged!` (same body, no `limit`). Services clamp a `limit`
+   above their cap (Glance `api_limit_max`, Nova/Cinder `osapi_max_limit`), so 1000 is never
+   rejected. Paging stops on the service's `next` link or an empty page as today
+   (`iter.rs::next_page_from_body`), not on the limit: check Cinder's `volumes_links` (only
+   present once a `limit` is sent) is followed, on the test cloud with a `limit` of 2 in a
+   scratch run.
+2. **Total cap.** `Pagination::Limit(MAX_LIST)` (say 10 000) instead of `All`, so a runaway list
+   stops instead of burning the budget. The SDK truncates silently, so when `len == MAX_LIST`
+   return an `AppError` telling the user the list is too large for this view (Admin lists are
+   paged, item 88; Project panels say so in the error). Open: whether the cap belongs in
+   `[cache]`/`[server]` settings; default yes if it is a hard failure.
+3. **Call count.** `counted` wraps the whole `paged` future, so a paged list stays one call.
+   Either accept it and say so in the chip's tooltip, or add `rows.len().div_ceil(LIST_PAGE)`
+   to `calls` after the fetch as an estimate. Decide while implementing; the first is honest.
+4. **Coalesce misses.** Replace `cached()`'s body with moka's
+   `cache.try_get_with(key, async { fetch.await.map(Arc::new) })`: concurrent callers wait for
+   the first fetch, and an `Err` is not stored. It returns `Result<V, Arc<E>>`; `AppError`
+   (`model.rs`) is `Clone + Send + Sync`, so unwrap it with
+   `Arc::try_unwrap(e).unwrap_or_else(|a| (*a).clone())`. `websso.rs` already uses `get_with`
+   for the nonce. Test: a fetch future
+   that increments an `AtomicUsize`, two `cached()` calls on one key under `tokio::join!`, the
+   counter reads 1 and both get the same `Arc`.
+5. **Docs.** ARCHITECTURE.md's `fetch.rs` paragraph (lookups cache, page size), AGENTS.md
+   gotcha under *gtema `openstack_sdk`*: `Pagination::All` sends no `limit`, set it on the
+   builder. `rumdl fmt .` and `rumdl check .`.
+
+## 105. rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks
+
+> ✅ **Done.** 2026-11-11. **Supply chain**: `deny.toml` (advisories and yanked versions fail,
+> licence allow list, `openssl` / `native-tls` banned, crates.io only, duplicate versions warn)
+> and `cargo deny check` in AGENTS.md §2 item 5; SECURITY.md has a *Dependencies and supply
+> chain* section. First run: `rustix` 1.1.5 (RUSTSEC-2026-0486) bumped to 1.1.6; `paste`
+> (RUSTSEC-2024-0436, unmaintained, via leptos → either_of) ignored with its reason.
+> Then `cargo update` (38 semver-compatible bumps: leptos 0.8.23, wasm-bindgen 0.2.130, aws-lc-rs,
+> uuid, toml, webpki-root-certs, …). `cargo update -p rustix` alone had moved six crates from
+> `windows-sys` 0.61.2 to 0.52.0 (all accept `>=0.52, <0.62` and cargo reuses the 0.52 that
+> `ring` needs); the lock keeps them on 0.61.2. Major bumps left on purpose: `json-patch` 5,
+> `tower-http` 0.7 and `yaml-rust2` 0.13 would add a duplicate next to the version
+> `openstack-sdk-image`, `leptos_axum` / `reqwest` and `config` use; `base64` 0.23 and `sha2`
+> 0.11 remove nothing (both lines stay through axum/leptos and ssh-key); `minijinja` 3 is
+> optional and needs the download templates rechecked.
+> **Formatting**: measured on 57.9k lines, `cargo fmt` gives 85.6k at width 100 (1661 lines
+> still over, inside macros), 78.6k at 120 (898) and 73.5k at 140 (500); the user chose
+> **120**. `rustfmt.toml` is `edition = "2024"`, `max_width = 120`. The reflow is its own commit
+> (`91338f3`, 69 files, no other change; both clippy variants clean, nextest 582/582, the
+> `every_action_has_a_dry_run_test` scan still matches since rustfmt never splits a path) and is
+> listed in `.git-blame-ignore-revs`. AGENTS.md: `cargo fmt` / `cargo fmt --check` in §2's
+> command list, "run `cargo fmt`" as item 1 of the code checklist, a **CI** paragraph, and the
+> §7 rule "format with `cargo fmt`, never by hand" with the `blame.ignoreRevsFile` setup.
+> **CI**: `.github/workflows/ci.yml` on push to `main` and pull requests, read-only token,
+> superseded runs cancelled; six jobs: `fmt`, `clippy-ssr`, `clippy-hydrate` (adds the wasm32
+> target), `test` (nextest via `taiki-e/install-action`), `markdown` (`pip install
+> rumdl==0.3.2`, same as local), `deny` (`EmbarkStudios/cargo-deny-action@v2`). Toolchain
+> `dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2` keyed per job. README has the CI
+> badge. Not verified: the first GitHub run (it starts on the next push). Left to the user:
+> require the six checks on `main` in branch protection once that run is green. Later, if
+> wanted: a nightly `cargo leptos build --release` job, and pinning actions to commit SHAs.
+
+**Goal.** Found by the 2026-11-11 maintainability assessment. The tree has no `rustfmt.toml`
+and `cargo fmt` is not in AGENTS.md §2, so every edit is formatted by hand: `cargo fmt --check`
+reports 3039 hunks at the default width, 1851 at 160 columns and 1379 at 200, and 651 source
+lines exceed 160 columns. There is also no CI: `.github/` holds only the issue templates, so the
+two clippy variants, the tests and the Markdown lint run only when a session remembers to.
+Expected: one formatting standard the tool enforces, and a GitHub Actions run on every push and
+pull request that fails on a warning, a failing test or a Markdown lint error.
+
+**Implementation.**
+
+1. **Width.** Measure how the code reads at 120 and 140 (`cargo fmt --check -- --config
+   max_width=N | grep -c "^Diff in"` plus a look at `view!` bodies and the `translations!`
+   table, which rustfmt leaves alone inside macros). Write `rustfmt.toml` with `max_width`,
+   `edition = "2024"` and nothing else unless a `view!` block forces `use_small_heuristics`;
+   note the choice in AGENTS.md §7.
+2. **One formatting commit** with no other change (`cargo fmt`, then both clippy variants and
+   `cargo nextest run --features ssr` to prove nothing moved semantically; the
+   `every_action_has_a_dry_run_test` scan reads `actions.rs` as text, so check it still finds
+   every variant after reflow). Commit it alone so `git blame` can skip it
+   (`.git-blame-ignore-revs` with that SHA, mentioned in AGENTS.md).
+3. **AGENTS.md §2**: `cargo fmt --check` joins the "whenever you add or change code" list, and
+   §7 gets the rule "format with `cargo fmt`, never by hand".
+4. **CI**: `.github/workflows/ci.yml` on `push` to `main` and `pull_request`. Jobs: `fmt`
+   (`cargo fmt --check`), `clippy-ssr` and `clippy-hydrate` (the two §2 commands; the latter
+   needs `rustup target add wasm32-unknown-unknown`), `test` (`cargo-nextest` via
+   `taiki-e/install-action`, `cargo nextest run --features ssr`), `markdown` (`rumdl check .`,
+   installed with `pip install rumdl` or its release binary). Toolchain: stable, pinned with
+   `dtolnay/rust-toolchain`; cache with `Swatinem/rust-cache` keyed per job. `cargo leptos
+   build --release` is left out at first (slow; the `Dockerfile` already covers the release build)
+   and can join later as a nightly job. Tests touch no network (§7), so no secrets are needed;
+   the `logs/` dir and `moonlight.conf` are git-ignored, nothing cloud-specific reaches CI.
+5. **Branch protection** is the user's call: suggest requiring the `ci` checks on `main` once
+   the first run is green. README gets the status badge.
+
+## 106. Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules
+
+**Goal.** Also from the 2026-11-11 assessment. Four files hold 26 000 of the 58 000 lines:
+`src/model.rs` (7152), `src/components/ops.rs` (6988), `src/server/mapping.rs` (6188) and
+`src/server/actions.rs` (5414). Each is many modules glued together, with section banners
+already marking the seams, and their tests sit far from the code they guard: `model.rs` ends in
+twenty `#[cfg(test)]` modules, `ops.rs` has a 1477-line test module in the middle with the Key
+Manager and Identity dialogs after it, and `mapping.rs` and `actions.rs` each end in one
+2100-line test module. `actions::apply` alone is a 2132-line function with 219 match arms
+(`src/server/actions.rs:883`), so every new write grows one match. Expected: no source file
+over ~1500 lines, each with its own tests, every `crate::model::X` / `ops::x` / `actions::x`
+path still valid so callers do not change.
+
+**Implementation.** Mechanical moves only, one file per commit, no behaviour change; both clippy
+variants and `cargo nextest run --features ssr` green after each. Do item 105 first so the moves
+are not mixed with reformatting.
+
+1. **`model.rs` → `src/model/`**: `mod.rs` keeps the `//!` header, the shared items
+   (`Plugin`/capabilities 40-305, `AppError` and paging 306-744) and `pub use` of every
+   submodule, so 55 importing files keep `crate::model::X`. Submodules by banner: `compute`,
+   `identity`, `network`, `firewall` (1440), `heat` (1663), `alarm` (1917), `keymgr` (2204),
+   `lb` with QoS (2439), `quota` (3316), `admin` (3618), `action` (`OsAction` and both `impl`
+   blocks, 4143-5400 and 6340: join them), `choice` (5401), `topology` (5596), `usage` (5984).
+   Each test module (5937-7152) moves into the submodule it tests (`capability_tests` → `mod.rs`
+   or `caps.rs`, `quota_tests` → `quota.rs`, …). While there: move `impl FirewallPolicyRow`,
+   `impl LbListenerSpec`, `impl LbPoolSpec` next to their structs; the request-body builders
+   (`FirewallRuleSpec::body`, `AlarmSpec::body`, `QosRuleSpec`, 38 `json!` calls that compile
+   into WASM) move to `actions.rs` in step 3, leaving `validate` in the model (§3 says bodies
+   belong to actions).
+2. **`ops.rs` → `src/components/ops/`**: `mod.rs` with the `req` / `num_*` helpers, `Op`,
+   `allowed`, `bulk` and `pub use`; one file per banner (`instances` 25-766, `images` 768-1142
+   with key pairs and server groups, `volumes` 1144-1576, `networks` 1578-1923, `routers`
+   1925-2168, `security_groups`, `floating_ips`, `admin` 2343-2982, `trunks`, `firewall`,
+   `qos`, `octavia` 3502-4456, `quotas`, `alarms`, `key_manager` 6302-6681, `identity` 6683-).
+   The test modules at 4752, 6229, 6576 and 6608 split by the function they call. 18 consumers
+   import `components::ops`, none changes. Merge the four numeric parsers (`num_u32` 16,
+   `num_req` 2347, `u16_of` 3505, `u32_of` 3513) into one `Values::num::<T>` while they are
+   being moved.
+3. **`actions.rs` → `src/server/actions/`**: `mod.rs` keeps `Exec`, `dry()`, the request
+   helpers and macros (147-239), and `apply` as a thin dispatcher: each arm becomes an
+   `async fn` in `compute.rs`, `block_storage.rs`, `network.rs`, `octavia.rs`, `identity.rs`,
+   `heat.rs`, `keymgr.rs`, `admin.rs`, as `launch` / `create_subnet` / `create_rule`
+   (3048-3259) already are. `every_action_has_a_dry_run_test` (3316) scans
+   `include_str!("actions.rs")` for variant names: make it concatenate the test modules of
+   every submodule (an `include_str!` per file, or a `tests/` submodule that owns all dry-run
+   tests and is the one file scanned). The dry-run tests (3260-5414) split per service with the
+   arms they exercise.
+4. **`mapping.rs`**: split the 2100-line test module (4082-6188) per service next to the
+   mappers, and move its `server_fixture()` / `flavors()` / `octavia()` helpers into a
+   `mapping/fixtures.rs` shared by all of them (60 inline `"id": "s1"` literals and 417 `json!`
+   blocks can shrink against it). Splitting the mappers themselves is optional; do it if the
+   file is still over 3000 lines after the tests leave.
+5. **Docs**: ARCHITECTURE.md's module tree (around line 102) and AGENTS.md §3 list the new
+   directories; §7 gets "a file over ~1500 lines gets split along its banners".
+6. **Verify**: `git diff --stat` shows only moves and `pub use` lines (`git diff -M --stat`
+   should show renames for the pure moves); test counts before and after match (nextest prints
+   them); the WASM bundle size does not grow (`target/front/...wasm` before/after).
 
 ## Also pending (from the PoC)
 

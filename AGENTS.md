@@ -49,6 +49,8 @@ hard way while building the PoC.
 
 ```bash
 cargo leptos watch -- --config-file moonlight.conf   # dev server :3000, live reload :3001
+cargo fmt                                            # format Rust (config: rustfmt.toml, width 120)
+cargo fmt --check                                    # what CI runs: fails on unformatted code
 cargo nextest run --features ssr                     # all tests (embedded #[cfg(test)])
 cargo nextest run --features ssr actions             # write payloads, dry-run
 cargo check --features ssr                           # server type-check (fast)
@@ -58,6 +60,7 @@ cargo clippy --lib --features hydrate --target wasm32-unknown-unknown -- -D warn
 cargo leptos build --release                         # ONLY with `watch` stopped (see §6)
 rumdl check .                                        # Markdown lint (config: .rumdl.toml)
 rumdl fmt .                                          # Markdown auto-fix
+cargo deny check                                     # advisories, licences, duplicates, sources (deny.toml)
 ```
 
 Always run **both** `cargo check` variants: code that compiles for `ssr` can fail for
@@ -65,13 +68,23 @@ Always run **both** `cargo check` variants: code that compiles for `ssr` can fai
 
 **Whenever you add or change code**, before reporting it done:
 
-1. Run **both** `cargo clippy` variants (they also type-check, so they replace `cargo check`)
+1. Run `cargo fmt` (CI fails on `cargo fmt --check`).
+2. Run **both** `cargo clippy` variants (they also type-check, so they replace `cargo check`)
    and keep them at **zero warnings** (the tree is clean; `-D warnings` fails on any). Don't
    silence a lint with `#[allow(…)]` unless it is a false positive, and then say why in a comment.
-2. Run the tests with `cargo nextest run --features ssr` (faster, parallel per test, clearer
+3. Run the tests with `cargo nextest run --features ssr` (faster, parallel per test, clearer
    failure output). New logic gets a test next to it (§7). Fall back to `cargo test` only if
    doctests are added: nextest does not run them (`cargo test --doc --features ssr`).
-3. Report the actual result (passed/failed counts, remaining warnings), not "should pass".
+4. Report the actual result (passed/failed counts, remaining warnings), not "should pass".
+5. When a dependency is added or bumped, run `cargo deny check`: a RustSec advisory, a yanked
+   version, a licence outside `deny.toml`'s allow list or a source other than crates.io fails
+   it. Duplicate versions only warn; don't widen the policy to make it pass, fix the
+   dependency or record an `ignore` with its reason.
+
+**CI** (`.github/workflows/ci.yml`) runs these on every push to `main` and every pull request:
+`cargo fmt --check`, both clippy variants, `cargo nextest run --features ssr`, `rumdl check .`
+and `cargo deny check`, each as its own job. A red job is a real failure; fix the cause, never
+skip the job or loosen its flags.
 
 **Whenever you add or change Markdown** (`AGENTS.md`, `README.md`, `ROADMAP.md`, …), run
 `rumdl fmt .` and then `rumdl check .`, which must report no issues. `.rumdl.toml` sets
@@ -328,6 +341,11 @@ SSH tunnel instead.
 
 ## 7. Conventions
 
+- Format Rust with `cargo fmt`, never by hand. `rustfmt.toml` sets `max_width = 120`; rustfmt
+  leaves macro bodies (`view!`, `translations!`) alone, so keep those readable yourself. The
+  tree-wide reflow is in `.git-blame-ignore-revs`; run
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame` skips it, and
+  add any later formatting-only commit there.
 - Tests sit next to the code (`#[cfg(test)] mod tests`); prefer pure functions so logic is
   testable without network. `tokio::test` for async action tests.
 - Display `-` for empty values, fall back to IDs for unnamed resources (like Horizon).
@@ -365,5 +383,6 @@ until it is. In English, short, and kept true when the code changes.
   name or assertion message.
 - Don't narrate the obvious (`// increment i`), don't leave commented-out code, and update or
   delete a comment that the change makes false.
-- Markdown docs (`README.md`, `CONFIGURATION.md`) change with the behaviour: a new setting is
-  documented in `CONFIGURATION.md` and `moonlight.conf.example` in the same change.
+- Markdown docs (`README.md`, `CONFIGURATION.md`, `SECURITY.md`) change with the behaviour: a new
+  setting is documented in `CONFIGURATION.md` and `moonlight.conf.example` in the same change;
+  a change to a guard, a gate or a secret's handling updates `SECURITY.md`.

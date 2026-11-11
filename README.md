@@ -7,6 +7,7 @@
 
 <img src="./doc/moonlight-logo.png" alt="Moonlight logo" width="200" height="200">
 
+[![CI](https://github.com/dmbuil/moonlight-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/dmbuil/moonlight-rs/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdmbuil%2Fmoonlight-rs%2FHEAD%2FCargo.toml&query=%24.package.version&label=version)](Cargo.toml)
 [![Rust](https://img.shields.io/badge/rust-1.91%2B-blue)](https://www.rust-lang.org/)
 [![Leptos](https://img.shields.io/badge/leptos-0.8-blue)](https://leptos.dev)
@@ -255,6 +256,28 @@ networks ↔ subnets ↔ ports ↔ routers, floating IPs → instances, rules �
 Destructive actions ask for confirmation (“You have selected: X. This action cannot be undone.”),
 like Horizon.
 
+## Browser support
+
+Moonlight is a server-rendered page that becomes interactive once its WebAssembly bundle loads.
+Reading works in any browser that can render the HTML; sorting, filtering, dialogs and actions
+need WebAssembly and JavaScript modules. The floor is set by one CSS function the theme is built
+on, `light-dark()`, which gives every colour token its light and dark value:
+
+| Browser | Minimum version |
+| --- | --- |
+| Chrome, Edge, Chrome for Android | 123 (March 2024) |
+| Firefox, Firefox for Android | 120 (November 2023) |
+| Safari, iOS Safari | 17.5 (May 2024) |
+
+Everything else the app uses has been supported for longer: WebAssembly with the features Rust
+enables by default (bulk memory, reference types, sign extension, non-trapping float
+conversions, multi-value), `dvh` viewport units, `prefers-color-scheme` and
+`prefers-reduced-motion`, pointer and touch events, the Clipboard API (which needs HTTPS or
+`localhost`), and `XMLHttpRequest` upload progress. In an older browser the colour tokens do
+not resolve, so the page renders in the browser's default colours while the layout and the
+WebAssembly still work. The VNC console is Nova's own noVNC page in a frame, so its
+requirements are the cloud's.
+
 ## Architecture
 
 Leptos server-side rendering plus WASM hydration on Axum; a stateless server that keeps the
@@ -263,6 +286,8 @@ parallel GET-only reads joined by pure, tested mappers; one server-enforced writ
 
 Modules, the session and its cookies, the password and WebSSO sign-in flows, caches and the
 security measures are described, with diagrams, in [ARCHITECTURE.md](ARCHITECTURE.md).
+[SECURITY.md](SECURITY.md) has the threat model, every measure with its limits, the accepted
+risks and the deployment checklist.
 
 ## Tests
 

@@ -1,0 +1,6 @@
+# Commits that only reformat code; `git blame` skips them.
+# Enable locally once: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file on its own.)
+
+# Roadmap 105: rustfmt.toml (max_width 120) and cargo fmt over the tree
+91338f3e568eda5d60101b64a45714adb6839c5b
