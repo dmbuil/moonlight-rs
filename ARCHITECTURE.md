@@ -378,7 +378,7 @@ ID; Cinder's `bootable` is a string; `-1` quotas mean unlimited.
 
 ```mermaid
 flowchart LR
-    UI["dialog (components/ops.rs)<br/>builds an OsAction"] -->|run_action JSON| RA[api::run_action]
+    UI["dialog (components/ops/)<br/>builds an OsAction"] -->|run_action JSON| RA[api::run_action]
     RA --> CHK["require session · check_ids ·<br/>identity_safety · plugins enabled · subnet policy"]
     CHK --> AP["actions::apply<br/>typed SDK endpoints"]
     AP --> EX{Exec mode}
@@ -453,8 +453,8 @@ and the throttle, whose per-process scope is documented in their modules.
 - **Dialog engine** (`components/dialog.rs`): declarative fields, dynamic choices
   (`Source::Set`, `Switch`, `Of`), conditional visibility, destructive confirmations with a
   required "Yes, I understand", and the dry-run request view.
-- **ops** (`components/ops.rs`): what each resource can do, shared by list rows and detail
-  headers.
+- **ops** (`components/ops/`, one file per service): what each resource can do, shared by
+  list rows and detail headers.
 - **i18n** (`i18n.rs`): each string declared once with English and Spanish; a missing
   translation does not compile. The language comes from `ml_lang`, else `Accept-Language`,
   computed identically on server and client so hydration matches.

@@ -6753,21 +6753,38 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 
 ## 106. Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules
 
-> 🚧 **In progress.** Step 1 done (2026-11-11, not committed yet): `src/model.rs` (9170 lines
-> after item 105's reformat) is now `src/model/`, 18 files, the largest `action.rs` (1489) and
-> `lb.rs` (1070). `mod.rs` (1123) keeps `ProjectRef`/`SessionInfo`, `Capabilities` and `needs`,
-> `AppError`, paging and `check_id_tests`, and `pub use`s every submodule, so no caller changed.
-> Files: `action` (`OsAction`, its two `impl` blocks joined), `admin`, `alarm`, `choice`,
+> 🚧 **In progress.** Steps 1 and 2 done (2026-11-11), one commit each.
+>
+> **Step 1**: `src/model.rs` (9170 lines after item 105's reformat) is now `src/model/`, 18 files,
+> the largest `action.rs` (1487) and `mod.rs` (1123: `ProjectRef`/`SessionInfo`, `Capabilities` and
+> `needs`, `AppError`, paging, `check_id_tests`, and a `pub use` of every submodule, so no caller
+> changed). Files: `action` (`OsAction`, its two `impl` blocks joined), `admin`, `alarm`, `choice`,
 > `compute`, `detail`, `firewall`, `heat`, `identity`, `keymgr`, `lb`, `network` (with QoS),
-> `quota`, `topology`, `usage`, `volume`, `write`; each test module sits in the file it tests.
-> A sorted line diff against `HEAD:src/model.rs` shows only `use super::*;`, one `//!` line per
-> file, the `mod`/`pub use` block, and `one_of` / `short_provider_name` made `pub(super)`. The
-> `impl` blocks of `FirewallPolicyRow`, `LbListenerSpec` and `LbPoolSpec` already sit with their
-> structs. AGENTS.md §3, the recipes and §7 (the ~1500-line rule) and ARCHITECTURE.md's tree
-> name the new directory. Both clippy variants clean; nextest 588/588; `#[test]` count in the
-> model 52 before and after. Not measured: the WASM bundle size (needs a release
-> `cargo leptos build`). Still open: the body builders' move to `actions` (step 3), steps 2-4
-> (`ops.rs`, `actions.rs`, `mapping.rs` tests) and the docs for them; commit step 1 first.
+> `quota`, `topology`, `usage`, `volume`, `write`; each test module sits in the file it tests (52
+> `#[test]` before and after). The `impl` blocks of `FirewallPolicyRow`, `LbListenerSpec` and
+> `LbPoolSpec` already sat with their structs.
+>
+> **Step 2**: `src/components/ops.rs` (11 690 lines) is now `src/components/ops/`, 20 files, the
+> largest `instances.rs` (1174). `mod.rs` keeps the imports, `req`, `num_u32`, `Op`, `allowed`,
+> `bulk`, `bulk_delete` and their two tests, and `pub use`s every file. Files by banner: `instances`
+> (with `launch_tests`), `images`, `volumes`, `networks`, `routers`, `security_groups`,
+> `floating_ips` (with port forwarding, which sat under Octavia), `admin_compute` and
+> `admin_storage` (Admin › Compute was 1731 lines with its tests), `trunks`, `firewall`, `qos`,
+> `octavia` and `octavia_parts` (listeners, pools, members, monitors, L7; 1734 lines together),
+> `quotas`, `alarms`, `key_manager`, `stacks`, `identity`. The 3300-line test module was split by
+> which ops functions each test calls; helpers used by several files (`vals`, `dialog_of`,
+> `instance`, `volume`) live in `ops/testing.rs` (`#[cfg(test)]`). 25 private helpers used across
+> files became `pub(super)`. Done by a script (top-level items assigned by banner range, tests by
+> the names they reference); a sorted line diff against the old file shows only the banners,
+> `pub(super)`, rustfmt rewraps of those lines, and the new `mod tests` wrappers and imports. 75
+> tests before and after.
+>
+> Both steps: both clippy variants clean, `cargo fmt --check` clean, nextest 588/588. AGENTS.md (§3,
+> the recipes, §7's ~1500-line rule) and ARCHITECTURE.md name the new directories. Not measured: the
+> WASM bundle size (needs a release `cargo leptos build`; pure moves). Still open: merging the four
+> numeric parsers (`num_u32`, `num_req` in `admin_compute`, `u16_of` / `u32_of` in `octavia`) into
+> one generic, as its own commit; step 3 (`actions.rs`, taking the body builders out of the model);
+> step 4 (`mapping.rs` tests).
 
 **Goal.** Also from the 2026-11-11 assessment. Four files hold 26 000 of the 58 000 lines:
 `src/model.rs` (7152), `src/components/ops.rs` (6988), `src/server/mapping.rs` (6188) and

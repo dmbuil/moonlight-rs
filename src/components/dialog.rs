@@ -498,7 +498,7 @@ impl DialogSize {
 }
 
 /// A modal form: fields (or wizard steps), the action they build, and the
-/// hooks that react to changes. Built by `ops.rs`, shown by [`DialogHost`].
+/// hooks that react to changes. Built by `ops`, shown by [`DialogHost`].
 #[derive(Clone)]
 pub struct Dialog {
     pub title: String,

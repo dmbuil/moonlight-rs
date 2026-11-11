@@ -148,8 +148,8 @@ region. The server is stateless; in-process caches are disposable.
    variant needs one (`every_action_has_a_dry_run_test`), and `dry` also checks that no string
    field reaches the request path without `check_ids` (roadmap 67): name path parameters `id`
    or `*_id`, or add them to `OsAction::check_ids`.
-4. UI in `components/ops.rs`: a `MenuItem` (+ `Dialog::form` / `Dialog::confirm`), wired
-   into the list's `actions_col` and the detail page's `DetailHeader items`.
+4. UI in `components/ops/<service>.rs`: a `MenuItem` (+ `Dialog::form` /
+   `Dialog::confirm`), wired into the list's `actions_col` and the detail page's `DetailHeader items`.
 5. Verify in the browser **in dry-run only**; the dialog shows the request (with
    `[ui] show_requests = true`, as in the repo's `moonlight.conf`; off by default, roadmap 78).
 
