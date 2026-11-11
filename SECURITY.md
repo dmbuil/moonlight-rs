@@ -128,7 +128,7 @@ Code: `src/api.rs` (`login`, `logout`), `src/server/os.rs`, `src/server/throttle
 ## Browser-facing protections
 
 Code: `src/server/mod.rs` (`same_origin_only`, `security_headers`, `compression`),
-`src/main.rs`.
+`src/server/listen.rs`, `src/main.rs`.
 
 | Measure | Detail |
 | --- | --- |
@@ -137,6 +137,7 @@ Code: `src/server/mod.rs` (`same_origin_only`, `security_headers`, `compression`
 | CSP | `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. No `script-src`: Leptos hydration needs inline scripts, so script injection is prevented by escaping, not by policy. |
 | Sniffing and referrers | `X-Content-Type-Options: nosniff`; `Referrer-Policy: same-origin`, because URLs carry resource IDs. |
 | HSTS | `Strict-Transport-Security: max-age=31536000` when `[session] secure_cookies` is on, i.e. the deployment is HTTPS. |
+| HTTPS listener | With `[server] tls_cert_file` and `tls_key_file` (roadmap 107): rustls with aws-lc-rs, TLS 1.2 and 1.3 with rustls's safe defaults, ALPN `h2` and `http/1.1`, no plain-HTTP port alongside. A handshake must finish in 10 s. Setting only one of the two keys stops start-up, so a typo can't fall back to plain HTTP. Errors name the file, never its contents. The files are re-read every minute and a renewed pair replaces the current one only once it loads and matches. |
 | BREACH | Only the WASM, JavaScript and CSS bundles are gzipped. Pages and server-function results, which can hold a secret next to text the user typed, are never compressed. |
 | No raw HTML from data | Leptos renders text nodes and attributes through the DOM, escaping everything. The single `inner_html` in the tree inserts built-in SVG icon markup, never cloud data. |
 | Link targets | External links from configuration open with `rel="noopener noreferrer"`. The console URL Nova returns is framed only when it starts with `http://` or `https://`; a `javascript:` URL is an error. Download links are `data:` URLs built from text. |
@@ -226,8 +227,11 @@ Code: `Cargo.toml`, `Cargo.lock`, `deny.toml`.
 
 What the code cannot do for you. Each line names the setting in `CONFIGURATION.md`.
 
-- **Terminate TLS in front of Moonlight** and keep `[session] secure_cookies = true`. The
-  binary speaks plain HTTP; the container listens on `0.0.0.0:3000`.
+- **Encrypt every hop** and keep `[session] secure_cookies = true`. By default the binary
+  speaks plain HTTP on `0.0.0.0:3000` (the container), so either terminate TLS in a proxy on
+  the same host or network, or set `[server] tls_cert_file` and `tls_key_file` so Moonlight
+  serves HTTPS itself (behind a re-encrypting proxy, for instance). Mount the key readable only
+  by the service user.
 - **Set `[session] cookie_key`** from `openssl rand -base64 64 | tr -d '\n'`, share it across
   replicas, and keep it in a file readable only by the service user (`moonlight.conf.d/`
   with mode `0600`). The cookie is the only authentication state: the key forges any session.

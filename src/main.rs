@@ -99,10 +99,33 @@ async fn serve() {
         .layer(moonlight::server::compression())
         .with_state(leptos_options);
 
+    // HTTPS when `[server] tls_cert_file` and `tls_key_file` are set (roadmap 107).
+    let tls = settings
+        .server
+        .tls_files()
+        .and_then(|files| {
+            files
+                .map(|(cert, key)| moonlight::server::listen::Tls::load(&cert, &key))
+                .transpose()
+        })
+        .unwrap_or_else(|e| {
+            eprintln!("configuration error: {e}");
+            std::process::exit(1);
+        });
+
     let cfg = &moonlight::server::config::state().config;
-    tracing::info!("Moonlight on http://{addr}  (keystone: {})", cfg.keystone_url);
+    let scheme = if tls.is_some() { "https" } else { "http" };
+    tracing::info!("Moonlight on {scheme}://{addr}  (keystone: {})", cfg.keystone_url);
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
-    axum::serve(listener, app.into_make_service()).await.expect("server");
+    match tls {
+        Some(tls) => moonlight::server::listen::serve(listener, app, std::sync::Arc::new(tls))
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("configuration error: {e}");
+                std::process::exit(1);
+            }),
+        None => axum::serve(listener, app.into_make_service()).await.expect("server"),
+    }
 }
 
 #[cfg(not(feature = "ssr"))]

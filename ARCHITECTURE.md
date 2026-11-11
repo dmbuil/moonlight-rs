@@ -472,6 +472,13 @@ files by name, then `MOONLIGHT_*` variables. `config::init` validates them into 
 fails start-up on any bad value. `prefs.rs` holds the subset the browser needs, sent with
 `get_session_info`. Full reference: [CONFIGURATION.md](CONFIGURATION.md).
 
+The listener is axum's plain HTTP unless `[server] tls_cert_file` and `tls_key_file` are set;
+then `server/listen.rs` accepts TLS itself (rustls, hyper-util's HTTP/1.1 + HTTP/2 builder over
+the same router). Its certificate resolver holds the current pair behind a lock, so a task can
+re-read the files every minute and swap in a renewed, valid pair without rebuilding the TLS
+configuration or restarting (roadmap 107): OpenShift's service CA renews the mounted Secret
+without restarting pods.
+
 Logging (`server/logging.rs`) goes to stdout and/or a rotated file, as text or JSON. Sign-ins,
 logouts and writes are logged with user and client address; tokens never are, and the log file
 is created without access for other users.

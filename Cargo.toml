@@ -26,7 +26,7 @@ web-sys = { version = "0.3", features = ["HtmlDocument", "Location", "Window", "
 
 # server (ssr) only
 axum = { version = "0.8", optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"], optional = true }
 leptos_axum = { version = "0.8", optional = true }
 openstack_sdk = { version = "0.22.8", default-features = false, features = ["async", "compute", "network", "block_storage", "image", "identity", "load_balancer"], optional = true }
 secrecy = { version = "0.10", optional = true }
@@ -55,6 +55,11 @@ url = { version = "2", optional = true }
 # umask so they are created 0640.
 tracing-appender = { version = "0.2", optional = true }
 rustix = { version = "1", default-features = false, features = ["std", "fs", "process"], optional = true }
+# The HTTPS listener (`[server] tls_cert_file`, roadmap 107): all already in the tree through
+# reqwest, with the same aws-lc-rs provider (don't add `ring`).
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"], optional = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12", "aws_lc_rs"], optional = true }
+hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio", "http1", "http2"], optional = true }
 # Gzips the WASM, JS and CSS bundles on the fly (`server::compression`): over Tailscale the dev
 # WASM took ~50 s to load uncompressed. Release builds ship precompressed files instead.
 tower-http = { version = "0.6", default-features = false, features = ["compression-gzip"], optional = true }
@@ -67,7 +72,7 @@ ssr = [
   "dep:axum", "dep:tokio", "dep:reqwest", "dep:futures-util", "dep:leptos_axum", "dep:openstack_sdk", "dep:secrecy", "dep:moka",
   "dep:cookie", "dep:sha2", "dep:hex", "dep:base64", "dep:tracing",
   "dep:tracing-subscriber", "dep:http", "dep:json-patch", "dep:ssh-key", "dep:toml", "dep:clap", "dep:url", "dep:minijinja", "dep:yaml-rust2",
-  "dep:tracing-appender", "dep:rustix", "dep:tower-http",
+  "dep:tracing-appender", "dep:rustix", "dep:tower-http", "dep:rustls", "dep:tokio-rustls", "dep:hyper-util",
   "leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr",
 ]
 

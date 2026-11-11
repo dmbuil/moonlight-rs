@@ -13,6 +13,7 @@ pub mod downloads;
 pub mod errors;
 pub mod fetch;
 pub mod heat;
+pub mod listen;
 pub mod logging;
 pub mod mapping;
 pub mod os;

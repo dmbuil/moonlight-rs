@@ -7,6 +7,14 @@
 # Only [keystone] url is required. Every key below is set to its default, and a missing key or
 # section gets the same value, so delete what you do not change if you prefer. Names in parentheses are Horizon's equivalent setting.
 
+[server]
+# Serve HTTPS directly, without a proxy terminating TLS: a PEM certificate chain (leaf first) and
+# its private key (PKCS#8, PKCS#1 or SEC1). Both or neither; unset = plain HTTP. The files are
+# checked every minute and a renewed pair is loaded without a restart.
+# Env: MOONLIGHT_TLS_CERT_FILE, MOONLIGHT_TLS_KEY_FILE
+#tls_cert_file = "/etc/moonlight/tls/tls.crt"
+#tls_key_file = "/etc/moonlight/tls/tls.key"
+
 [keystone]
 # Public endpoint, without /v3 (the SDK runs version discovery). Required.
 # (OPENSTACK_KEYSTONE_URL) Env: MOONLIGHT_KEYSTONE_URL

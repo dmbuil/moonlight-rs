@@ -36,6 +36,8 @@ These can also be set with an environment variable, which overrides every file.
 
 | Key | Variable | Default | Meaning |
 |---|---|---|---|
+| `[server] tls_cert_file` | `MOONLIGHT_TLS_CERT_FILE` | unset (plain HTTP) | PEM certificate chain, leaf first. With `tls_key_file`, Moonlight serves HTTPS itself (see [HTTPS](#https) below). |
+| `[server] tls_key_file` | `MOONLIGHT_TLS_KEY_FILE` | unset (plain HTTP) | PEM private key of that leaf: PKCS#8, PKCS#1 or SEC1. Set both keys or neither: only one of them stops start-up. |
 | `[keystone] url` | `MOONLIGHT_KEYSTONE_URL` | — (required) | Keystone public endpoint, **without** `/v3` (the SDK runs version discovery). |
 | `[keystone] default_domain` | `MOONLIGHT_DEFAULT_DOMAIN` | `Default` | Pre-filled domain on the login form. |
 | `[keystone] default_region` | `MOONLIGHT_DEFAULT_REGION` | first region in the catalog | Region selected after login. |
@@ -50,6 +52,28 @@ These can also be set with an environment variable, which overrides every file.
 | `[log] filter` | `RUST_LOG` | `moonlight=info,warn` | Log filter (`tracing` syntax). |
 | `[log] file` | `MOONLIGHT_LOG_FILE` | unset (stdout only) | Write the log to this file instead of stdout, e.g. `/var/log/moonlight/moonlight.log`. The directory must exist and be writable, or Moonlight does not start. Files are created `0640` at most: they name users and client addresses (never tokens). Rotation and format: `[log] rotation`, `keep`, `stdout`, `format` below. |
 | `[log] trusted_proxies` | `MOONLIGHT_TRUSTED_PROXIES` | `1` | Proxies in front of Moonlight that append to `[log] client_ip_header`. The client is the entry this many places from the right (the leftmost when the list is shorter): entries further left were sent by the client and can be forged. `2` for a CDN plus a balancer; `0` takes the leftmost entry, which a client can set to dodge the sign-in throttle. |
+
+### HTTPS
+
+By default Moonlight speaks plain HTTP and expects a proxy in front to terminate TLS. With
+`[server] tls_cert_file` and `tls_key_file` set it serves HTTPS on the same address
+(`LEPTOS_SITE_ADDR`, `0.0.0.0:3000` in the container), HTTP/1.1 and HTTP/2, TLS 1.2 and 1.3
+(rustls), and nothing on plain HTTP. Use it when the last hop must be encrypted too, e.g. an
+OpenShift `reencrypt` Route with a certificate from the service CA.
+
+```toml
+[server]
+tls_cert_file = "/etc/moonlight/tls/tls.crt"
+tls_key_file = "/etc/moonlight/tls/tls.key"
+```
+
+Both files are read at start-up; a missing, unreadable or mismatched pair stops Moonlight with
+`configuration error: …` naming the file. They are checked again every minute, and a changed
+pair is loaded without a restart once it is valid (logged at `info`): new connections get the
+new certificate, open ones keep theirs. A pair caught half-written or that doesn't match is
+logged at `warn` and the previous certificate stays. On Kubernetes, mount the Secret as a
+directory, never with `subPath`, or renewals never reach the pod. Keep
+`[session] secure_cookies = true`. Client certificates and OCSP stapling are not supported.
 
 ## Settings after Horizon's `local_settings.py`
 

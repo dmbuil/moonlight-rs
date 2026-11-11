@@ -191,8 +191,11 @@ shows whether the build produced it.
   10001, which must be able to write there. With rootful podman (uids are the host's), run
   `chown 10001:10001 logs` once; with rootless podman, add
   `--userns=keep-id:uid=10001,gid=10001` so that uid is your own user.
-- **TLS:** session cookies are `Secure` by default, so put the container behind an
-  HTTPS proxy, or set `[session] secure_cookies = false` for a local test over plain HTTP.
+- **TLS:** session cookies are `Secure` by default, so either put the container behind an
+  HTTPS proxy, or mount a certificate and its key and set `MOONLIGHT_TLS_CERT_FILE` and
+  `MOONLIGHT_TLS_KEY_FILE` (`[server]` in CONFIGURATION.md): Moonlight then serves HTTPS on
+  port 3000 and picks up a renewed certificate by itself. For a local test over plain HTTP, set
+  `[session] secure_cookies = false`.
 - **Private CA:** mount the CA bundle and point `[tls] ca_file` at it.
 - **Rebuilds** reuse the Cargo registry and `target/` through cache mounts. Build arguments
   `RUST_VERSION`, `DEBIAN_RELEASE` and `CARGO_LEPTOS_VERSION` change the toolchain

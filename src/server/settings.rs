@@ -36,6 +36,7 @@ pub struct Cli {
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub server: Server,
     pub keystone: Keystone,
     pub tls: Tls,
     pub session: Session,
@@ -87,6 +88,33 @@ impl Default for Keystone {
             default_region: None,
             interface: "public".into(),
             multidomain: false,
+        }
+    }
+}
+
+/// `[server]` (roadmap 107): how Moonlight itself listens. The address stays
+/// Leptos's (`LEPTOS_SITE_ADDR`).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Server {
+    /// PEM certificate chain, leaf first. With `tls_key_file`, Moonlight serves
+    /// HTTPS and reloads the pair when the files change (`server::listen`).
+    pub tls_cert_file: Option<String>,
+    /// PEM private key of the leaf: PKCS#8, PKCS#1 or SEC1.
+    pub tls_key_file: Option<String>,
+}
+
+impl Server {
+    /// `(cert, key)` when both are set, `None` when neither is (plain HTTP).
+    /// Blank counts as unset. Only one of them is an error, so a typo can't
+    /// quietly fall back to plain HTTP.
+    pub fn tls_files(&self) -> Result<Option<(PathBuf, PathBuf)>, String> {
+        let set = |v: &Option<String>| v.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(PathBuf::from);
+        match (set(&self.tls_cert_file), set(&self.tls_key_file)) {
+            (Some(c), Some(k)) => Ok(Some((c, k))),
+            (None, None) => Ok(None),
+            (Some(_), None) => Err("[server] tls_cert_file is set but tls_key_file is not".into()),
+            (None, Some(_)) => Err("[server] tls_key_file is set but tls_cert_file is not".into()),
         }
     }
 }
@@ -507,6 +535,8 @@ pub struct IdpProtocol {
 
 /// Environment variable → `(section, key)`. `RUST_LOG` keeps its usual meaning.
 const ENV: &[(&str, &str, &str)] = &[
+    ("MOONLIGHT_TLS_CERT_FILE", "server", "tls_cert_file"),
+    ("MOONLIGHT_TLS_KEY_FILE", "server", "tls_key_file"),
     ("MOONLIGHT_KEYSTONE_URL", "keystone", "url"),
     ("MOONLIGHT_DEFAULT_DOMAIN", "keystone", "default_domain"),
     ("MOONLIGHT_DEFAULT_REGION", "keystone", "default_region"),
@@ -1106,6 +1136,35 @@ mod tests {
             load(&[], &|k| bad.get(k).map(|v| v.to_string()))
                 .unwrap_err()
                 .contains("trusted_proxies")
+        );
+    }
+
+    #[test]
+    fn tls_needs_both_files_or_neither() {
+        let server = |cert: Option<&str>, key: Option<&str>| Server {
+            tls_cert_file: cert.map(Into::into),
+            tls_key_file: key.map(Into::into),
+        };
+        assert_eq!(Server::default().tls_files(), Ok(None));
+        assert_eq!(server(Some(" "), Some("")).tls_files(), Ok(None), "blank is unset");
+        assert_eq!(
+            server(Some("/c.pem"), Some(" /k.pem ")).tls_files(),
+            Ok(Some(("/c.pem".into(), "/k.pem".into())))
+        );
+        let only_cert = server(Some("/c.pem"), Some(" ")).tls_files().unwrap_err();
+        assert!(only_cert.contains("tls_key_file is not"), "{only_cert}");
+        let only_key = server(None, Some("/k.pem")).tls_files().unwrap_err();
+        assert!(only_key.contains("tls_cert_file is not"), "{only_key}");
+        // The environment fills the same keys.
+        let env: HashMap<&str, &str> = [
+            ("MOONLIGHT_TLS_CERT_FILE", "/run/tls/tls.crt"),
+            ("MOONLIGHT_TLS_KEY_FILE", "/run/tls/tls.key"),
+        ]
+        .into();
+        let s = load(&[], &|k| env.get(k).map(|v| v.to_string())).unwrap();
+        assert_eq!(
+            s.server.tls_files(),
+            Ok(Some(("/run/tls/tls.crt".into(), "/run/tls/tls.key".into())))
         );
     }
 

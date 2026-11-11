@@ -119,7 +119,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 104 | ✅ Full lists send a page size of 1000; lookup-cache misses coalesce | — | S | 66 |
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
 | 106 | ✅ Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | — | M | 105 |
-| 107 | 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | P1 | M | 3, 49 |
+| 107 | ✅ 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | — | M | 3, 49 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -142,7 +142,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6895,6 +6895,41 @@ are not mixed with reformatting.
    them); the WASM bundle size does not grow (`target/front/...wasm` before/after).
 
 ## 107. HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal
+
+> ✅ **Done.** Built as planned below (2026-11-11). `settings.rs::Server` (`[server]`,
+> first field of `Settings`) with `tls_files()`, and `MOONLIGHT_TLS_CERT_FILE` /
+> `MOONLIGHT_TLS_KEY_FILE` in `ENV`. `server/listen.rs`: `Tls::load`, `reload_if_changed`,
+> a `Resolver` (`ResolvesServerCert` over `RwLock<Loaded>`, SHA-256 of both files) and
+> `serve` (accept loop, 10 s handshake timeout, hyper-util `auto::Builder` with upgrades); the
+> reload task (`RELOAD_EVERY`, 60 s) is started by `serve`. `main.rs` picks `listen::serve` or
+> `axum::serve` and logs `https://` or `http://`. New dependencies `rustls`, `tokio-rustls`,
+> `hyper-util` (already in `Cargo.lock`; `cargo deny check` ok, no new duplicates); `tokio`
+> gains `net` and `io-util`. Fixtures in `src/server/testdata/tls/` (test CA plus leaves `a`
+> and `b`, P-256 PKCS#8; the README there has the `openssl` commands to regenerate them).
+> Docs: CONFIGURATION.md (two rows in *Core settings* and an *HTTPS* section),
+> `moonlight.conf.example` (`[server]`, commented), README *Container image*, SECURITY.md
+> (checklist item *Encrypt every hop*, *HTTPS listener* row), ARCHITECTURE.md. Tests: 5 new
+> (`tls_needs_both_files_or_neither`; `listen`: a pair loads, bad pairs name the file,
+> reload swaps only a changed valid pair, end to end over a real TLS client with a reload);
+> 594/594 pass, both clippy variants clean.
+> **Real binary checked** (debug build, `moonlight.conf`, port 3443, GETs to `/login` only):
+> `200` over HTTP/2 and HTTP/1.1 with `--cacert src/server/testdata/tls/ca.pem`; plain HTTP and
+> an untrusted client both refused; after copying `b` over the files, `TLS certificate
+> reloaded` was logged within 60 s and new connections got leaf `b`; a mismatched pair
+> (`a.pem` and `b.key`) logged a `warn` naming the key file and kept `b`. On porygon the binary
+> only builds with `CARGO_PROFILE_DEV_DEBUG=0`: with debug info rustc needs more than the free
+> 14 GB and earlyoom kills it. **Container checked** (`podman build`, release, 9 min; run with
+> `--userns=keep-id:uid=10001,gid=10001`, the pair mounted as a directory at
+> `/etc/moonlight/tls` and the two variables set): `Moonlight on https://0.0.0.0:3000`, the same
+> results as above (HTTP/2 and HTTP/1.1 `200`, the release WASM `200` brotli, plain HTTP and an
+> untrusted client refused, reload to `b` within a minute, mismatched pair kept `b` with a
+> `warn`). The build context must leave out `logs/` (owned by uid 10001, unreadable, and not in
+> `.containerignore`); a copy of the tree without it worked. Step 6 (`moonlight-deploy`) is that
+> repository's change, not this one's.
+> **Found on the way, not this item:** Moonlight installs no SIGTERM handler, so as PID 1 in a
+> container it ignores the signal and `podman stop` (and a pod's termination) waits for
+> SIGKILL: 10 s with podman, `terminationGracePeriodSeconds` (30 s) on OpenShift, plain HTTP
+> too. A graceful shutdown (stop accepting, drain, exit) is worth an item of its own.
 
 **Goal.** The OpenShift deployment (`moonlight-deploy`) needs end-to-end encryption: no
 plaintext between the router and the pod. Today the binary speaks only plain HTTP (SECURITY.md,
