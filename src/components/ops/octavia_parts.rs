@@ -71,7 +71,7 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
         K::CreateListener
     });
     Dialog::form(title.clone(), title, fields, move |v| {
-        let connection_limit = u32_of(v, "connection_limit", K::ConnectionLimit, lang)?;
+        let connection_limit = num_of::<u32>(v, "connection_limit", K::ConnectionLimit, lang)?;
         let options = listener_options_of(v, lang)?;
         Ok(match &id {
             Some((id, protocol)) => {
@@ -95,7 +95,7 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
                     name: v.opt("name"),
                     description: v.opt("description"),
                     protocol: v.get("protocol"),
-                    port: u16_of(v, "port", K::Port, lang)?.unwrap_or(0),
+                    port: num_of::<u16>(v, "port", K::Port, lang)?.unwrap_or(0),
                     connection_limit,
                     options: options.unwrap_or_default(),
                     default_tls_container_ref: v.opt("certificate").filter(|_| v.get("protocol") == LB_TLS_PROTOCOL),
@@ -273,8 +273,8 @@ pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMem
         K::AddMember
     });
     Dialog::form(title.clone(), title, fields, move |v| {
-        let weight = u16_of(v, "weight", K::Weight, lang)?.unwrap_or(1);
-        let monitor_port = u16_of(v, "monitor_port", K::MonitorPort, lang)?;
+        let weight = num_of::<u16>(v, "weight", K::Weight, lang)?.unwrap_or(1);
+        let monitor_port = num_of::<u16>(v, "monitor_port", K::MonitorPort, lang)?;
         Ok(match &ids {
             Some((pool, id)) => OsAction::MemberUpdate {
                 pool_id: pool.clone(),
@@ -299,7 +299,7 @@ pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMem
                 let spec = LbMemberSpec {
                     name: v.opt("name"),
                     address,
-                    port: u16_of(v, "port", K::MemberPort, lang)?.unwrap_or(0),
+                    port: num_of::<u16>(v, "port", K::MemberPort, lang)?.unwrap_or(0),
                     subnet_id: subnet,
                     weight: Some(weight),
                     backup: v.flag("backup"),
@@ -536,7 +536,7 @@ pub fn l7_policy_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&Lb
             name: v.opt("name"),
             description: v.opt("description"),
             action: req(v, "action", K::Action, lang)?,
-            position: u32_of(v, "position", K::Position, lang)?,
+            position: num_of::<u32>(v, "position", K::Position, lang)?,
             redirect_pool_id: v.opt("redirect_pool"),
             redirect_url: v.opt("redirect_url"),
             admin_up: v.flag("admin_up"),

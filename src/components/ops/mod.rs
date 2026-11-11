@@ -60,11 +60,13 @@ fn req(v: &Values, k: &str, label: K, lang: Lang) -> Result<String, String> {
         .ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
 }
 
-fn num_u32(v: &Values, k: &str, label: K, lang: Lang) -> Result<Option<u32>, String> {
-    match v.num(k).map_err(|_| format!("{}: ?", t(lang, label)))? {
+/// Field `k` as a `T` (`u16`, `u32`, `i64`…): `None` when empty, `"<label>: ?"` when it is not
+/// a number or does not fit `T`.
+fn num_of<T: TryFrom<i64>>(v: &Values, k: &str, label: K, lang: Lang) -> Result<Option<T>, String> {
+    let bad = || format!("{}: ?", t(lang, label));
+    match v.num(k).map_err(|_| bad())? {
         None => Ok(None),
-        Some(n) if n >= 0 && n <= u32::MAX as i64 => Ok(Some(n as u32)),
-        Some(_) => Err(format!("{}: ?", t(lang, label))),
+        Some(n) => T::try_from(n).map(Some).map_err(|_| bad()),
     }
 }
 
@@ -227,6 +229,20 @@ pub fn bulk(lang: Lang, title: K, items: Vec<(String, String)>, make: fn(String)
 mod tests {
     use super::testing::*;
     use super::*;
+
+    #[test]
+    fn num_of_rejects_what_does_not_fit_the_type() {
+        let v = vals(&[("a", "65535"), ("b", "65536"), ("c", "-1"), ("d", "x"), ("e", "")]);
+        let l = Lang::EnUs;
+        assert_eq!(num_of::<u16>(&v, "a", K::Port, l), Ok(Some(65535)));
+        assert_eq!(num_of::<u16>(&v, "b", K::Port, l), Err("Port: ?".into()));
+        assert_eq!(num_of::<u32>(&v, "b", K::Port, l), Ok(Some(65536)));
+        assert_eq!(num_of::<u32>(&v, "c", K::Port, l), Err("Port: ?".into()));
+        assert_eq!(num_of::<i64>(&v, "c", K::Port, l), Ok(Some(-1)));
+        assert_eq!(num_of::<u32>(&v, "d", K::Port, l), Err("Port: ?".into()));
+        assert_eq!(num_of::<u32>(&v, "e", K::Port, l), Ok(None));
+        assert_eq!(num_of::<u32>(&v, "missing", K::Port, l), Ok(None));
+    }
 
     #[test]
     fn bulk_delete_lists_every_name_and_batches_in_order() {

@@ -2,18 +2,6 @@
 
 use super::*;
 
-pub(super) fn u16_of(v: &Values, k: &str, label: K, lang: Lang) -> Result<Option<u16>, String> {
-    let bad = || format!("{}: 1-65535", t(lang, label));
-    match v.num(k).map_err(|_| bad())? {
-        None => Ok(None),
-        Some(n) => u16::try_from(n).map(Some).map_err(|_| bad()),
-    }
-}
-
-pub(super) fn u32_of(v: &Values, k: &str, label: K, lang: Lang) -> Result<Option<u32>, String> {
-    num_u32(v, k, label, lang)
-}
-
 /// Fixed choices. Optional selects get their *— None —* entry from the
 /// select itself (`Combo`), so it is never added here.
 pub(super) fn static_refs(items: &[(String, String)]) -> Source {
@@ -185,10 +173,10 @@ pub(super) fn listener_options_of(v: &Values, lang: Lang) -> Result<Option<LbLis
         return Ok(None);
     }
     Ok(Some(LbListenerOptions {
-        timeout_client_data: u32_of(v, "timeout_client_data", K::TimeoutClientData, lang)?,
-        timeout_member_connect: u32_of(v, "timeout_member_connect", K::TimeoutMemberConnect, lang)?,
-        timeout_member_data: u32_of(v, "timeout_member_data", K::TimeoutMemberData, lang)?,
-        timeout_tcp_inspect: u32_of(v, "timeout_tcp_inspect", K::TimeoutTcpInspect, lang)?,
+        timeout_client_data: num_of::<u32>(v, "timeout_client_data", K::TimeoutClientData, lang)?,
+        timeout_member_connect: num_of::<u32>(v, "timeout_member_connect", K::TimeoutMemberConnect, lang)?,
+        timeout_member_data: num_of::<u32>(v, "timeout_member_data", K::TimeoutMemberData, lang)?,
+        timeout_tcp_inspect: num_of::<u32>(v, "timeout_tcp_inspect", K::TimeoutTcpInspect, lang)?,
         insert_headers: v.list("insert_headers"),
         allowed_cidrs: v.0.contains_key("allowed_cidrs").then(|| v.list("allowed_cidrs")),
         tls_ciphers: v.opt("listener_ciphers"),
@@ -278,8 +266,8 @@ pub(super) fn monitor_spec(v: &Values, lang: Lang, kind: String) -> Result<LbMon
     };
     Ok(LbMonitorSpec {
         name: v.opt("monitor_name"),
-        delay: u32_of(v, "delay", K::DelaySeconds, lang)?.unwrap_or(5),
-        timeout: u32_of(v, "timeout", K::TimeoutSeconds, lang)?.unwrap_or(5),
+        delay: num_of::<u32>(v, "delay", K::DelaySeconds, lang)?.unwrap_or(5),
+        timeout: num_of::<u32>(v, "timeout", K::TimeoutSeconds, lang)?.unwrap_or(5),
         max_retries: retries("max_retries", K::MaxRetries)?.unwrap_or(3),
         max_retries_down: retries("max_retries_down", K::MaxRetriesDown)?,
         http_method: v.opt("http_method").filter(|_| http),
@@ -508,9 +496,9 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
                 name: v.opt("listener_name"),
                 description: None,
                 protocol: protocol.clone(),
-                port: u16_of(v, "listener_port", K::Port, lang)?
+                port: num_of::<u16>(v, "listener_port", K::Port, lang)?
                     .ok_or_else(|| format!("{}: {}", t(lang, K::Port), t(lang, K::RequiredField)))?,
-                connection_limit: u32_of(v, "connection_limit", K::ConnectionLimit, lang)?,
+                connection_limit: num_of::<u32>(v, "connection_limit", K::ConnectionLimit, lang)?,
                 options: listener_options_of(v, lang)?.unwrap_or_default(),
                 default_tls_container_ref: v.opt("certificate").filter(|_| protocol == LB_TLS_PROTOCOL),
                 sni_container_refs: if protocol == LB_TLS_PROTOCOL {

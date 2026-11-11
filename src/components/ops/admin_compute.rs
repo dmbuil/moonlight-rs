@@ -4,9 +4,7 @@ use super::*;
 
 /// A required whole number, named in the error.
 fn num_req(v: &Values, k: &str, label: K, lang: Lang) -> Result<i64, String> {
-    v.num(k)
-        .map_err(|_| format!("{}: ?", t(lang, label)))?
-        .ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
+    num_of(v, k, label, lang)?.ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
 }
 
 /// Admin › Flavors' *Create Flavor*, Horizon's two steps: *Flavor Information*

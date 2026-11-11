@@ -340,7 +340,7 @@ fn encryption_dialog(lang: Lang, title: K, id: &str, name: &str, current: Option
                 .value(c.key_size.map(|k| k.to_string()).unwrap_or_default()),
         ],
         move |v| {
-            let key_size = num_u32(v, "key_size", K::KeySize, lang)?;
+            let key_size = num_of::<u32>(v, "key_size", K::KeySize, lang)?;
             let spec = EncryptionSpec {
                 provider: req(v, "provider", K::Provider, lang)?,
                 control_location: req(v, "control_location", K::ControlLocation, lang)?,

@@ -173,12 +173,12 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         Ok(OsAction::ServerLaunch(LaunchSpec {
             name: req(v, "name", K::InstanceName, lang)?,
             availability_zone: v.opt("az"),
-            count: num_u32(v, "count", K::Count, lang)?.unwrap_or(1),
+            count: num_of::<u32>(v, "count", K::Count, lang)?.unwrap_or(1),
             source,
             source_id: req(v, "source_id", K::SourceItem, lang)?,
             create_volume,
             volume_size_gb: if create_volume {
-                num_u32(v, "volume_size", K::VolumeSizeGb, lang)?
+                num_of::<u32>(v, "volume_size", K::VolumeSizeGb, lang)?
             } else {
                 None
             },

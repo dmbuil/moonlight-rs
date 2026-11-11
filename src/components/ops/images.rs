@@ -133,9 +133,9 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
         let visibility = req(v, "visibility", K::Visibility, lang)?;
         c.visibility = (visibility != old.visibility).then_some(visibility);
         c.protected = (v.flag("protected") != old.protected).then(|| v.flag("protected"));
-        let min_disk = num_u32(v, "min_disk", K::MinDiskGb, lang)?.unwrap_or(0);
+        let min_disk = num_of::<u32>(v, "min_disk", K::MinDiskGb, lang)?.unwrap_or(0);
         c.min_disk_gb = (i64::from(min_disk) != old.min_disk_gb.unwrap_or(0)).then_some(min_disk);
-        let min_ram = num_u32(v, "min_ram", K::MinRamMb, lang)?.unwrap_or(0);
+        let min_ram = num_of::<u32>(v, "min_ram", K::MinRamMb, lang)?.unwrap_or(0);
         c.min_ram_mb = (i64::from(min_ram) != old.min_ram_mb.unwrap_or(0)).then_some(min_ram);
         if let Some(f) = v
             .opt("disk_format")
@@ -314,8 +314,8 @@ fn create_image_form(
             container_format: None,
             visibility: req(v, "visibility", K::Visibility, lang)?,
             protected: v.flag("protected"),
-            min_disk_gb: num_u32(v, "min_disk", K::MinDiskGb, lang)?.filter(|n| *n > 0),
-            min_ram_mb: num_u32(v, "min_ram", K::MinRamMb, lang)?.filter(|n| *n > 0),
+            min_disk_gb: num_of::<u32>(v, "min_disk", K::MinDiskGb, lang)?.filter(|n| *n > 0),
+            min_ram_mb: num_of::<u32>(v, "min_ram", K::MinRamMb, lang)?.filter(|n| *n > 0),
             properties,
             upload_bytes: file,
             owner: v.opt("owner"),

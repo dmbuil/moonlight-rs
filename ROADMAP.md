@@ -6753,7 +6753,7 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 
 ## 106. Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules
 
-> 🚧 **In progress.** Steps 1 and 2 done (2026-11-11), one commit each.
+> 🚧 **In progress.** Steps 1 and 2 done (2026-11-11), one commit each, plus the parser merge.
 >
 > **Step 1**: `src/model.rs` (9170 lines after item 105's reformat) is now `src/model/`, 18 files,
 > the largest `action.rs` (1487) and `mod.rs` (1123: `ProjectRef`/`SessionInfo`, `Capabilities` and
@@ -6781,10 +6781,17 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
 >
 > Both steps: both clippy variants clean, `cargo fmt --check` clean, nextest 588/588. AGENTS.md (§3,
 > the recipes, §7's ~1500-line rule) and ARCHITECTURE.md name the new directories. Not measured: the
-> WASM bundle size (needs a release `cargo leptos build`; pure moves). Still open: merging the four
-> numeric parsers (`num_u32`, `num_req` in `admin_compute`, `u16_of` / `u32_of` in `octavia`) into
-> one generic, as its own commit; step 3 (`actions.rs`, taking the body builders out of the model);
-> step 4 (`mapping.rs` tests).
+> WASM bundle size (needs a release `cargo leptos build`; pure moves).
+>
+> **After step 2** (own commit): the four numeric parsers (`num_u32`, `num_req`, `u16_of`, `u32_of`)
+> are one `num_of::<T: TryFrom<i64>>` in `ops/mod.rs` (`num_req` keeps only the *required* check on
+> top of it), tested by `num_of_rejects_what_does_not_fit_the_type`. A port that does not fit a
+> `u16` now says `Port: ?` like every other number field, not `Port: 1-65535` (the model's
+> `validate` still names the range for 0). Not a method on `Values` as planned: it needs the label
+> and language. Nextest 589/589.
+>
+> Still open: step 3 (`actions.rs`, taking the body builders out of the model) and step 4
+> (`mapping.rs` tests).
 
 **Goal.** Also from the 2026-11-11 assessment. Four files hold 26 000 of the 58 000 lines:
 `src/model.rs` (7152), `src/components/ops.rs` (6988), `src/server/mapping.rs` (6188) and

@@ -165,7 +165,7 @@ pub fn qos_rule_dialog(lang: Lang, policy_id: &str, rule: Option<&QosRule>) -> D
     let title = tr(if rule.is_some() { K::EditRule } else { K::AddRule });
     Dialog::form(title.clone(), title, fields, move |v| {
         let kind = fixed.clone().unwrap_or_else(|| v.get("kind"));
-        let n = |k: &str, label| num_u32(v, k, label, lang);
+        let n = |k: &str, label| num_of::<u32>(v, k, label, lang);
         let spec = QosRuleSpec {
             direction: v
                 .opt("direction")

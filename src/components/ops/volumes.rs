@@ -80,7 +80,7 @@ pub fn create_volume_dialog(lang: Lang, preset: Option<(VolumeSource, String, Op
         Ok(OsAction::VolumeCreate {
             name: v.get("name"),
             description: v.opt("description"),
-            size_gb: num_u32(v, "size", K::SizeGb, lang)?.unwrap_or(1),
+            size_gb: num_of::<u32>(v, "size", K::SizeGb, lang)?.unwrap_or(1),
             volume_type: v.opt("volume_type"),
             availability_zone: v.opt("az"),
             source,
@@ -138,7 +138,7 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                     .required(),
             ],
             move |v| {
-                let new = num_u32(v, "size", K::NewSizeGb, lang)?.unwrap_or(0);
+                let new = num_of::<u32>(v, "size", K::NewSizeGb, lang)?.unwrap_or(0);
                 if (new as i64) <= size {
                     return Err(format!("{} > {size}", t(lang, K::NewSizeGb)));
                 }

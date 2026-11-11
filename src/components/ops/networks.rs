@@ -208,8 +208,8 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
     fields.extend(subnet_fields(lang, Some(("with_subnet", "true")), &net));
     let with_subnet: fn(&Vals) -> bool = |v| v.get("with_subnet").map(String::as_str) == Some("true");
     Dialog::form(tr(K::CreateNetwork), tr(K::CreateNetwork), fields, move |v| {
-        let mtu = num_u32(v, "mtu", K::Mtu, lang)?;
-        let segmentation_id = num_u32(v, "segmentation_id", K::SegmentationId, lang)?;
+        let mtu = num_of::<u32>(v, "mtu", K::Mtu, lang)?;
+        let segmentation_id = num_of::<u32>(v, "segmentation_id", K::SegmentationId, lang)?;
         let provider = ProviderNetwork {
             network_type: req(v, "provider_type", K::ProviderNetworkType, lang)?,
             physical_network: v.opt("physical_network"),
