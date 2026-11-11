@@ -99,7 +99,8 @@ src/
 ├── lib.rs             crate root; WASM entry point `hydrate` (hydrate)
 ├── app.rs             HTML shell and routes (/login, /project/…, /identity/…)
 ├── api.rs             #[server] functions: the only browser ↔ server boundary
-├── model.rs           DTOs, OsAction (every write), ChoiceSet, Capabilities, needs
+├── model/             DTOs, one file per service; mod.rs: Capabilities, needs, AppError,
+│                      paging; action.rs: OsAction (every write); choice.rs: ChoiceSet
 ├── i18n.rs            translations! table (EN + ES), language detection, formatting
 ├── prefs.rs           deployment preferences shared with the browser (serde defaults)
 ├── theme.rs           light / dark / system theme
@@ -387,7 +388,7 @@ flowchart LR
     R2 & R3 --> OUT["ActionOutcome → dialog result<br/>(requests shown only with [ui] show_requests)"]
 ```
 
-- `OsAction` (`model.rs`) enumerates every mutation. Multi-step actions (network + subnet)
+- `OsAction` (`model/action.rs`) enumerates every mutation. Multi-step actions (network + subnet)
   chain IDs; in dry-run the IDs are placeholders such as `<new network id>`.
 - Dry-run builds requests with the **same typed endpoints** as `on`, which is why every
   action is tested in dry-run, asserting method, path and exact JSON body.

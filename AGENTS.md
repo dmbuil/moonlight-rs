@@ -106,7 +106,7 @@ stripped) cover the rest. The log is `$TMPDIR/moonlight-dev-server.log`, outside
 
 ```text
 src/api.rs           #[server] fns — the only browser↔server boundary
-src/model.rs         DTOs (serde), OsAction (every write), ChoiceSet, WriteMode
+src/model/           DTOs (serde) per service; OsAction (action.rs), ChoiceSet, WriteMode
 src/server/os.rs     login (v3password, unscoped) → per-request v3token rescope, cached (moka)
 src/server/fetch.rs  parallel GETs (tokio::join!) → mapping
 src/server/console.rs instance Log/Console: the only read-only POSTs, via Exec (§1.3)
@@ -125,7 +125,7 @@ region. The server is stateless; in-process caches are disposable.
 
 ### Add a read-only panel or detail page
 
-1. Model in `model.rs` (`Clone, Debug, PartialEq, Serialize, Deserialize`).
+1. Model in `model/<service>.rs` (`Clone, Debug, PartialEq, Serialize, Deserialize`).
 2. Pure mapper in `server/mapping.rs` + a test with JSON shaped like the real API
    (include odd cases: missing name → fall back to ID, `""` vs `null`, string booleans).
 3. Fetcher in `server/fetch.rs`: lookups in parallel; use `soft()` for lists that only
@@ -141,7 +141,7 @@ region. The server is stateless; in-process caches are disposable.
 
 ### Add a write action
 
-1. Variant in `OsAction` (`model.rs`).
+1. Variant in `OsAction` (`model/action.rs`).
 2. Arm in `server/actions.rs::apply` building the **typed SDK endpoint**; use `x.send(ep)`
    or `x.create(ep, "what")` (returns the new ID, placeholder in dry-run).
 3. Test in `actions.rs` asserting method, path and the exact JSON body via `dry(...)`. Every
@@ -172,7 +172,7 @@ call `plugin_enabled(p)?` in each of its server functions and list its actions i
 
 `Field::{text, area, number, check, select, multi}` with `.required()`, `.value()`,
 `.help()`, `.when(field, value)`. Dynamic options come from `Source::Set(ChoiceSet::…)`
-(add the set in `model.rs` and `fetch::choices`); options that depend on another field use
+(add the set in `model/choice.rs` and `fetch::choices`); options that depend on another field use
 `Source::Switch`, and the choices of one resource (e.g. one instance's ports) use
 `Source::Of(set, id)`, which keeps those whose first cell is `id`. A value that is preselected
 or preset by the caller runs `Dialog::on_change` once its set loads, as a user pick would.
@@ -352,6 +352,8 @@ SSH tunnel instead.
   add any later formatting-only commit there.
 - Tests sit next to the code (`#[cfg(test)] mod tests`); prefer pure functions so logic is
   testable without network. `tokio::test` for async action tests.
+- A source file over ~1500 lines gets split along its section banners into a directory module
+  whose `mod.rs` re-exports the parts (`pub use x::*`), so callers' paths do not change.
 - Display `-` for empty values, fall back to IDs for unnamed resources (like Horizon).
 - Every table row that has actions gets an `actions` column (split button: first item as
   button, rest in a menu, delete last, destructive items red with confirmation).

@@ -118,7 +118,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 103 | 🚧 Tables keep filter, sort and drawers across refetches; keyed rows; debounced search | P2 | M | 46, 88 |
 | 104 | ✅ Full lists send a page size of 1000; lookup-cache misses coalesce | — | S | 66 |
 | 105 | ✅ rustfmt in the workflow, and a CI workflow that runs the AGENTS.md checks | — | S | — |
-| 106 | Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
+| 106 | 🚧 Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | P3 | M | 105 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -6752,6 +6752,22 @@ pull request that fails on a warning, a failing test or a Markdown lint error.
    the first run is green. README gets the status badge.
 
 ## 106. Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules
+
+> 🚧 **In progress.** Step 1 done (2026-11-11, not committed yet): `src/model.rs` (9170 lines
+> after item 105's reformat) is now `src/model/`, 18 files, the largest `action.rs` (1489) and
+> `lb.rs` (1070). `mod.rs` (1123) keeps `ProjectRef`/`SessionInfo`, `Capabilities` and `needs`,
+> `AppError`, paging and `check_id_tests`, and `pub use`s every submodule, so no caller changed.
+> Files: `action` (`OsAction`, its two `impl` blocks joined), `admin`, `alarm`, `choice`,
+> `compute`, `detail`, `firewall`, `heat`, `identity`, `keymgr`, `lb`, `network` (with QoS),
+> `quota`, `topology`, `usage`, `volume`, `write`; each test module sits in the file it tests.
+> A sorted line diff against `HEAD:src/model.rs` shows only `use super::*;`, one `//!` line per
+> file, the `mod`/`pub use` block, and `one_of` / `short_provider_name` made `pub(super)`. The
+> `impl` blocks of `FirewallPolicyRow`, `LbListenerSpec` and `LbPoolSpec` already sit with their
+> structs. AGENTS.md §3, the recipes and §7 (the ~1500-line rule) and ARCHITECTURE.md's tree
+> name the new directory. Both clippy variants clean; nextest 588/588; `#[test]` count in the
+> model 52 before and after. Not measured: the WASM bundle size (needs a release
+> `cargo leptos build`). Still open: the body builders' move to `actions` (step 3), steps 2-4
+> (`ops.rs`, `actions.rs`, `mapping.rs` tests) and the docs for them; commit step 1 first.
 
 **Goal.** Also from the 2026-11-11 assessment. Four files hold 26 000 of the 58 000 lines:
 `src/model.rs` (7152), `src/components/ops.rs` (6988), `src/server/mapping.rs` (6188) and
