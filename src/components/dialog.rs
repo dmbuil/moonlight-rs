@@ -1872,7 +1872,8 @@ fn place_menu(details: NodeRef<leptos::html::Details>) {
     let _ = details;
 }
 
-fn focus_summary(_d: &web_sys::HtmlDetailsElement) {
+/// Moves focus back to a `<details>` menu's `<summary>` (after Escape closed it).
+pub(crate) fn focus_summary(_d: &web_sys::HtmlDetailsElement) {
     #[cfg(feature = "hydrate")]
     {
         use wasm_bindgen::JsCast;

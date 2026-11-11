@@ -226,6 +226,10 @@ pub struct NetworkPrefs {
     /// *Associate Floating IP* only offers ports on networks that a router with
     /// an external gateway reaches (Horizon's `enable_fip_topology_check`).
     pub fip_topology_check: bool,
+    /// *Network Topology* draws its *Topology* and *Graph* tabs only up to this
+    /// many networks (own, shared and external); above it they show a note and
+    /// the *List* view stays available (roadmap 100). `0`: no limit.
+    pub topology_max_networks: usize,
     /// Admin *Create Network*'s provider types, in this order (Horizon's
     /// `supported_provider_types`); `["*"]`: every type of
     /// [`crate::model::PROVIDER_NETWORK_TYPES`].
@@ -243,6 +247,7 @@ impl Default for NetworkPrefs {
             allowed_private_subnet_cidr: AllowedCidrs::default(),
             enable_ipv6: true,
             fip_topology_check: true,
+            topology_max_networks: 50,
             supported_provider_types: vec!["*".into()],
             segmentation_id_range: Default::default(),
         }
@@ -470,6 +475,7 @@ mod tests {
         assert!(p.launch.create_volume && !p.launch.config_drive && !p.launch.requires_keypair);
         assert_eq!(p.launch.flavor_sort, FlavorSort::Ram);
         assert!(p.network.enable_ipv6 && p.network.fip_topology_check);
+        assert_eq!(p.network.topology_max_networks, 50);
         assert_eq!(p.images.default_visibility, "private");
         assert!(p.images.disk_formats.contains(&"qcow2".to_string()));
         let partial: LaunchPrefs = serde_json::from_str(r#"{"config_drive": true}"#).unwrap();

@@ -1150,16 +1150,19 @@ pub async fn topology(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Topology
         list_where!(os, floatingip::list, "floatingips", |b| b.tenant_id(project_id))
     );
     let (n, ro, po, sv) = (n?, ro?, po?, sv?);
-    Ok(timed(t, mapping::topology(mapping::TopologyInputs {
-            project_id,
-            networks: &n.networks,
-            subnets: &n.subnets,
-            routers: &ro,
-            ports: &po,
-            servers: &sv,
-            floating_ips: &soft(fi),
-        }),
-    ))
+    let mut topo = mapping::topology(mapping::TopologyInputs {
+        project_id,
+        networks: &n.networks,
+        subnets: &n.subnets,
+        routers: &ro,
+        ports: &po,
+        servers: &sv,
+        floating_ips: &soft(fi),
+    });
+    // Everything is still fetched over the limit: the *List* view stays
+    // available and needs the devices and links (roadmap 100).
+    topo.max_networks = super::config::state().config.prefs.network.topology_max_networks;
+    Ok(timed(t, topo))
 }
 
 /// Usage per server for `[start, end)` (`YYYY-MM-DDTHH:MM:SS`), GET only.

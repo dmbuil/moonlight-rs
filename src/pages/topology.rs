@@ -19,7 +19,7 @@ use crate::components::table::TimingChip;
 use crate::components::topo_canvas::{Canvas, KeptView};
 use crate::components::topo_layout::{self as geo, Size};
 use crate::components::widgets::{az_color, render, PageHeader, Skeleton, Tone};
-use crate::i18n::{t, use_i18n, Lang, K};
+use crate::i18n::{t, topology_too_many, use_i18n, Lang, K};
 use crate::model::*;
 
 /// Toolbar state.
@@ -296,6 +296,10 @@ pub fn NetworkTopologyPage() -> impl IntoView {
     let data = Resource::new(data_version, |_| get_topology());
     let tab = RwSignal::new(0usize);
     let list = RwSignal::new(false);
+    // Set by `TopoBody`: the network count when it is over the limit (roadmap 100).
+    let too_many = RwSignal::new(None::<usize>);
+    // The drawing's controls do nothing while the note replaces it.
+    let no_drawing = move || list.get() || too_many.get().is_some();
     let opts = Opts {
         small: RwSignal::new(false),
         labels: RwSignal::new(true),
@@ -317,31 +321,43 @@ pub fn NetworkTopologyPage() -> impl IntoView {
         <div class="topo-toolbar" role="toolbar" aria-label=move || i18n.t(K::NetworkTopology)>
             <div class="seg">
                 <button type="button" class="btn btn-sm" aria-pressed=move || (!opts.small.get()).to_string()
+                    disabled=move || too_many.get().is_some()
                     on:click=move |_| opts.small.set(false)>{move || i18n.t(K::SizeNormal)}</button>
                 <button type="button" class="btn btn-sm" aria-pressed=pressed(opts.small)
+                    disabled=move || too_many.get().is_some()
                     on:click=move |_| opts.small.set(true)>{move || i18n.t(K::SizeSmall)}</button>
             </div>
             <button type="button" class="btn btn-sm" aria-pressed=pressed(opts.labels)
+                disabled=move || too_many.get().is_some()
                 on:click=toggle(opts.labels)>{move || i18n.t(K::ToggleLabels)}</button>
             <button type="button" class="btn btn-sm" aria-pressed=pressed(opts.collapsed)
-                disabled=move || tab.get() != 0 || list.get()
+                disabled=move || tab.get() != 0 || no_drawing()
                 on:click=toggle(opts.collapsed)>{move || i18n.t(K::ToggleCollapse)}</button>
-            <button type="button" class="btn btn-sm" disabled=move || list.get()
+            <button type="button" class="btn btn-sm" disabled=no_drawing
                 on:click=move |_| opts.center.update(|n| *n += 1)>{move || i18n.t(K::CenterTopology)}</button>
             <button type="button" class="btn btn-sm" aria-pressed=pressed(list)
                 on:click=toggle(list)>{move || i18n.t(K::ListView)}</button>
         </div>
         <Transition fallback=|| view! { <Skeleton/> }>
             {move || render(data.get(), |td| view! {
-                <TopoBody topo=td.data timing=(td.millis, td.calls) tab list opts/>
+                <TopoBody topo=td.data timing=(td.millis, td.calls) tab list too_many opts/>
             })}
         </Transition>
     }
 }
 
 #[component]
-fn TopoBody(topo: Topology, timing: (u64, u32), tab: RwSignal<usize>, list: RwSignal<bool>, opts: Opts) -> impl IntoView {
+fn TopoBody(
+    topo: Topology,
+    timing: (u64, u32),
+    tab: RwSignal<usize>,
+    list: RwSignal<bool>,
+    too_many: RwSignal<Option<usize>>,
+    opts: Opts,
+) -> impl IntoView {
     let i18n = use_i18n();
+    let (over, max_networks) = (topo.too_many(), topo.max_networks);
+    too_many.set(over);
     if topo.networks.is_empty() && topo.devices.is_empty() {
         return view! { <p class="muted topo-empty">{move || i18n.t(K::TopologyEmpty)}</p> }.into_any();
     }
@@ -355,19 +371,36 @@ fn TopoBody(topo: Topology, timing: (u64, u32), tab: RwSignal<usize>, list: RwSi
     provide_context(ctx);
     view! {
         <div class="topo-meta">
-            <span class="muted">{move || (!list.get()).then(|| i18n.t(K::TopologyHint))}</span>
+            <span class="muted">{move || (!list.get() && over.is_none()).then(|| i18n.t(K::TopologyHint))}</span>
             // Its swatches use the canvas' patterns, which the list doesn't draw.
-            {move || (!list.get() && !kinds.is_empty()).then(|| legend(&kinds, i18n.lang()))}
+            {move || (!list.get() && over.is_none() && !kinds.is_empty()).then(|| legend(&kinds, i18n.lang()))}
             <TimingChip millis=timing.0 calls=timing.1/>
         </div>
-        {move || match (list.get(), tab.get()) {
-            (true, _) => view! { <TopoList/> }.into_any(),
-            (false, 0) => view! { <ColumnsView opts/> }.into_any(),
-            (false, _) => view! { <GraphView opts/> }.into_any(),
+        {move || match (list.get(), over, tab.get()) {
+            (true, _, _) => view! { <TopoList/> }.into_any(),
+            (false, Some(n), _) => view! { <TooMany n max=max_networks list/> }.into_any(),
+            (false, None, 0) => view! { <ColumnsView opts/> }.into_any(),
+            (false, None, _) => view! { <GraphView opts/> }.into_any(),
         }}
         <TopoTip/>
     }
     .into_any()
+}
+
+/// Over `[network] topology_max_networks`: a note instead of the drawing, with
+/// the way to the same data as a list or on the *Networks* panel (roadmap 100).
+#[component]
+fn TooMany(n: usize, max: usize, list: RwSignal<bool>) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <div class="topo-empty" role="status">
+            <p class="muted">{move || topology_too_many(i18n.lang(), n, max)}</p>
+            <p class="topo-empty-actions">
+                <button type="button" class="btn btn-sm" on:click=move |_| list.set(true)>{move || i18n.t(K::ShowAsList)}</button>
+                <A href="/project/networks" attr:class="btn btn-sm">{move || i18n.t(K::Networks)}</A>
+            </p>
+        </div>
+    }
 }
 
 /// A focusable, clickable node: hover and focus highlight it and its links and

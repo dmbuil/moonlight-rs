@@ -335,6 +335,7 @@ mod tests {
                 dev("vm2", TopoKind::Server),
             ],
             links: vec![link("r1", "ext"), link("r1", "a"), link("vm1", "a"), link("vm1", "b"), link("vm2", "b")],
+            max_networks: 0,
         }
     }
 

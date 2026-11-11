@@ -152,6 +152,7 @@ Horizon's `OPENSTACK_NEUTRON_NETWORK` and `ALLOWED_PRIVATE_SUBNET_CIDR`.
 | `[network] default_dns_nameservers` | `[]` | Prefilled DNS servers when creating a subnet. |
 | `[network] enable_ipv6` | `true` | Offer IPv6 when creating subnets. |
 | `[network] fip_topology_check` | `true` | *Associate Floating IP* only offers ports that a router with an external gateway reaches. |
+| `[network] topology_max_networks` | `50` | *Network Topology* draws its *Topology* and *Graph* tabs only up to this many networks (own, shared and external); above it they show a note instead, and the *List* view stays available. `0` = no limit. |
 | `[network] supported_provider_types` | `["*"]` (every type) | Admin › *Create Network*'s provider types, in this order: `local`, `flat`, `vlan`, `gre`, `vxlan`, `geneve`. Checked by the server too. |
 | `[network.segmentation_id_range] <type>` | the type's full range | `[min, max]` segmentation IDs admins may pick for that type, e.g. `vlan = [1000, 1999]`; must lie within the type's own range. |
 | `[network.allowed_private_subnet_cidr] ipv4` | `[]` (anything) | IPv4 ranges new subnets must fall in; checked by the server too. |

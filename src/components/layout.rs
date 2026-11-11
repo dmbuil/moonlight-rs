@@ -10,7 +10,7 @@ use leptos_router::hooks::use_location;
 use super::nav;
 use crate::api::{get_session_info, switch_project, switch_region, Logout};
 use crate::i18n::{use_i18n, Lang, K};
-use crate::components::dialog::{install_menu_dismissal, DialogHost, Dialogs};
+use crate::components::dialog::{focus_summary, install_menu_dismissal, DialogHost, Dialogs};
 use crate::components::widgets::{ErrorBox, ErrorPage, RegionMenuRef};
 use crate::theme::{use_theme, Theme};
 use crate::model::{needs, AppError, ErrorKind, SessionInfo, WriteMode};
@@ -72,6 +72,7 @@ pub fn Layout() -> impl IntoView {
     view! {
         <a class="skip-link" href="#main">"Skip to content"</a>
         <header class="header">
+            <MobileBar info=info/>
             <div class="utility-bar">
                 <a class="brand" href="/project">
                     <MoonMark/>
@@ -92,21 +93,7 @@ pub fn Layout() -> impl IntoView {
                 </nav>
                 <span class="spacer"></span>
                 <Transition fallback=|| ()>
-                    {move || info.get().and_then(Result::ok).map(|s| match s.write_mode {
-                        WriteMode::Off => view! {
-                            <span class="badge-ro" title=move || i18n.t(K::ReadOnlyHint)>
-                                <EyeIcon/>
-                                {move || i18n.t(K::ReadOnly)}
-                            </span>
-                        }.into_any(),
-                        WriteMode::DryRun => view! {
-                            <span class="badge-ro dry" title=move || i18n.t(K::DryRunHint)>
-                                <EyeIcon/>
-                                {move || i18n.t(K::DryRunBadge)}
-                            </span>
-                        }.into_any(),
-                        WriteMode::On => ().into_any(),
-                    })}
+                    {move || info.get().and_then(Result::ok).map(|s| view! { <WriteBadge mode=s.write_mode/> })}
                 </Transition>
                 <Transition fallback=|| ()>
                     {move || info.get().and_then(Result::ok).map(|s| view! {
@@ -177,6 +164,183 @@ pub fn Layout() -> impl IntoView {
         </main>
         <DialogHost/>
         <crate::components::jobs::JobsTray/>
+    }
+}
+
+/// The read-only / dry-run badge (nothing when writes are on). At phone width
+/// only its eye shows (roadmap 101): it is a safety signal, never hidden.
+#[component]
+fn WriteBadge(mode: WriteMode) -> impl IntoView {
+    let i18n = use_i18n();
+    match mode {
+        WriteMode::Off => view! {
+            <span class="badge-ro" title=move || i18n.t(K::ReadOnlyHint)>
+                <EyeIcon/>
+                <span class="badge-ro-text">{move || i18n.t(K::ReadOnly)}</span>
+            </span>
+        }
+        .into_any(),
+        WriteMode::DryRun => view! {
+            <span class="badge-ro dry" title=move || i18n.t(K::DryRunHint)>
+                <EyeIcon/>
+                <span class="badge-ro-text">{move || i18n.t(K::DryRunBadge)}</span>
+            </span>
+        }
+        .into_any(),
+        WriteMode::On => ().into_any(),
+    }
+}
+
+/// Where a path is, for the phone bar: the group and panel labels
+/// (`Compute › Instances`, also on a detail page), or just the dashboard on a
+/// page no panel owns.
+fn place(path: &str) -> (K, Option<K>) {
+    match nav::active(path) {
+        Some((g, p)) => (g.label, Some(p.label)),
+        None => (nav::dashboard(path).0, None),
+    }
+}
+
+/// The header at phone width (roadmap 101): one slim bar with ☰ *Navigation*
+/// (dashboards, then the current one's groups and panels), the project and the
+/// current place, the write badge's eye, and *Account* (region, project, the
+/// user menu). Always rendered, shown instead of the three bars by the
+/// stylesheet's 720px media query: a width signal would render one header on
+/// the server and another after hydration. The sheets are `<details class=
+/// "menu">`, so they work before hydration and close on outside clicks and
+/// Escape; picking a panel (any navigation) closes them.
+#[component]
+fn MobileBar(info: Resource<Result<SessionInfo, AppError>>) -> impl IntoView {
+    let i18n = use_i18n();
+    let location = use_location();
+    let nav_sheet = NodeRef::<Details>::new();
+    let account = NodeRef::<Details>::new();
+    // Any navigation (a panel picked here, a link in the page) closes both.
+    Effect::new(move |_| {
+        location.pathname.track();
+        close(nav_sheet);
+        close(account);
+    });
+    let session = move || info.get().and_then(Result::ok);
+    // Escape closes a sheet and gives focus back to its button (the header's
+    // desktop menus close only on outside clicks).
+    let escape = |sheet: NodeRef<Details>| {
+        move |ev: leptos::ev::KeyboardEvent| {
+            if ev.key() == "Escape"
+                && let Some(d) = sheet.get_untracked()
+            {
+                d.set_open(false);
+                focus_summary(&d);
+            }
+        }
+    };
+    view! {
+        <div class="mobile-bar">
+            <details class="menu mobile-sheet" node_ref=nav_sheet on:keydown=escape(nav_sheet)>
+                <summary aria-label=move || i18n.t(K::Navigation) title=move || i18n.t(K::Navigation)>
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round">
+                        <path d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </summary>
+                <div class="menu-list sheet">
+                    <Transition fallback=|| ()>
+                        {move || session().map(|s| view! { <NavSheet caps=s.capabilities/> })}
+                    </Transition>
+                </div>
+            </details>
+            <a class="brand" href="/project" aria-label="Moonlight"><MoonMark/></a>
+            <div class="mobile-place">
+                <Transition fallback=|| ()>
+                    {move || session().map(|s| view! { <span class="mobile-project">{s.project.name}</span> })}
+                </Transition>
+                <span class="mobile-panel">
+                    {move || {
+                        let (group, panel) = place(&location.pathname.get());
+                        match panel {
+                            Some(p) => format!("{} › {}", i18n.t(group), i18n.t(p)),
+                            None => i18n.t(group).to_string(),
+                        }
+                    }}
+                </span>
+            </div>
+            <Transition fallback=|| ()>
+                {move || session().map(|s| view! { <WriteBadge mode=s.write_mode/> })}
+            </Transition>
+            <details class="menu mobile-sheet" node_ref=account on:keydown=escape(account)>
+                <summary aria-label=move || i18n.t(K::Account) title=move || i18n.t(K::Account)>
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <circle cx="12" cy="8" r="4"></circle>
+                        <path d="M4 21a8 8 0 0 1 16 0Z"></path>
+                    </svg>
+                </summary>
+                <div class="menu-list sheet" role="menu">
+                    <Transition fallback=|| ()>
+                        {move || session().map(|s| view! {
+                            <div class="menu-meta">
+                                <strong class="sheet-user">{s.user.clone()}</strong>
+                                {move || i18n.t(K::Domain)}": "{s.domain.clone()}
+                            </div>
+                            {(s.regions.len() > 1).then(|| view! {
+                                <div class="menu-heading">{move || i18n.t(K::Region)}</div>
+                                <ul><RegionChoices info=s.clone() on_pick=move || close(account)/></ul>
+                            })}
+                            <div class="menu-heading">{move || i18n.t(K::Project)}</div>
+                            <ProjectChoices info=s.clone() on_pick=move || close(account)/>
+                            <div class="menu-sep" role="separator"></div>
+                            <UserItems info=s id="account-sheet-theme"/>
+                        })}
+                    </Transition>
+                </div>
+            </details>
+        </div>
+    }
+}
+
+/// The ☰ sheet's body: the dashboards as tabs, then the current dashboard's
+/// groups (headings) and panels (links), as [`PrimaryNav`] and the secondary
+/// bar show them, from the same `nav` data and this session's capabilities.
+#[component]
+fn NavSheet(caps: crate::model::Capabilities) -> impl IntoView {
+    let i18n = use_i18n();
+    let location = use_location();
+    let admin = needs::ADMIN.met(&caps);
+    let dash = move || nav::dashboard(&location.pathname.get()).0;
+    let active_panel = move || nav::active(&location.pathname.get()).map(|(_, p)| p.href);
+    let dashboards = [(K::Project, "/project", true), (K::Admin, "/admin", admin), (K::Identity, "/identity/projects", true)];
+    let caps = StoredValue::new(caps);
+    view! {
+        <nav class="sheet-dashboards" aria-label="Dashboards">
+            {dashboards.into_iter().filter(|d| d.2).map(|(label, href, _)| view! {
+                <A href=href attr:class=move || if dash() == label { "active" } else { "" }>{move || i18n.t(label)}</A>
+            }).collect_view()}
+        </nav>
+        <nav aria-label="Panels">
+            {move || {
+                caps.with_value(|c| nav::dashboard(&location.pathname.get())
+                    .1
+                    .iter()
+                    .filter_map(|g| g.visible(c).map(|panels| (g.label, panels)))
+                    .map(|(group, panels)| view! {
+                        <div class="menu-heading">{move || i18n.t(group)}</div>
+                        <ul>
+                            {panels.into_iter().map(|p| {
+                                let (href, label) = (p.href, p.label);
+                                view! {
+                                    <li>
+                                        <A href=href
+                                            attr:class=move || if active_panel() == Some(href) { "menu-item selected" } else { "menu-item" }
+                                            attr:aria-current=move || (active_panel() == Some(href)).then_some("page")>
+                                            {move || i18n.t(label)}
+                                        </A>
+                                    </li>
+                                }
+                            }).collect_view()}
+                        </ul>
+                    })
+                    .collect_view())
+            }}
+        </nav>
     }
 }
 
@@ -263,41 +427,48 @@ fn RegionMenu(info: SessionInfo, details: NodeRef<Details>) -> impl IntoView {
                 <Caret/>
             </summary>
             <ul class="menu-list" role="menu">
-                {info.regions.into_iter().map(|r| {
-                    let selected = r == info.region;
-                    let target = r.clone();
-                    view! {
-                        <li>
-                            <button type="button" role="menuitemradio" aria-checked=selected.to_string()
-                                class:selected=selected
-                                on:click=move |_| {
-                                    close(details);
-                                    let target = target.clone();
-                                    spawn_local(async move {
-                                        match switch_region(target).await {
-                                            Ok(()) => hard_reload(None),
-                                            Err(e) if e.kind == ErrorKind::Unauthenticated => hard_reload(Some("/login")),
-                                            Err(_) => {}
-                                        }
-                                    });
-                                }>
-                                {r}
-                            </button>
-                        </li>
-                    }
-                }).collect_view()}
+                <RegionChoices info on_pick=move || close(details)/>
             </ul>
         </details>
     }
+}
+
+/// The session's regions as radio items (`<li>`s); a pick switches region and
+/// reloads. Shared by the region menu and the phone's *Account* sheet.
+#[component]
+fn RegionChoices(info: SessionInfo, #[prop(into)] on_pick: Callback<()>) -> impl IntoView {
+    info.regions
+        .into_iter()
+        .map(|r| {
+            let selected = r == info.region;
+            let target = r.clone();
+            view! {
+                <li>
+                    <button type="button" role="menuitemradio" aria-checked=selected.to_string()
+                        class:selected=selected
+                        on:click=move |_| {
+                            on_pick.run(());
+                            let target = target.clone();
+                            spawn_local(async move {
+                                match switch_region(target).await {
+                                    Ok(()) => hard_reload(None),
+                                    Err(e) if e.kind == ErrorKind::Unauthenticated => hard_reload(Some("/login")),
+                                    Err(_) => {}
+                                }
+                            });
+                        }>
+                        {r}
+                    </button>
+                </li>
+            }
+        })
+        .collect_view()
 }
 
 #[component]
 fn ProjectMenu(info: SessionInfo) -> impl IntoView {
     let i18n = use_i18n();
     let details = NodeRef::<Details>::new();
-    let query = RwSignal::new(String::new());
-    let projects = StoredValue::new(info.projects.clone());
-    let current_id = info.project.id.clone();
     view! {
         <details class="menu" node_ref=details>
             <summary>
@@ -309,37 +480,50 @@ fn ProjectMenu(info: SessionInfo) -> impl IntoView {
                 <Caret/>
             </summary>
             <div class="menu-list wide" role="menu">
-                <input class="menu-search" type="search"
-                    placeholder=move || i18n.t(K::SearchProjects)
-                    aria-label=move || i18n.t(K::SearchProjects)
-                    on:input=move |ev| query.set(event_target_value(&ev))/>
-                <ul>
-                    {move || {
-                        let q = query.get().to_lowercase();
-                        let current_id = current_id.clone();
-                        projects.with_value(|ps| ps.iter()
-                            .filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q))
-                            .map(|p| {
-                                let selected = p.id == current_id;
-                                let id = p.id.clone();
-                                view! {
-                                    <li>
-                                        <button type="button" role="menuitemradio"
-                                            aria-checked=selected.to_string() class:selected=selected
-                                            on:click=move |_| {
-                                                close(details);
-                                                set_active_project(id.clone());
-                                            }>
-                                            {p.name.clone()}
-                                        </button>
-                                    </li>
-                                }
-                            })
-                            .collect_view())
-                    }}
-                </ul>
+                <ProjectChoices info on_pick=move || close(details)/>
             </div>
         </details>
+    }
+}
+
+/// The project search and the user's projects; a pick switches project.
+/// Shared by the project menu and the phone's *Account* sheet.
+#[component]
+fn ProjectChoices(info: SessionInfo, #[prop(into)] on_pick: Callback<()>) -> impl IntoView {
+    let i18n = use_i18n();
+    let query = RwSignal::new(String::new());
+    let projects = StoredValue::new(info.projects);
+    let current_id = info.project.id;
+    view! {
+        <input class="menu-search" type="search"
+            placeholder=move || i18n.t(K::SearchProjects)
+            aria-label=move || i18n.t(K::SearchProjects)
+            on:input=move |ev| query.set(event_target_value(&ev))/>
+        <ul>
+            {move || {
+                let q = query.get().to_lowercase();
+                let current_id = current_id.clone();
+                projects.with_value(|ps| ps.iter()
+                    .filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q))
+                    .map(|p| {
+                        let selected = p.id == current_id;
+                        let id = p.id.clone();
+                        view! {
+                            <li>
+                                <button type="button" role="menuitemradio"
+                                    aria-checked=selected.to_string() class:selected=selected
+                                    on:click=move |_| {
+                                        on_pick.run(());
+                                        set_active_project(id.clone());
+                                    }>
+                                    {p.name.clone()}
+                                </button>
+                            </li>
+                        }
+                    })
+                    .collect_view())
+            }}
+        </ul>
     }
 }
 
@@ -387,13 +571,14 @@ fn LanguageChoices(#[prop(into)] on_pick: Callback<()>) -> impl IntoView {
         .collect_view()
 }
 
-/// Auto / Light / Dark as three joined buttons (a segmented control).
+/// Auto / Light / Dark as three joined buttons (a segmented control), labelled
+/// by the heading whose id is `labelledby`.
 #[component]
-fn ThemeSegments() -> impl IntoView {
+fn ThemeSegments(labelledby: &'static str) -> impl IntoView {
     let i18n = use_i18n();
     let theme = use_theme();
     view! {
-        <div class="segmented" role="radiogroup" aria-labelledby="user-menu-theme">
+        <div class="segmented" role="radiogroup" aria-labelledby=labelledby>
             {Theme::ALL.into_iter().map(|t| view! {
                 <button type="button" role="radio"
                     aria-checked=move || (theme.get() == t).to_string()
@@ -479,8 +664,6 @@ pub fn ThemeMenu() -> impl IntoView {
 #[component]
 fn UserMenu(info: SessionInfo) -> impl IntoView {
     let i18n = use_i18n();
-    let languages = NodeRef::<Details>::new();
-    let action = ServerAction::<Logout>::new();
     view! {
         <details class="menu">
             <summary>
@@ -493,9 +676,24 @@ fn UserMenu(info: SessionInfo) -> impl IntoView {
             </summary>
             <div class="menu-list" role="menu">
                 <div class="menu-meta">{move || i18n.t(K::Domain)}": "{info.domain.clone()}</div>
+                <UserItems info id="user-menu-theme"/>
+            </div>
+        </details>
+    }
+}
+
+/// The user menu's items after the domain: *Theme*, *Language*, the links and
+/// *Sign Out*. Shared by the user menu and the phone's *Account* sheet; `id`
+/// names the theme heading, which must be unique in the page.
+#[component]
+fn UserItems(info: SessionInfo, id: &'static str) -> impl IntoView {
+    let i18n = use_i18n();
+    let languages = NodeRef::<Details>::new();
+    let action = ServerAction::<Logout>::new();
+    view! {
                 // Picks keep the menu open, so both can be changed at once.
-                <div class="menu-heading" id="user-menu-theme">{move || i18n.t(K::Theme)}</div>
-                <ThemeSegments/>
+                <div class="menu-heading" id=id>{move || i18n.t(K::Theme)}</div>
+                <ThemeSegments labelledby=id/>
                 <details class="submenu" node_ref=languages>
                     <summary class="menu-item">
                         <span>{move || i18n.t(K::Language)}</span>
@@ -519,8 +717,6 @@ fn UserMenu(info: SessionInfo) -> impl IntoView {
                 <ActionForm action=action>
                     <button type="submit" class="menu-item">{move || i18n.t(K::SignOut)}</button>
                 </ActionForm>
-            </div>
-        </details>
     }
 }
 
@@ -551,5 +747,17 @@ fn EyeIcon() -> impl IntoView {
             <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path>
             <circle cx="12" cy="12" r="3"></circle>
         </svg>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn place_names_group_and_panel_also_on_detail_pages() {
+        assert_eq!(place("/project/instances"), (K::Compute, Some(K::Instances)));
+        assert_eq!(place("/project/instances/abc"), (K::Compute, Some(K::Instances)), "a detail page keeps its panel");
+        assert_eq!(place("/nowhere").1, None, "no panel: the dashboard alone");
     }
 }

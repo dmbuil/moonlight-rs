@@ -161,6 +161,9 @@ default_dns_nameservers = []
 enable_ipv6 = true
 # Associate Floating IP only offers ports a router with an external gateway reaches.
 fip_topology_check = true
+# Network Topology draws at most this many networks (own, shared, external); above it the
+# Topology and Graph tabs show a note and the List view stays. 0 = no limit.
+topology_max_networks = 50
 # Admin > Create Network's provider types, in this order; "*" = local, flat, vlan, gre, vxlan,
 # geneve. (OPENSTACK_NEUTRON_NETWORK supported_provider_types)
 supported_provider_types = ["*"]

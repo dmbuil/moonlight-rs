@@ -392,10 +392,34 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .login-fields { display: contents; }
 .login-form a.btn { text-decoration: none; }
 
+/* ---------- Phone header (roadmap 101) ----------
+   Both headers are rendered; this media query picks one (`display: none` also keeps the hidden
+   one out of the tab order and the accessibility tree). */
+.mobile-bar { display: none; }
 @media (max-width: 720px) {
-  .utility-bar { flex-wrap: wrap; padding: 4px 8px; }
-  .dashboards { order: 3; width: 100%; }
-  .badge-ro { display: none; }
+  .utility-bar, .primary-bar, .secondary-bar { display: none; }
+  .mobile-bar {
+    display: flex; align-items: center; gap: 2px; min-height: 48px; padding: 0 4px;
+    /* The panel groups' blue (`.primary-bar`), not the utility bar's grey. */
+    background: var(--primary); color: var(--primary-ink); font-size: 13px;
+  }
+  .mobile-bar .menu > summary { color: var(--primary-ink); }
+  .mobile-bar .menu > summary:hover, .mobile-bar .menu[open] > summary { background: rgba(0,0,0,.20); }
+  .mobile-bar .brand { margin: 0 4px; }
+  .mobile-place { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  .mobile-project, .mobile-panel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-project { color: #fff; font-weight: 600; }
+  .mobile-panel { font-size: 12px; }
+  /* The safety badge stays, as its eye alone. */
+  .mobile-bar .badge-ro { padding: 4px 6px; margin: 0 2px; }
+  .badge-ro-text { display: none; }
+  .mobile-sheet { position: static; }
+  .mobile-sheet > summary { padding: 10px; }
+  .mobile-sheet > .menu-list.sheet {
+    position: fixed; left: 0; right: 0; top: 48px; min-width: 0; max-height: calc(100dvh - 48px);
+    padding: 8px; border-radius: 0; border-width: 0 0 1px; overscroll-behavior: contain;
+  }
+  .sheet .menu-item { padding: 10px; }
   .filter { min-width: 0; flex: 1 1 100%; }
   .content { padding: 0 12px 32px; }
   .breadcrumb { margin: 0 -12px; padding: 8px 12px; }
@@ -443,6 +467,11 @@ td.drawer-toggle, th.drawer-toggle { width: 1%; padding-right: 0; }
 .row-menu .menu-list { position: fixed; right: auto; min-width: 220px; z-index: 45; text-align: left; }
 .menu-list button.danger { color: var(--danger-ink); }
 .menu-list a.menu-item { color: var(--ink); text-decoration: none; }
+.menu-list a.menu-item.selected { background: var(--selected-bg); color: var(--accent-hover); font-weight: 600; }
+.menu .sheet-user { display: block; color: var(--ink); }
+.sheet-dashboards { display: flex; gap: 4px; padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.sheet-dashboards a { flex: 1; padding: 8px; border-radius: 6px; text-align: center; color: var(--ink); text-decoration: none; }
+.sheet-dashboards a.active { background: var(--selected-bg); color: var(--accent); font-weight: 600; }
 .page-actions .row-actions .btn { min-height: 34px; }
 .vol-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
 .vol-line .row-actions { margin-left: auto; }
@@ -787,6 +816,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .topo-toolbar .btn[aria-pressed="true"] { background: var(--selected-bg); border-color: var(--accent); color: var(--accent); }
 .topo-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; }
 .topo-empty { padding: 28px 0; text-align: center; }
+.topo-empty-actions { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
 .topo-canvas {
   display: block; width: 100%; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--bg-soft); cursor: grab; user-select: none; touch-action: none;

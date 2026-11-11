@@ -112,8 +112,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
 | 98 | ✅ Subtle CSS motion on tabs, nav bars, menus and dialogs | — | S | 96 |
 | 99 | ✅ 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | — | S | 31 |
-| 100 | Network Topology: a note instead of the drawing when the project sees too many networks | P3 | S | 20, 29 |
-| 101 | Phone view: fold the header's bars and menus into one or two buttons | P3 | M | 39, 96 |
+| 100 | ✅ Network Topology: a note instead of the drawing when the project sees too many networks | — | S | 20, 29 |
+| 101 | ✅ Phone view: fold the header's bars and menus into one or two buttons | — | M | 39, 96 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -136,7 +136,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6334,6 +6334,19 @@ small fonts that become hard to read when scaled down.
 
 ## 100. Network Topology: a note instead of the drawing when the project sees too many networks
 
+> ✅ **Done (2026-11-11).** Open questions settled with the user: the *List* view stays available
+> over the limit, and every network the drawing would show counts (own, shared, external). So the
+> server still fetches everything (step 3 dropped): `fetch::topology` only stamps
+> `Topology.max_networks` from `[network] topology_max_networks` (default 50, `0` = no limit;
+> `prefs.rs`, `moonlight.conf.example`, `CONFIGURATION.md`). The limit travels with the data, not
+> through `dialog::prefs()`, because client prefs arrive after hydration and the page would draw
+> first. `Topology::too_many()` (model, tested: at the limit it still draws, 0 never) drives
+> `TopoBody` (`pages/topology.rs`): both tabs show `TooMany`, the message from
+> `i18n::topology_too_many` (EN + ES) plus *Show as list* and *Networks*, and the size, labels,
+> collapse and centre buttons are disabled. Checked in the browser with the limit at 5 (6
+> networks): the note on both tabs, the list with 16 rows, no console errors. Then restored to 50,
+> where it draws as before (9 calls, 0.8 s).
+
 **Goal.** *Project › Network › Network Topology* (item 20) draws every network the project can
 see (its own, shared and external ones, as on the Networks panel) with their routers and
 instances. With many networks the *Topology* columns and the *Graph* become unreadable, slow to
@@ -6376,6 +6389,25 @@ the project's own (the request says every network the project sees; external one
 few, shared ones may be many).
 
 ## 101. Phone view: fold the header's bars and menus into one or two buttons
+
+> ✅ **Done (2026-11-11).** `MobileBar` (`components/layout.rs`) is rendered before the utility
+> bar and shown instead of the three bars by the 720px media query (`style/main.css`, *Phone
+> header*). It is the panel groups' blue (`--primary`), at the user's request. It holds ☰
+> (`NavSheet`: the dashboards as tabs, *Admin* only for admins from `info`, then the current
+> dashboard's groups and panels from `nav::dashboard` / `Group::visible`, the current one
+> `aria-current`), the logo, the project name over `place(path)` (*Network › Routers*, a detail
+> page keeps its panel; tested) and the write badge's eye (`WriteBadge`, shared; the text hides at
+> phone width). *Account* holds user and domain, *Region* (only when there are several),
+> *Project* with its search, then theme, language, links and *Sign Out*. The menu bodies were
+> extracted, not copied (`RegionChoices`, `ProjectChoices`, `UserItems`; `ThemeSegments` takes
+> its heading id so the two copies don't share one). Sheets are `<details class="menu">`,
+> full-width under the bar (`position: fixed`), and close on navigation (an effect on the path),
+> on outside clicks and on Escape, which gives focus back to the button. The desktop menus never
+> had Escape, so that was added for the sheets only. Measured at 390×844: the header goes from
+> 226 px to 48 px, with no horizontal scroll and no duplicate ids. Also checked at 360×740,
+> light and dark, a panel pick, Escape, and at 721 px the desktop header is unchanged (132 px).
+> Not checked: a screen reader, the jobs tray at phone width, an admin user's *Admin* tab and
+> a multi-region *Region* list (the test user has neither).
 
 **Goal.** On a phone the header takes most of the screen. Below 720px the utility bar wraps
 (brand, region, project and user menus on one row, *Project / Admin / Identity* on another),

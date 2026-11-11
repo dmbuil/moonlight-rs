@@ -1377,6 +1377,9 @@ translations! {
     CenterTopology => "Center Topology", "Centrar topología";
     ListView => "List", "Lista";
     ComputingLayout => "Computing layout…", "Calculando la disposición…";
+    ShowAsList => "Show as list", "Ver como lista";
+    Navigation => "Navigation", "Navegación";
+    Account => "Account", "Cuenta";
     TopologyEmpty => "This project has no networks, routers or instances.", "Este proyecto no tiene redes, routers ni instancias.";
     TopologyHint => "Drag to pan, scroll to zoom. Click a node to open it.", "Arrastra para desplazar y usa la rueda para ampliar. Haz clic en un nodo para abrirlo.";
     Connections => "Connections", "Conexiones";
@@ -1588,6 +1591,14 @@ pub fn displaying(lang: Lang, n: usize) -> String {
         (Lang::EnUs, n) => format!("Displaying {n} items"),
         (Lang::EsEs, 1) => "Mostrando 1 elemento".into(),
         (Lang::EsEs, n) => format!("Mostrando {n} elementos"),
+    }
+}
+
+/// *Network Topology* over `[network] topology_max_networks` (roadmap 100).
+pub fn topology_too_many(lang: Lang, n: usize, max: usize) -> String {
+    match lang {
+        Lang::EnUs => format!("This project sees {n} networks, more than the {max} the topology draws."),
+        Lang::EsEs => format!("Este proyecto ve {n} redes, más de las {max} que dibuja la topología."),
     }
 }
 

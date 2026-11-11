@@ -1302,7 +1302,7 @@ pub fn topology(d: TopologyInputs<'_>) -> Topology {
     // No bar to draw a link to a network the project cannot list.
     links.retain(|l| known_net.contains(l.network_id.as_str()));
     links.sort_by(|a, b| (&a.device_id, &a.network_id, &a.ips).cmp(&(&b.device_id, &b.network_id, &b.ips)));
-    Topology { networks, devices, links }
+    Topology { networks, devices, links, max_networks: 0 }
 }
 
 /// The rules of each named group, remote groups shown by name. Groups the
