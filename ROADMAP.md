@@ -121,6 +121,11 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 106 | ✅ Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | — | M | 105 |
 | 107 | ✅ 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | — | M | 3, 49 |
 | 108 | Graceful shutdown on `SIGTERM`: stop accepting, drain open requests, flush the log | P2 | S | 81, 107 |
+| 109 | Admin › Flavors: *Metadata* column says *Yes* / *No*; the specs in a popover on the name | P3 | S | 9, 85 |
+| 110 | *Associate Floating IP*: a filter box in the port dropdown, whatever the list's length | P2 | XS | 4 |
+| 111 | *Create Application Credential*: *Expiration Date* and *Expiration Time* on one row | P3 | XS | 57 |
+| 112 | Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit = all / admin / off`) | P2 | S | 82, 29 |
+| 113 | Project › Quotas: readable labels for the firewall quotas (not `firewall_group`) | P3 | XS | 82, 93 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -7060,6 +7065,196 @@ returns in about a second with `shutting down` and `Moonlight stopped` in `podma
 **Open questions.** None. Decided with the user (2026-11-11): the 25 s deadline is a constant,
 not a setting; make it one (`[server] shutdown_timeout`) only if long uploads behind a longer
 grace period ever need it.
+
+## 109. Admin › Flavors: *Metadata* as *Yes* / *No*, the extra specs in a popover on the name
+
+**Goal.** Admin › Compute › Flavors lists every extra spec of a flavor in the *Metadata* column,
+one `key=value` per line, so flavors with many specs (`hw:*`, `aggregate_instance_extra_specs:*`,
+`quota:*`) make their rows tall and the table hard to scan. Horizon's *Metadata* column only says
+*Yes* or *No*. Do the same: the cell shows *Yes* when the flavor has extra specs and *No* when it
+has none. When it has some, hovering (or focusing) the flavor's name opens a popover, like the
+flavor popover on the Instances list (item 9), titled with the flavor's name and listing its
+extra specs as `key = value` pairs. Flavors without extra specs show a plain name, with no dotted
+underline and no popover.
+
+**Implementation.**
+
+- `src/pages/admin.rs::flavor_columns`: the `K::Metadata` column renders `K::Yes` / `K::No`
+  from `f.extra_specs.is_empty()` (sortable, so flavors with specs can be grouped). Do not
+  change `specs_cell`: group types, host aggregates, volume types and QoS specs keep listing
+  their specs. The `K::FlavorName` column renders the popover when `extra_specs` is non-empty,
+  else the name as today; `sort_text` stays on the name. `flavor_search` keeps matching on the
+  specs, so filtering by `hw:cpu_policy` still finds the rows even though the specs are hidden.
+- `src/components/widgets.rs`: `FlavorPopover` and `InfoTip` each copy the same
+  `position: fixed` placement (`place` closure, flip upwards near the bottom of the viewport).
+  Extract it into a small helper or a generic `Popover { label, title, body }` component and
+  build `FlavorPopover` on it, then add the admin one (`SpecsPopover`, or the generic component
+  called from `admin.rs` with a `dl.kv.mini` of the specs). Key and value in `mono small`; long
+  values wrap (the card is `max-width: 360px`). The ID for `aria-describedby` from the flavor ID
+  (`flv-specs-{id}`), unique per row.
+- CSS (`style/`): reuse `.popover-host`, `.popover`, `.popover-title`, `.kv.mini`; nothing new
+  is expected beyond, perhaps, `word-break` on long spec values.
+- i18n: `K::Yes`, `K::No`, `K::Metadata` (also the popover title, e.g. *Metadata:
+  m1.large*) already exist in both languages.
+- Read-only: no `OsAction`, no new server function (`list_admin_flavors` already returns
+  `FlavorRow.extra_specs`). *Update Metadata* in the row menu is unchanged and still edits them.
+- Tests: a unit test next to the code if the Yes/No choice lives in a plain function (e.g.
+  `has_metadata(&FlavorRow)`), and the widget's placement helper if it is extracted. Browser
+  check in dry-run: a flavor with specs shows *Yes* and the popover on hover, near the bottom of
+  the page it opens upwards, a flavor without specs shows *No* and no popover; the search box
+  still finds a flavor by one of its spec keys; Spanish and dark mode.
+
+**Open questions.** None. The Instances flavor popover keeps hiding extra specs (item 12):
+this item only changes the Admin table.
+
+## 110. *Associate Floating IP*: a filter box in the port dropdown
+
+**Goal.** Associating a floating IP means finding one port among the project's instance ports:
+*Project › Floating IPs › Associate*, the instance menu's *Associate Floating IP* and Admin ›
+Floating IPs' *Associate*. Each has a *Port to be associated* dropdown. The custom dropdown
+(`components/select.rs::Combo`, item 4) only shows its search box when the list has at least
+`SEARCH_FROM` (8) options, so on most projects the user scrolls a bare list of
+`instance: 10.0.0.12` labels. In these dialogs the dropdown always opens with a filter box at
+the top, focused, that narrows the ports as the user types (instance name, IP address), with the
+usual *No matching items* when nothing fits. Horizon's *Manage Floating IP Associations* has a plain
+`<select>`, so this goes beyond parity: it is what makes the dialog quick on a large project.
+
+**Implementation.**
+
+- `components/select.rs::Combo`: a new optional prop `search: bool` ("always show the search
+  box"); `searchable` becomes `search || len >= SEARCH_FROM`. Every other combo keeps today's
+  behaviour. `filter_choices` (every term, case-insensitive, on the label) is reused as is.
+- `components/dialog.rs`: a `Field` flag (`searchable: bool`, builder `.searchable()`, next to
+  `.required()`), passed to the `<Combo>` that `Kind::Select` renders (around line 1480).
+- Set `.searchable()` on the three port fields: `components/ops/floating_ips.rs`
+  (`floating_ip_items`, `Source::Set(ChoiceSet::AssociablePorts)`; `admin_floating_ip_items`,
+  `ChoiceSet::AllAssociablePorts`) and `components/ops/instances.rs::associate_ip_dialog`
+  (`ChoiceSet::AssociablePorts` keyed by the server). Consider the same on its *Floating IP*
+  field (`ChoiceSet::FreeFloatingIps`), which has the same problem on projects with many IPs.
+- What the filter can match is the label: `server/mapping/choices.rs::label_port` builds
+  `instance: ip` (the port's name or ID when no instance). Adding the network name
+  (`instance: ip (network)`) would let the user filter by network; that needs the network names
+  in `fetch.rs`'s `AssociablePorts` / `AllAssociablePorts` arms (`net_lookups`, one more call
+  for the project set; every project's networks for the admin one). Decide when doing it.
+- Read-only change to the dialog: `OsAction::FloatingIpAssociate` and its request are unchanged.
+- Tests: `Combo`'s choice is a plain expression; put it in a function (`shows_search(force,
+  len)`) and test it in `select.rs`. Dialog tests assert the flag on the three port fields
+  (`floating_ips.rs` tests already match on `d.fields[0].kind`). Browser check in dry-run on a
+  project with fewer than 8 ports: the box shows, typing part of an instance name or an IP
+  narrows the list, ↑/↓ and Enter still pick, Esc closes; do not submit.
+
+**Open questions.** "A filter of the ports available" read as a search box in the dropdown. If
+the request was instead to *list* fewer ports (only those the floating IP's pool reaches, as the
+admin dialog already does through `owned_port_choices`), the project dialogs need the
+`AllAssociablePorts`-style per-pool keys for the project's own ports. Confirm with the user.
+
+## 111. *Create Application Credential*: *Expiration Date* and *Expiration Time* on one row
+
+**Goal.** In Identity › Application Credentials › *Create Application Credential*, *Expiration
+Date* and *Expiration Time* take a full row each, although they are one value (the expiry, in
+UTC) and each control is narrow. Put them side by side, date on the left and time on the right,
+so they read as one setting and the dialog is shorter. Below 520 px (phones) they stack again,
+as every half field does. Key Manager's *Store Secret* has the same pair and gets the same
+layout.
+
+**Implementation.**
+
+- `src/components/ops/identity.rs::create_app_credential_dialog`: `.half()` on
+  `Field::date("expiration_date", …)` and on `Field::time("expiration_time", …)`. The dialog
+  grid (`style/`, `.wizard-pane`: six columns, `.field.half` spans three, full width under
+  520 px) already does the rest, as in *Create Image* and the firewall rule dialog
+  (`ops/firewall.rs`).
+- `src/components/ops/key_manager.rs` (*Store Secret*): the same two `.half()` calls.
+- The help (`K::ExpirationHelp`, `K::SecretExpirationHelp`: "In UTC. A date with no time means
+  00:00; …") sits under the time field and would wrap in a half column, making the row uneven.
+  Move it to the date field or keep it on the time field, whichever reads better; or give
+  `Field` a way to show one help under the pair, if the two sides look unbalanced.
+- Check in the browser (dry-run, do not submit) that the date picker's calendar popup and the
+  time's hour and minute columns still open in place and are not clipped, in English and
+  Spanish (*Fecha de caducidad* / *Hora de caducidad* are longer), light and dark, and at phone
+  width.
+- Tests: the dialog tests in `identity.rs` and `key_manager.rs` can assert `half` on both
+  fields; no request changes (`app_credential_expiry` and `AppCredentialSpec.expires_at` stay).
+
+**Open questions.** None.
+
+## 112. Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit`)
+
+**Goal.** Project › Quotas (item 82) shows *Edit Quotas* on every card to everyone, and leaves
+the decision to each service's policy: on most clouds a member opens the dialog, changes a limit
+and only then reads *You have no permission to edit quotas*. Horizon never offers it in the
+project dashboard (quotas are edited from Identity › Projects › *Modify Quotas*, by admins).
+Let the operator choose with one setting in `moonlight.conf`:
+
+- `all` (the default, today's behaviour): everyone sees the button; the services' policy
+  decides.
+- `admin`: only tokens with the `admin` role (`needs::ADMIN`) see it.
+- `off`: nobody sees it; the page is read-only.
+
+When the button is hidden the cards look the same, without it. The server enforces the same
+rule, so a crafted request cannot get past a hidden button.
+
+**Implementation.**
+
+- `src/prefs.rs`: `Prefs.quota_edit: QuotaEdit`, a new enum `QuotaEdit { All, Admin, Off }`
+  (`#[serde(rename_all = "lowercase")]`, `#[default] All`), next to `PagedLists`.
+  `src/server/settings.rs`: read `[ui] quota_edit` into it (unknown values refused at start-up,
+  like the other enums), with a test alongside `admin_section_is_horizons_flavor_edit_…`.
+- `src/pages/quotas.rs::ServiceCard`: `editable` becomes `editable && allowed`, where
+  `allowed` comes from `prefs_tracked().quota_edit` and, for `Admin`, the session's roles
+  (`needs::ADMIN.met(&caps())`, as the Admin nav does). Keep it in a plain function
+  (`quota_edit_allowed(QuotaEdit, is_admin) -> bool`) so it is unit-tested.
+- Server (`src/api.rs`, the write gate around `require_admin`, line ~561): for an
+  `OsAction::QuotaUpdate` on the session's own project (also inside a `Batch`; add an
+  `OsAction::own_quotas(session_project)` beside `other_projects_quotas` in
+  `model/action.rs`): `Off` refuses it with an `AppError::invalid`, `Admin` calls
+  `require_admin`, `All` lets the policy decide as today. Another project's quotas keep
+  requiring the role whatever the setting.
+- Docs: `CONFIGURATION.md` (the `[ui]` table: key, default `all`, meaning; Horizon column: none,
+  Horizon never edits quotas from the project dashboard), `moonlight.conf.example` (`[ui]`,
+  commented), and item 82's note.
+- Tests: the settings parse (`all`, `admin`, `off`, a bad value), `quota_edit_allowed`'s four
+  cases, `own_quotas` (plain, batch, another project), and the gate: a dry-run `QuotaUpdate`
+  refused with `off`, and refused for a non-admin with `admin`. Browser in dry-run, do not
+  submit: with each value, the Quotas page as a member (no `admin` role) and as an admin.
+
+**Open questions.**
+
+- Does `off` also hide *Edit Quotas* on Identity › Projects › *Modify Quotas* (another project,
+  already admins only)? Proposed: no, the setting is about Project › Quotas; an operator who
+  wants no quota edits at all uses the services' policy. Admin › *Defaults* (`DefaultQuotaUpdate`)
+  is not affected either.
+- `[ui]` or a new `[quotas]` section? Proposed `[ui] quota_edit`, as `paged_lists` is there.
+
+## 113. Project › Quotas: readable labels for the firewall quotas
+
+**Goal.** With FWaaS v2 on the cloud (item 93), Neutron's quota details also report the firewall
+quotas, and Project › Quotas' *Network* card (item 82) shows them under their API names
+(`firewall_group`, `firewall_policy`, `firewall_rule`) where every other row reads *Networks*,
+*Ports*, *Security Group Rules*. Show *Firewall Groups*, *Firewall Policies* and *Firewall
+Rules* (*Grupos de cortafuegos*, *Políticas de cortafuegos*, *Reglas de cortafuegos*), as the
+Firewall panel's tabs already say. The same labels appear in Identity › Projects › *Modify
+Quotas* (same `QuotaCards`) and in *Edit Quotas* if the keys become editable (below).
+
+**Implementation.**
+
+- `src/components/ops/quotas.rs::quota_label`: add `(Network, "firewall_group") =>
+  K::FirewallGroups`, `(Network, "firewall_policy") => K::FirewallPolicies` and
+  `(Network, "firewall_rule") => K::FirewallRules`; the three i18n keys exist in both languages
+  (`src/i18n.rs`). Confirm the exact key names against the test cloud's
+  `GET /v2.0/quotas/{project}/details` first (neutron-fwaas registers them singular; the user
+  saw them as "firewall_groups" in the card), and label any other Neutron key the card still
+  shows raw while there.
+- Editable or not: `QuotaService::Network.keys()` (`src/model/quota.rs`) lists the keys *Edit
+  Quotas* offers and `actions::quota_update` accepts; the firewall ones are not in it, so they
+  are read-only rows today. Horizon's *Modify Quotas* has no firewall quotas either. Proposed:
+  labels only; adding them to `keys()` is a one-line change (plus a dry-run case in
+  `quota_updates_send_only_the_changed_keys`) if the user wants them editable.
+- Tests: `quota_labels_cover_per_type_and_unknown_keys` gains the three keys in both languages.
+  Browser check: Project › Quotas on a project of the test cloud with FWaaS, English and
+  Spanish.
+
+**Open questions.** Editable as well as labelled? Proposed: labels only (see above).
 
 ## Also pending (from the PoC)
 
