@@ -1033,6 +1033,23 @@ translations! {
     SecretInUse => "Services using these secrets (consumers) stop working when they are deleted.", "Los servicios que usan estos secretos (consumidores) dejan de funcionar al eliminarlos.";
     SecretConsumersOf => "In use by", "En uso por";
     ContainerKeepsSecrets => "Only the container is deleted; the secrets in it stay.", "Solo se elimina el contenedor; sus secretos se conservan.";
+    // Key Manager › Orders (roadmap 58)
+    Orders => "Orders", "Pedidos";
+    OrderKey => "Order Key", "Pedir clave";
+    DeleteOrder => "Delete Order", "Eliminar pedido";
+    DeleteOrders => "Delete Orders", "Eliminar pedidos";
+    OrderType => "Order Type", "Tipo de pedido";
+    OrderResult => "Generated", "Generado";
+    OrderIntro => "Barbican generates the key itself, so its material never travels through the browser. A symmetric key is stored as a secret; an RSA key pair as a container with its public key, private key and, if you give one, the private key's passphrase. The order runs in the background: its page links what it generated once it is active.", "Barbican genera la clave por sí mismo, así que su contenido nunca pasa por el navegador. Una clave simétrica se guarda como secreto; un par de claves RSA, como un contenedor con la clave pública, la privada y, si indica una, la frase de paso de la clave privada. El pedido se procesa en segundo plano: su página enlaza lo generado cuando está activo.";
+    OrderTypeHelp => "Symmetric Key: an AES key, e.g. for encrypting data. RSA Key Pair: a public and a private key.", "Clave simétrica: una clave AES, p. ej. para cifrar datos. Par de claves RSA: una clave pública y una privada.";
+    OrderNameHelp => "Given to the order and to what it generates. Optional; unnamed ones are listed by ID.", "Se da al pedido y a lo que genere. Opcional; los que no tienen nombre se muestran por su ID.";
+    OrderBitLengthHelp => "The key's size: 128, 192 or 256 bits for AES; 2048, 3072 or 4096 for RSA.", "El tamaño de la clave: 128, 192 o 256 bits para AES; 2048, 3072 o 4096 para RSA.";
+    OrderModeHelp => "The block cipher mode the key is for (cbc by default). Metadata Barbican stores with it.", "El modo de cifrado por bloques de la clave (cbc por defecto). Metadato que Barbican guarda con ella.";
+    OrderPassphrase => "Private Key Passphrase", "Frase de paso de la clave privada";
+    OrderPassphraseHelp => "Optional. The private key is encrypted with it, and it is stored in the container as its own secret.", "Opcional. La clave privada se cifra con ella, y se guarda en el contenedor como un secreto más.";
+    OrderExpirationHelp => "When the generated secrets expire, in UTC. A date with no time means 00:00; a time with no date means today. Empty = never expires.", "Cuándo caducan los secretos generados, en UTC. Una fecha sin hora significa 00:00; una hora sin fecha significa hoy. Vacío = no caduca.";
+    OrderKeepsResult => "Only the order record is deleted; the secret or container it generated stays.", "Solo se elimina el registro del pedido; el secreto o contenedor que generó se conserva.";
+    OrderPendingNote => "Barbican is still processing the order.", "Barbican aún está procesando el pedido.";
     ContainerSecretsHelp => "Pick a secret for each role. A certificate container (Octavia's TLS listeners) needs the certificate; an RSA one, the public and private keys.", "Elija un secreto para cada rol. Un contenedor de certificado (listeners TLS de Octavia) necesita el certificado; uno RSA, las claves pública y privada.";
 
     // Trunks
@@ -1839,6 +1856,8 @@ pub fn resource_status(lang: Lang, status: &str) -> String {
         "pending_create" => ("Pending Create", "Creación pendiente"),
         "pending_update" => ("Pending Update", "Actualización pendiente"),
         "pending_delete" => ("Pending Delete", "Eliminación pendiente"),
+        // A Barbican order being processed (roadmap 58).
+        "pending" => ("Pending", "Pendiente"),
         _ => return title_case(status),
     };
     match lang {
@@ -1898,6 +1917,9 @@ pub fn key_manager_term(lang: Lang, term: &str) -> String {
         "public_key" => ("Public Key", "Clave pública"),
         "private_key_passphrase" => ("Private Key Passphrase", "Frase de paso de la clave privada"),
         "intermediates" => ("Intermediates", "Intermedios"),
+        // Order types (roadmap 58).
+        "key" => ("Symmetric Key", "Clave simétrica"),
+        "asymmetric" => ("RSA Key Pair", "Par de claves RSA"),
         _ => return title_case(term),
     };
     match lang {

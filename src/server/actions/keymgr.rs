@@ -1,4 +1,4 @@
-//! Barbican writes (roadmap 55): secrets, containers, ACLs.
+//! Barbican writes (roadmap 55): secrets, containers, ACLs; orders (roadmap 58).
 
 use super::*;
 
@@ -124,6 +124,49 @@ fn container_body(name: Option<&str>, container_type: &str, secrets: &[(String, 
     Ok(b)
 }
 
+/// `POST /v1/orders` (roadmap 58): `{"type", "meta": {…}}`. The spec is checked
+/// again here ([`OrderSpec::check`]), whatever the dialog allowed; the
+/// passphrase is masked in previews (`SECRET_KEYS`).
+fn order_body(o: &OrderSpec) -> R<Value> {
+    o.check().map_err(AppError::invalid)?;
+    let mut meta = serde_json::Map::new();
+    if let Some(n) = opt(&o.name) {
+        meta.insert("name".into(), json!(n));
+    }
+    meta.insert("algorithm".into(), json!(o.algorithm()));
+    meta.insert("bit_length".into(), json!(o.bit_length));
+    if let Some(m) = opt(&o.mode) {
+        meta.insert("mode".into(), json!(m));
+    }
+    meta.insert("payload_content_type".into(), json!("application/octet-stream"));
+    if let Some(e) = opt(&o.expiration) {
+        meta.insert("expiration".into(), json!(e));
+    }
+    if let Some(p) = o.passphrase.as_ref().filter(|p| !p.0.is_empty()) {
+        meta.insert("passphrase".into(), json!(p.0));
+    }
+    Ok(json!({"type": o.order_type, "meta": meta}))
+}
+
+pub(super) async fn order_create(x: &mut Exec<'_>, spec: &OrderSpec) -> R<()> {
+    x.create(
+        JsonRequest::key_manager(http::Method::POST, "orders", Some(order_body(spec)?)),
+        "order",
+    )
+    .await?;
+    Ok(())
+}
+
+pub(super) async fn order_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
+    x.send(JsonRequest::key_manager(
+        http::Method::DELETE,
+        format!("orders/{}", non_empty(id, "order")?),
+        None,
+    ))
+    .await?;
+    Ok(())
+}
+
 pub(super) async fn secret_create(x: &mut Exec<'_>, spec: &SecretSpec) -> R<()> {
     x.create(
         JsonRequest::key_manager(http::Method::POST, "secrets", Some(secret_body(spec)?)),
@@ -214,6 +257,62 @@ mod tests {
     use super::*;
 
     // --- Key Manager (roadmap 55)
+
+    #[tokio::test]
+    async fn orders_send_barbicans_body_and_mask_the_passphrase() {
+        let key = OrderSpec {
+            order_type: id("key"),
+            name: Some(id("db-key")),
+            bit_length: 256,
+            mode: Some(id("cbc")),
+            expiration: Some(id("2027-01-01T00:00:00")),
+            passphrase: None,
+        };
+        let r = dry(OsAction::OrderCreate(key)).await;
+        assert_eq!(
+            (r[0].service.as_str(), r[0].method.as_str(), r[0].path.as_str()),
+            ("key-manager", "POST", "/v1/orders")
+        );
+        assert_eq!(
+            body(&r[0]),
+            json!({"type": "key", "meta": {"name": "db-key", "algorithm": "aes", "bit_length": 256, "mode": "cbc",
+                "payload_content_type": "application/octet-stream", "expiration": "2027-01-01T00:00:00"}})
+        );
+        let pair = OrderSpec {
+            order_type: id("asymmetric"),
+            name: None,
+            bit_length: 2048,
+            mode: None,
+            expiration: None,
+            passphrase: Some(Hidden(id("pw-123"))),
+        };
+        let r = dry(OsAction::OrderCreate(pair.clone())).await;
+        assert_eq!(
+            body(&r[0]),
+            json!({"type": "asymmetric", "meta": {"algorithm": "rsa", "bit_length": 2048,
+                "payload_content_type": "application/octet-stream", "passphrase": "********"}}),
+            "the passphrase never shows in the preview"
+        );
+        assert!(
+            !format!("{:?}", OsAction::OrderCreate(pair)).contains("pw-123"),
+            "nor in Debug (logs)"
+        );
+        let bad = OrderSpec {
+            order_type: id("key"),
+            name: None,
+            bit_length: 2048,
+            mode: None,
+            expiration: None,
+            passphrase: None,
+        };
+        assert!(order_body(&bad).unwrap_err().to_string().contains("bit length"));
+        assert!(
+            dry_err(OsAction::OrderCreate(bad)).await,
+            "the server checks the size too"
+        );
+        let r = dry(OsAction::OrderDelete { id: id("o1") }).await;
+        assert_eq!((r[0].method.as_str(), r[0].path.as_str()), ("DELETE", "/v1/orders/o1"));
+    }
 
     fn secret_spec() -> SecretSpec {
         SecretSpec {

@@ -903,6 +903,20 @@ pub async fn get_container(id: String) -> Result<Timed<ContainerDetail>, AppErro
     .await
 }
 
+/// Key Manager › Orders (`key-manager` plugin, roadmap 58).
+#[server(input = GetUrl)]
+pub async fn list_orders() -> Result<Timed<Vec<OrderRow>>, AppError> {
+    plugin_enabled(Plugin::KeyManager)?;
+    scoped("list_orders", |_, c| async move { fetch::orders(&c).await }).await
+}
+
+/// Order detail page (`key-manager` plugin, roadmap 58).
+#[server(input = GetUrl)]
+pub async fn get_order(id: String) -> Result<Timed<OrderRow>, AppError> {
+    plugin_enabled(Plugin::KeyManager)?;
+    scoped_id("get_order", id, |_, c, id| async move { fetch::order(&c, &id).await }).await
+}
+
 /// Orchestration › Stacks (`orchestration` plugin, roadmap 62).
 #[server(input = GetUrl)]
 pub async fn list_stacks() -> Result<Timed<Vec<StackRow>>, AppError> {

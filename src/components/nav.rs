@@ -130,6 +130,7 @@ pub const PROJECT_NAV: &[Group] = &[
         panels: &[
             p(K::Secrets, "/project/key_manager/secrets"),
             p(K::Containers, "/project/key_manager/containers"),
+            p(K::Orders, "/project/key_manager/orders"),
         ],
         requires: crate::model::needs::KEY_MANAGER,
     },

@@ -1134,6 +1134,14 @@ pub enum OsAction {
     ContainerAclDelete {
         id: String,
     },
+    /// *Order Key* (roadmap 58): `POST v1/orders`; Barbican generates the key
+    /// or key pair asynchronously.
+    OrderCreate(OrderSpec),
+    /// *Delete Order*: `DELETE v1/orders/{id}`, the order record only; the
+    /// generated secret or container stays.
+    OrderDelete {
+        id: String,
+    },
     // Orchestration (Heat, roadmap 62). Heat paths take the stack's name and
     // ID (`stacks/{name}/{id}`), so both travel; `name` is checked like an ID.
     /// `POST …/actions {"check": null}`: Heat checks each resource still exists.
@@ -1372,7 +1380,9 @@ impl OsAction {
             | OsAction::ContainerAclSet { .. }
             | OsAction::ContainerAclDelete { .. }
             | OsAction::ContainerCreate { .. }
-            | OsAction::ContainerDelete { .. } => {
+            | OsAction::ContainerDelete { .. }
+            | OsAction::OrderCreate(_)
+            | OsAction::OrderDelete { .. } => {
                 vec![Plugin::KeyManager]
             }
             OsAction::StackCheck { .. }

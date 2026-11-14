@@ -1379,7 +1379,30 @@ pub async fn containers(os: &AsyncOpenStack) -> R<Timed<Vec<ContainerRow>>> {
     Ok(timed(t, mapping::containers(&raw, &secrets)))
 }
 
-/// One container, its secrets named.
+/// Key Manager › Orders (roadmap 58): the project's orders, newest first.
+pub async fn orders(os: &AsyncOpenStack) -> R<Timed<Vec<OrderRow>>> {
+    let t = Instant::now();
+    let raw = km_all(os, "orders", "GET orders").await?;
+    Ok(timed(t, mapping::orders(&raw)))
+}
+
+/// One order (roadmap 58).
+pub async fn order(os: &AsyncOpenStack, id: &str) -> R<Timed<OrderRow>> {
+    use super::actions::JsonRequest;
+    let t = Instant::now();
+    let mut v = get_json(
+        os,
+        JsonRequest::key_manager(http::Method::GET, format!("orders/{id}"), None),
+        "GET order",
+    )
+    .await?;
+    // As for secrets: the ID is known if an old release omits `order_ref`.
+    if v.get("order_ref").and_then(Value::as_str).is_none_or(str::is_empty) {
+        v["order_ref"] = Value::String(id.to_string());
+    }
+    Ok(timed(t, mapping::orders(std::slice::from_ref(&v)).remove(0)))
+}
+
 /// One container with its ACL; `lb_project` as in [`secret`].
 pub async fn container(os: &AsyncOpenStack, id: &str, lb_project: Option<&str>) -> R<Timed<ContainerDetail>> {
     use super::actions::JsonRequest;

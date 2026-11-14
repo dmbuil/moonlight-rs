@@ -1,4 +1,4 @@
-//! Key Manager (Barbican, roadmap 55).
+//! Key Manager (Barbican, roadmap 55; orders, roadmap 58).
 
 use super::*;
 
@@ -304,6 +304,101 @@ pub fn container_items(lang: Lang, c: &ContainerRow) -> Vec<MenuItem> {
     })]
 }
 
+/// *Order Key* (roadmap 58, Barbican `POST /v1/orders`): Barbican generates
+/// an AES key (a secret) or an RSA key pair (an `rsa` container), so the
+/// material never goes through the browser. Bit lengths are those Barbican's
+/// simple crypto plugin makes ([`ORDER_TYPES`]); one field per type, since a
+/// field's options can't follow another field.
+pub fn order_key_dialog(lang: Lang) -> Dialog {
+    let tr = |k| t(lang, k).to_string();
+    let bits = |order_type: &str| -> Vec<&'static str> {
+        let all: &[(&str, &[&'static str])] = &[
+            ("key", &["128", "192", "256"]),
+            ("asymmetric", &["2048", "3072", "4096"]),
+        ];
+        all.iter()
+            .find(|(t, _)| *t == order_type)
+            .map(|(_, b)| b.to_vec())
+            .unwrap_or_default()
+    };
+    let fields = vec![
+        Field::select("order_type", tr(K::OrderType), km_options(lang, &["key", "asymmetric"]))
+            .value("key")
+            .required()
+            .help(tr(K::OrderTypeHelp)),
+        Field::text("name", tr(K::Name)).help(tr(K::OrderNameHelp)),
+        Field::select("key_bits", tr(K::BitLength), options_raw(&bits("key")))
+            .value("256")
+            .required()
+            .when("order_type", "key")
+            .half(),
+        Field::text("mode", tr(K::CipherMode))
+            .value("cbc")
+            .when("order_type", "key")
+            .half()
+            .help(tr(K::OrderModeHelp)),
+        Field::select("rsa_bits", tr(K::BitLength), options_raw(&bits("asymmetric")))
+            .value("2048")
+            .required()
+            .when("order_type", "asymmetric")
+            .help(tr(K::OrderBitLengthHelp)),
+        Field::password("passphrase", tr(K::OrderPassphrase))
+            .when("order_type", "asymmetric")
+            .help(tr(K::OrderPassphraseHelp)),
+        Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
+        Field::time("expiration_time", tr(K::ExpirationTime))
+            .half()
+            .help(tr(K::OrderExpirationHelp)),
+    ];
+    let mut d = Dialog::form(tr(K::OrderKey), tr(K::OrderKey), fields, move |v| {
+        let order_type = req(v, "order_type", K::OrderType, lang)?;
+        let pair = order_type == "asymmetric";
+        let bits_field = if pair { "rsa_bits" } else { "key_bits" };
+        let bit_length = v
+            .num(bits_field)
+            .map_err(|e| invalid(lang, e))?
+            .ok_or_else(|| invalid(lang, "a bit length is required".into()))?;
+        let now = chrono::Utc::now().naive_utc();
+        let expiration = app_credential_expiry(&v.get("expiration_date"), &v.get("expiration_time"), now)
+            .map_err(|e| invalid(lang, e))?;
+        let spec = OrderSpec {
+            name: v.opt("name"),
+            bit_length,
+            mode: if pair { None } else { v.opt("mode") },
+            expiration,
+            // Not trimmed: spaces can be part of a passphrase.
+            passphrase: v
+                .0
+                .get("passphrase")
+                .filter(|p| pair && !p.is_empty())
+                .cloned()
+                .map(Hidden),
+            order_type,
+        };
+        spec.check().map_err(|e| invalid(lang, e))?;
+        Ok(OsAction::OrderCreate(spec))
+    })
+    .sized(DialogSize::Medium);
+    d.intro = vec![tr(K::OrderIntro)];
+    d
+}
+
+/// An order's menu, row and detail page alike: *Delete Order*, which removes
+/// the record only (Barbican keeps what it generated; the dialog says so).
+pub fn order_items(lang: Lang, o: &OrderRow) -> Vec<MenuItem> {
+    let (i, n) = (o.id.clone(), o.name.clone());
+    vec![MenuItem::danger(t(lang, K::DeleteOrder), move || {
+        let mut d = Dialog::confirm(
+            lang,
+            t(lang, K::DeleteOrder),
+            n.clone(),
+            OsAction::OrderDelete { id: i.clone() },
+        );
+        d.intro.push(t(lang, K::OrderKeepsResult).into());
+        d
+    })]
+}
+
 // --- Orchestration (Heat, roadmap 62) -----------------------------------------
 
 /// A stack's menu, row and detail header alike: *Change Stack Template* (a page),
@@ -349,6 +444,77 @@ pub fn stack_items(lang: Lang, x: &StackRow) -> Vec<MenuItem> {
 #[cfg(test)]
 mod key_manager_tests {
     use super::*;
+
+    #[test]
+    fn order_key_builds_a_key_or_a_key_pair() {
+        use super::super::testing::vals;
+        let d = order_key_dialog(Lang::EnUs);
+        let key = (d.build)(&vals(&[
+            ("order_type", "key"),
+            ("name", " db-key "),
+            ("key_bits", "256"),
+            ("mode", "cbc"),
+            ("rsa_bits", "2048"),
+            ("passphrase", "ignored"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            key,
+            OsAction::OrderCreate(OrderSpec {
+                order_type: "key".into(),
+                name: Some("db-key".into()),
+                bit_length: 256,
+                mode: Some("cbc".into()),
+                expiration: None,
+                passphrase: None,
+            }),
+            "a key takes its own size and mode; the key pair's fields are dropped"
+        );
+        let pair = (d.build)(&vals(&[
+            ("order_type", "asymmetric"),
+            ("key_bits", "256"),
+            ("mode", "cbc"),
+            ("rsa_bits", "4096"),
+            ("passphrase", " pw "),
+        ]))
+        .unwrap();
+        assert_eq!(
+            pair,
+            OsAction::OrderCreate(OrderSpec {
+                order_type: "asymmetric".into(),
+                name: None,
+                bit_length: 4096,
+                mode: None,
+                expiration: None,
+                passphrase: Some(Hidden(" pw ".into())),
+            }),
+            "a key pair: RSA size, no mode, the passphrase untrimmed"
+        );
+        assert!((d.build)(&vals(&[("order_type", "key"), ("key_bits", "2048")])).is_err());
+    }
+
+    #[test]
+    fn deleting_an_order_says_the_key_stays() {
+        let o = OrderRow {
+            id: "o1".into(),
+            name: "db-key".into(),
+            order_type: "key".into(),
+            status: "ACTIVE".into(),
+            algorithm: None,
+            bit_length: None,
+            mode: None,
+            expiration: None,
+            error_code: None,
+            error_reason: None,
+            created: String::new(),
+            updated: None,
+            creator_id: None,
+            secret_id: Some("s1".into()),
+            container_id: None,
+        };
+        let d = super::super::testing::dialog_of(&order_items(Lang::EnUs, &o), "Delete Order");
+        assert!(d.intro.iter().any(|l| l.contains("order record")));
+    }
 
     fn secret(can_edit: bool, project_access: Option<bool>, users: &[&str]) -> SecretDetail {
         SecretDetail {

@@ -195,7 +195,8 @@ fn octavia(method: http::Method, path: String, body: Value) -> JsonRequest {
 /// Keys whose values never appear in a preview (they reach the browser and logs);
 /// `secret` is an application credential's (roadmap 57), `payload` a Barbican
 /// secret's (roadmap 55).
-const SECRET_KEYS: [&str; 4] = ["adminPass", "password", "secret", "payload"];
+// `passphrase`: an RSA key pair order's private key passphrase (roadmap 58).
+const SECRET_KEYS: [&str; 5] = ["adminPass", "password", "secret", "payload", "passphrase"];
 
 /// Calls `f` on every string value under one of [`SECRET_KEYS`], at any depth.
 fn each_secret(v: &mut Value, f: &mut impl FnMut(&mut String)) {
@@ -361,7 +362,7 @@ impl<'a> Exec<'a> {
 }
 
 /// The new resource's ID in a create response. Barbican answers with a ref URL,
-/// not an ID (roadmap 55); Heat with `{"stack": {"id", "links"}}` (roadmap 62);
+/// not an ID (roadmap 55; `order_ref` for orders, roadmap 58); Heat with `{"stack": {"id", "links"}}` (roadmap 62);
 /// Aodh with the alarm, whose ID is `alarm_id` (roadmap 79: without it, a
 /// created alarm was reported as a failure).
 fn created_id(v: &Value) -> Option<String> {
@@ -371,7 +372,7 @@ fn created_id(v: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| {
-            ["secret_ref", "container_ref"]
+            ["secret_ref", "container_ref", "order_ref"]
                 .iter()
                 .find_map(|k| v.get(*k)?.as_str())
                 .map(super::mapping::ref_id)
@@ -869,6 +870,8 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
             secrets,
         } => keymgr::container_create(x, name, container_type, secrets).await?,
         ContainerDelete { id } => keymgr::container_delete(x, id).await?,
+        OrderCreate(spec) => keymgr::order_create(x, spec).await?,
+        OrderDelete { id } => keymgr::order_delete(x, id).await?,
         SecretAclSet {
             id,
             project_access,

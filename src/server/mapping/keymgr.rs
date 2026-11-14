@@ -1,4 +1,4 @@
-//! Barbican (roadmap 55): secrets, containers, ACLs, consumers.
+//! Barbican (roadmap 55): secrets, containers, ACLs, consumers; orders (roadmap 58).
 
 use super::*;
 
@@ -297,10 +297,92 @@ pub fn containers(raw: &[Value], secrets: &[Value]) -> Vec<ContainerRow> {
     out
 }
 
+/// Orders (roadmap 58), newest first: the generated secret or container by
+/// ID, the error code (a number or a string, by release) and reason.
+pub fn orders(raw: &[Value]) -> Vec<OrderRow> {
+    let mut out: Vec<_> = raw
+        .iter()
+        .map(|o| {
+            let id = ref_id(&s(o, "order_ref").unwrap_or_default());
+            let meta = o.get("meta").cloned().unwrap_or(Value::Null);
+            let refd = |k| s_ne(o, k).map(|r| ref_id(&r));
+            let error_code = match o.get("error_status_code") {
+                Some(Value::Number(n)) => Some(n.to_string()),
+                _ => s_ne(o, "error_status_code"),
+            };
+            OrderRow {
+                name: s_ne(&meta, "name").unwrap_or_else(|| id.clone()),
+                id,
+                order_type: s(o, "type").unwrap_or_default(),
+                status: s(o, "status").unwrap_or_default(),
+                algorithm: s_ne(&meta, "algorithm"),
+                bit_length: i(&meta, "bit_length"),
+                mode: s_ne(&meta, "mode"),
+                expiration: km_when(&meta, "expiration"),
+                error_code,
+                error_reason: s_ne(o, "error_reason"),
+                created: s(o, "created").unwrap_or_default(),
+                updated: km_when(o, "updated"),
+                creator_id: s_ne(o, "creator_id"),
+                secret_id: refd("secret_ref"),
+                container_id: refd("container_ref"),
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| b.created.cmp(&a.created));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn orders_map_pending_active_and_failed() {
+        let base = "https://kms.example:9311/v1";
+        let raw = vec![
+            json!({"order_ref": format!("{base}/orders/o1"), "type": "key", "status": "ACTIVE",
+                "meta": {"name": "db-key", "algorithm": "aes", "bit_length": 256, "mode": "cbc", "expiration": null},
+                "secret_ref": format!("{base}/secrets/s1"), "created": "2026-11-01T10:00:00", "updated": "2026-11-01T10:00:01",
+                "creator_id": "u1"}),
+            json!({"order_ref": format!("{base}/orders/o2"), "type": "asymmetric", "status": "PENDING",
+                "meta": {"algorithm": "rsa", "bit_length": 2048}, "created": "2026-11-02T10:00:00"}),
+            json!({"order_ref": format!("{base}/orders/o3"), "type": "key", "status": "ERROR",
+                "meta": {"name": "bad", "algorithm": "aes", "bit_length": 100},
+                "error_status_code": 400, "error_reason": "Unsupported bit length", "created": "2026-10-01T10:00:00"}),
+            json!({"order_ref": format!("{base}/orders/o4"), "type": "asymmetric", "status": "ACTIVE",
+                "meta": {"name": "pair"}, "container_ref": format!("{base}/containers/c1"),
+                "error_status_code": "", "created": "2026-09-01T10:00:00"}),
+        ];
+        let o = orders(&raw);
+        let ids: Vec<_> = o.iter().map(|x| x.id.as_str()).collect();
+        assert_eq!(ids, ["o2", "o1", "o3", "o4"], "newest first");
+        let (pending, key, failed, pair) = (&o[0], &o[1], &o[2], &o[3]);
+        assert_eq!(pending.name, "o2", "unnamed: the ID");
+        assert!(pending.busy() && pending.secret_id.is_none() && pending.container_id.is_none());
+        assert_eq!(
+            (
+                key.name.as_str(),
+                key.algorithm.as_deref(),
+                key.bit_length,
+                key.mode.as_deref()
+            ),
+            ("db-key", Some("aes"), Some(256), Some("cbc"))
+        );
+        assert_eq!(
+            (key.secret_id.as_deref(), key.expiration.as_deref()),
+            (Some("s1"), None)
+        );
+        assert_eq!(
+            (failed.error_code.as_deref(), failed.error_reason.as_deref()),
+            (Some("400"), Some("Unsupported bit length"))
+        );
+        assert_eq!(
+            (pair.container_id.as_deref(), pair.error_code.as_deref()),
+            (Some("c1"), None)
+        );
+    }
 
     /// Roadmap 54, slice 3: like octavia-dashboard, certificate containers with
     /// a private key, then opaque secrets not in one, with the certificate's expiry.

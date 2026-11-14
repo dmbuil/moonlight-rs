@@ -70,7 +70,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 55  | ✅ Key Manager (Barbican): Secrets and Containers panels                                          | —        | M    | 19                          |
 | 56  | ✅ Images list: no *Owner* column; a row drawer with the image's metadata                         | —        | S    | 25                          |
 | 57  | ✅ Identity dashboard (Projects, Users, Groups, Roles, Application Credentials, Domains)          | —        | L    | 14, 19                      |
-| 58  | Key Manager: *Orders* (Barbican generates a key or an RSA key pair) ([#3])                              | P3       | S    | 55                          |
+| 58  | ✅ Key Manager: *Orders* (Barbican generates a key or an RSA key pair) ([#3])                              | —        | S    | 55                          |
 | 59  | Key Manager: the project's preferred secret store (multiple-store Barbican) ([#4])                      | P3       | S    | 55                          |
 | 60  | ✅ 🐞 FIX: *Usage Summary* shows `-0.00` for zero consumption                                      | —        | XS   | 23                          |
 | 61  | ✅ Security group *Add Rule*: help text under every field                                         | —        | XS   | —                           |
@@ -148,7 +148,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -2952,6 +2952,40 @@ Keep Horizon's panel order, columns, breadcrumbs (*Identity › Projects*) and a
 ## 58. Key Manager: *Orders* (Barbican generates a key or an RSA key pair)
 
 > 🔗 **Issue:** [#3]
+>
+> ✅ **Done** (2026-11-14). *Key Manager › Orders* (`/project/key_manager/orders`, `nav.rs`), same
+> plugin and gating as item 55. **Reads** (GET only): `fetch::orders` (`km_all(os, "orders")`) and
+> `fetch::order` (`GET v1/orders/{id}`), server functions `list_orders` / `get_order`,
+> `mapping::orders` → `model::OrderRow` (ID from `order_ref`; `meta` name, algorithm, bit length,
+> mode, expiration; `error_status_code` as a number or a string; the generated `secret_ref` /
+> `container_ref` as IDs; newest first). List (`lists.rs::OrdersPage`: Name, Order Type,
+> Algorithm, Status with the busy bar, *Generated* linked to the secret or container, Expiration,
+> Created) and page (`key_manager.rs::OrderDetailPage`: the error box when `ERROR`, a note while
+> `PENDING`), both polled while `OrderRow::busy`. **Writes:** `OsAction::OrderCreate(OrderSpec)` →
+> `POST v1/orders` `{"type", "meta": {name, algorithm, bit_length, mode, payload_content_type:
+> application/octet-stream, expiration, passphrase}}` and `OsAction::OrderDelete` → `DELETE
+> v1/orders/{id}`; `OrderSpec::check` (dialog and `actions::keymgr::order_body`): `key` = AES
+> 128/192/256 with a mode, `asymmetric` = RSA 2048/3072/4096 with an optional passphrase,
+> `certificate` refused. The passphrase is a `Hidden` (no `Debug`), and `passphrase` joined
+> `SECRET_KEYS` so previews show `********`; `created_id` reads `order_ref`. *Order Key* dialog
+> (`ops::order_key_dialog`): type, name, bit length and mode (keys) or bit length and passphrase
+> (key pairs), expiration date and time on one row; the button is on Orders only (the open
+> question: an order is not a secret, and Barbican names what it generates after it). *Delete
+> Order* (row, page, bulk) says the generated secret or container stays. i18n both languages
+> (`pending` status, the two order types in `key_manager_term`). Docs: `CONFIGURATION.md` and
+> `moonlight.conf.example` list Orders under `key-manager`. Tests: `orders_map_pending_active_and_failed`,
+> `orders_take_aes_keys_and_rsa_pairs_of_known_sizes`, `pending_orders_are_busy`,
+> `orders_send_barbicans_body_and_mask_the_passphrase` (dry-run: both bodies, the masked
+> passphrase, a refused size, the `DELETE`), `order_key_builds_a_key_or_a_key_pair`,
+> `deleting_an_order_says_the_key_stays`; both clippy runs clean, 605 tests pass. **Browser**
+> (ttcp-dev, *pokemon*, dark, English): the panel lists 0 orders in 1 API call, 0.20 s; *Order
+> Key* opens with *Symmetric Key*, 256 and `cbc`, and *RSA Key Pair* swaps in 2048–4096 and the
+> passphrase; nothing submitted; no console errors. **A real order** (2026-11-14, placed by the
+> user: *test1*, RSA Key Pair, 4096 bits, expiring in a day, no passphrase): listed *Active* with
+> rsa / 4096 and *Generated* linked to its container; its page (1 API call, 0.03 s) shows every
+> field; the container is `rsa`, *Active*, with its *Private Key* and *Public Key* (no passphrase
+> given, so no third role); no console errors. **Not verified:** a symmetric key order, the
+> `PENDING` polling (the order was already active), an asymmetric order with a passphrase; Spanish.
 
 **Goal.** Let users ask Barbican to generate secret material instead of uploading it: an
 *Order Key* dialog for a symmetric key (`type: key`, stored as a secret) or an RSA key pair

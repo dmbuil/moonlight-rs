@@ -1,4 +1,4 @@
-//! Barbican secrets, containers and ACLs (roadmap 55).
+//! Barbican secrets, containers and ACLs (roadmap 55), and orders (roadmap 58).
 
 use super::*;
 
@@ -235,6 +235,99 @@ pub struct SecretSpec {
     pub expiration: Option<String>,
 }
 
+/// A Barbican order (roadmap 58): Barbican generating a symmetric key
+/// (`key`, stored as a secret) or an RSA key pair (`asymmetric`, stored as an
+/// `rsa` container). Orders run asynchronously: `PENDING`, then `ACTIVE` with
+/// the result's ref, or `ERROR` with a reason.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderRow {
+    /// The last segment of `order_ref`.
+    pub id: String,
+    /// `meta.name`, else the ID.
+    pub name: String,
+    /// `key`, `asymmetric` or `certificate` (deprecated, listed but never offered).
+    pub order_type: String,
+    /// `PENDING`, `ACTIVE` or `ERROR`.
+    pub status: String,
+    pub algorithm: Option<String>,
+    pub bit_length: Option<i64>,
+    pub mode: Option<String>,
+    /// The generated secret's expiration (UTC); `None` = never expires.
+    pub expiration: Option<String>,
+    /// `error_status_code` and `error_reason`, set when `status` is `ERROR`.
+    pub error_code: Option<String>,
+    pub error_reason: Option<String>,
+    pub created: String,
+    pub updated: Option<String>,
+    pub creator_id: Option<String>,
+    /// The generated secret's ID (`key` orders, once `ACTIVE`).
+    pub secret_id: Option<String>,
+    /// The generated `rsa` container's ID (`asymmetric` orders, once `ACTIVE`).
+    pub container_id: Option<String>,
+}
+
+impl OrderRow {
+    /// Still being processed: the list polls while any order is (roadmap 46).
+    pub fn busy(&self) -> bool {
+        self.status.eq_ignore_ascii_case("PENDING")
+    }
+}
+
+/// The order types *Order Key* offers, each with its algorithm and the bit
+/// lengths Barbican's simple crypto plugin generates (`certificate` orders
+/// need a CA plugin and are deprecated: not offered).
+pub const ORDER_TYPES: [(&str, &str, &[i64]); 2] = [
+    ("key", "aes", &[128, 192, 256]),
+    ("asymmetric", "rsa", &[2048, 3072, 4096]),
+];
+
+/// *Order Key*, as Barbican's `POST /v1/orders` takes it (roadmap 58).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderSpec {
+    /// `key` or `asymmetric` ([`ORDER_TYPES`]).
+    pub order_type: String,
+    pub name: Option<String>,
+    pub bit_length: i64,
+    /// Cipher mode of a `key` (`cbc`); `None` for key pairs.
+    pub mode: Option<String>,
+    /// ISO 8601 in UTC (`2026-12-31T00:00:00`); `None` = never expires.
+    pub expiration: Option<String>,
+    /// An `asymmetric` order's private key passphrase (stored as the container's
+    /// `private_key_passphrase`); `None` = no passphrase.
+    pub passphrase: Option<Hidden>,
+}
+
+impl OrderSpec {
+    /// The order's algorithm: `aes` for keys, `rsa` for key pairs.
+    pub fn algorithm(&self) -> Option<&'static str> {
+        ORDER_TYPES
+            .iter()
+            .find(|(t, _, _)| *t == self.order_type)
+            .map(|(_, a, _)| *a)
+    }
+
+    /// Checks the type, bit length and fields that only one type takes; run
+    /// by the dialog and again by the server.
+    pub fn check(&self) -> Result<(), String> {
+        let Some((_, alg, bits)) = ORDER_TYPES.iter().find(|(t, _, _)| *t == self.order_type) else {
+            return Err(format!("unknown order type {}", self.order_type));
+        };
+        if !bits.contains(&self.bit_length) {
+            let list: Vec<String> = bits.iter().map(i64::to_string).collect();
+            return Err(format!("{alg} takes a bit length of {}", list.join(", ")));
+        }
+        match self.order_type.as_str() {
+            "key" if self.passphrase.as_ref().is_some_and(|p| !p.0.is_empty()) => {
+                Err("only key pairs take a passphrase".into())
+            }
+            "asymmetric" if self.mode.as_deref().is_some_and(|m| !m.trim().is_empty()) => {
+                Err("key pairs take no cipher mode".into())
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod secret_tests {
     use super::Secret;
@@ -286,5 +379,65 @@ mod secret_acl_tests {
     fn typed_user_ids_split_and_dedupe() {
         assert_eq!(parse_user_ids(" a1, b2\nc3  a1,,"), ["a1", "b2", "c3"]);
         assert!(parse_user_ids(" , ").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod order_tests {
+    use super::*;
+
+    fn spec(order_type: &str, bits: i64) -> OrderSpec {
+        OrderSpec {
+            order_type: order_type.into(),
+            name: None,
+            bit_length: bits,
+            mode: (order_type == "key").then(|| "cbc".into()),
+            expiration: None,
+            passphrase: None,
+        }
+    }
+
+    #[test]
+    fn orders_take_aes_keys_and_rsa_pairs_of_known_sizes() {
+        assert_eq!(spec("key", 256).check(), Ok(()));
+        assert_eq!(spec("key", 256).algorithm(), Some("aes"));
+        assert_eq!(spec("asymmetric", 4096).check(), Ok(()));
+        assert_eq!(spec("asymmetric", 2048).algorithm(), Some("rsa"));
+        assert!(spec("key", 2048).check().unwrap_err().contains("128, 192, 256"));
+        assert!(spec("asymmetric", 256).check().is_err());
+        assert!(spec("certificate", 2048).check().is_err(), "deprecated: never ordered");
+        let mut pair = spec("asymmetric", 2048);
+        pair.passphrase = Some(Hidden("pw".into()));
+        assert_eq!(pair.check(), Ok(()));
+        pair.mode = Some("cbc".into());
+        assert!(pair.check().is_err(), "a key pair has no cipher mode");
+        let mut key = spec("key", 128);
+        key.passphrase = Some(Hidden("pw".into()));
+        assert!(key.check().is_err(), "a key has no passphrase");
+        key.passphrase = Some(Hidden(String::new()));
+        assert_eq!(key.check(), Ok(()), "an empty passphrase is none");
+    }
+
+    #[test]
+    fn pending_orders_are_busy() {
+        let o = |status: &str| OrderRow {
+            id: "o1".into(),
+            name: "o1".into(),
+            order_type: "key".into(),
+            status: status.into(),
+            algorithm: None,
+            bit_length: None,
+            mode: None,
+            expiration: None,
+            error_code: None,
+            error_reason: None,
+            created: String::new(),
+            updated: None,
+            creator_id: None,
+            secret_id: None,
+            container_id: None,
+        };
+        assert!(o("PENDING").busy());
+        assert!(!o("ACTIVE").busy() && !o("ERROR").busy());
     }
 }

@@ -1039,6 +1039,67 @@ list_page!(
     })
 );
 
+/// An order's algorithm, bit length and mode, as [`crate::pages::key_manager::cipher`].
+fn order_cipher(o: &OrderRow) -> String {
+    let parts: Vec<String> = [o.algorithm.clone(), o.bit_length.map(|b| b.to_string()), o.mode.clone()]
+        .into_iter()
+        .flatten()
+        .collect();
+    if parts.is_empty() {
+        "-".into()
+    } else {
+        parts.join(" / ")
+    }
+}
+
+/// What an order generated, linked: its secret (keys) or container (key pairs);
+/// `-` while it is pending or when it failed.
+pub fn order_result(o: &OrderRow) -> AnyView {
+    match (&o.secret_id, &o.container_id) {
+        (Some(id), _) => link(format!("/project/key_manager/secrets/{id}"), id.clone()),
+        (None, Some(id)) => link(format!("/project/key_manager/containers/{id}"), id.clone()),
+        (None, None) => "-".into_any(),
+    }
+}
+
+// Key Manager › Orders (roadmap 58): polled while Barbican processes one.
+list_page!(
+    OrdersPage,
+    list_orders,
+    OrderRow,
+    vec![
+        col(K::Name, |o: &OrderRow, _| link(
+            format!("/project/key_manager/orders/{}", o.id),
+            o.name.clone()
+        ))
+        .sort_text(|o| o.name.clone()),
+        col(K::OrderType, |o: &OrderRow, l| key_manager_term(l, &o.order_type)).sort_text(|o| o.order_type.clone()),
+        col(K::Algorithm, |o: &OrderRow, _| order_cipher(o)),
+        col(K::Status, |o: &OrderRow, l| moving_status(&o.status, l, o.busy())).sort_text(|o| o.status.clone()),
+        col(K::OrderResult, |o: &OrderRow, _| order_result(o)),
+        col(K::Expiration, |o: &OrderRow, l| crate::pages::key_manager::expiry_cell(
+            l,
+            o.expiration.as_deref()
+        ))
+        .sort_text(|o| o.expiration.clone().unwrap_or_default())
+        .class("nowrap"),
+        col(K::Created, |o: &OrderRow, _| short_time(&o.created))
+            .sort_text(|o| o.created.clone())
+            .class("nowrap"),
+        actions_col(|l, o: &OrderRow| ops::order_items(l, o)),
+    ],
+    |o: &OrderRow| format!(
+        "{} {} {} {}",
+        o.name,
+        o.id,
+        o.order_type,
+        o.algorithm.as_deref().unwrap_or("")
+    ),
+    &[(K::OrderKey, ops::order_key_dialog)],
+    (K::DeleteOrders, key!(id, name), |id| OsAction::OrderDelete { id }),
+    busy = OrderRow::busy
+);
+
 list_page!(
     QosPoliciesPage,
     list_qos_policies,

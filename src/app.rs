@@ -16,7 +16,7 @@ use crate::pages::heat_catalog::{
 use crate::pages::identity::*;
 use crate::pages::instance_detail::InstanceDetailPage;
 use crate::pages::instances::InstancesPage;
-use crate::pages::key_manager::{ContainerDetailPage, SecretDetailPage};
+use crate::pages::key_manager::{ContainerDetailPage, OrderDetailPage, SecretDetailPage};
 use crate::pages::lists::*;
 use crate::pages::load_balancers::LoadBalancerDetailPage;
 use crate::pages::login::LoginPage;
@@ -120,6 +120,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("key_manager/secrets/:id") view=SecretDetailPage/>
                         <Route path=path!("key_manager/containers") view=ContainersPage/>
                         <Route path=path!("key_manager/containers/:id") view=ContainerDetailPage/>
+                        <Route path=path!("key_manager/orders") view=OrdersPage/>
+                        <Route path=path!("key_manager/orders/:id") view=OrderDetailPage/>
                         <Route path=path!("stacks") view=StacksPage/>
                         <Route path=path!("stacks/launch") view=StackLaunchPage/>
                         <Route path=path!("stacks/:id") view=StackDetailPage/>

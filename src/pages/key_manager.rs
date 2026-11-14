@@ -1,4 +1,5 @@
-//! Key Manager (Barbican, roadmap 55): secret and container detail pages, and
+//! Key Manager (Barbican, roadmap 55): secret, container and order (roadmap 58)
+//! detail pages, and
 //! the expiration cell the lists share. The lists are in `lists.rs`. Secret
 //! payloads are only fetched on *Show Payload* (`[key_manager] allow_payload`)
 //! and dropped (zeroed, `model::Hidden`) on *Hide Payload*.
@@ -6,7 +7,7 @@
 use leptos::prelude::*;
 
 use super::details::{Card, DetailHeader, Kv, mono, param};
-use super::lists::{link, status_pill};
+use super::lists::{link, moving_status, order_result, status_pill};
 use crate::api::*;
 use crate::components::dialog::data_version;
 use crate::components::ops;
@@ -376,6 +377,75 @@ fn ContainerCards(c: ContainerRow, acl: KmAcl) -> AnyView {
         <h2 class="section-title">{move || i18n.t(K::Consumers)}</h2>
         {consumers}
         <OctaviaUses uses=octavia/>
+    }
+    .into_any()
+}
+
+/// An order's page (roadmap 58): what was asked, its status (refetched while
+/// Barbican processes it), the secret or container it generated, or why it failed.
+#[component]
+pub fn OrderDetailPage() -> impl IntoView {
+    let i18n = use_i18n();
+    let id = param("id");
+    let data = Resource::new(move || (id(), data_version()), |(id, _)| get_order(id));
+    let _polling = crate::components::widgets::poll_while_busy(data, move || {
+        data.with(|r| matches!(r, Some(Ok(td)) if td.data.busy()))
+    });
+    view! {
+        <Transition fallback=|| view! { <Skeleton rows=6/> }>
+            {move || render(data.get(), move |td| {
+                let o = td.data;
+                let whole = o.clone();
+                let items = Signal::derive(move || ops::order_items(i18n.lang(), &whole));
+                let name = o.name.clone();
+                view! {
+                    <DetailHeader group=K::KeyManager panel=K::Orders href="/project/key_manager/orders"
+                        name=name timing=(td.millis, td.calls) items=items/>
+                    <OrderCards o=o/>
+                }
+            })}
+        </Transition>
+    }
+}
+
+#[component]
+fn OrderCards(o: OrderRow) -> AnyView {
+    let i18n = use_i18n();
+    let (status, kind, exp, busy) = (o.status.clone(), o.order_type.clone(), o.expiration.clone(), o.busy());
+    let updated = dash(o.updated.as_deref().map(utc_time));
+    let bits = o.bit_length.map(|b| b.to_string()).unwrap_or_else(|| "-".into());
+    let creator = o.creator_id.clone().unwrap_or_else(|| "-".into());
+    let error = (o.error_code.is_some() || o.error_reason.is_some()).then(|| {
+        let text = [o.error_code.clone(), o.error_reason.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(": ");
+        view! { <ErrorBox message=text/> }
+    });
+    let pending = busy.then(|| view! { <p class="muted">{move || i18n.t(K::OrderPendingNote)}</p> });
+    let result = order_result(&o);
+    view! {
+        {error}
+        {pending}
+        <div class="cards">
+            <Card title=K::Information>
+                <Kv label=K::Name><Copyable value=o.name.clone()/></Kv>
+                <Kv label=K::Id><Copyable value=o.id.clone() mono=true/></Kv>
+                <Kv label=K::OrderType>{move || key_manager_term(i18n.lang(), &kind)}</Kv>
+                <Kv label=K::Status>{move || moving_status(&status, i18n.lang(), busy)}</Kv>
+                <Kv label=K::OrderResult>{result}</Kv>
+                <Kv label=K::Created>{utc_time(&o.created)}</Kv>
+                <Kv label=K::Updated>{updated}</Kv>
+                <Kv label=K::CreatorId>{mono(creator)}</Kv>
+            </Card>
+            <Card title=K::Specs>
+                <Kv label=K::Algorithm>{dash(o.algorithm.clone())}</Kv>
+                <Kv label=K::BitLength>{bits}</Kv>
+                <Kv label=K::CipherMode>{dash(o.mode.clone())}</Kv>
+                <Kv label=K::Expiration>{move || expiry_cell(i18n.lang(), exp.as_deref())}</Kv>
+            </Card>
+        </div>
     }
     .into_any()
 }
