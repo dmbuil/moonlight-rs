@@ -55,6 +55,8 @@ pub use stacks::*;
 pub use trunks::*;
 pub use volumes::*;
 
+/// Field `k`, or `"<label>: <required field>"` when it is empty: a value the request cannot do
+/// without even when the form's own `required` check does not cover it.
 fn req(v: &Values, k: &str, label: K, lang: Lang) -> Result<String, String> {
     v.opt(k)
         .ok_or_else(|| format!("{}: {}", t(lang, label), t(lang, K::RequiredField)))
@@ -70,7 +72,6 @@ fn num_of<T: TryFrom<i64>>(v: &Values, k: &str, label: K, lang: Lang) -> Result<
     }
 }
 
-/// Horizon's instance menu, adapted to the instance state.
 /// Entries of an instance's action menu, in Horizon's order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
@@ -81,7 +82,7 @@ pub enum Op {
     AttachInterface,
     DetachInterface,
     Edit,
-    /// The server's groups on all its ports at once (roadmap 42).
+    /// The server's groups on all its ports at once.
     EditSecurityGroups,
     UpdateMetadata,
     AttachVolume,
@@ -140,7 +141,7 @@ pub fn allowed(status: &str, locked: Option<bool>, busy: bool) -> Vec<Op> {
     if !is(&["SHELVED", "SHELVED_OFFLOADED"]) {
         ops.push(EditSecurityGroups);
     }
-    // Next to the instance-wide one, so both ways of editing groups sit together (roadmap 43).
+    // Next to the instance-wide one, so both ways of editing groups sit together.
     ops.push(EditPortSecurityGroups);
     ops.push(UpdateMetadata);
     if is(RUNNING) {
@@ -215,7 +216,7 @@ pub fn bulk(lang: Lang, title: K, items: Vec<(String, String)>, make: fn(String)
     if danger {
         d.intro.push(t(lang, K::CannotBeUndone).into());
     }
-    // What a Barbican delete takes with it (roadmap 55).
+    // What a Barbican delete takes with it.
     match title_key {
         K::DeleteSecrets => d.intro.push(t(lang, K::SecretInUse).into()),
         K::DeleteContainers => d.intro.push(t(lang, K::ContainerKeepsSecrets).into()),

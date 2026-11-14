@@ -18,7 +18,7 @@ pub struct StackRow {
 }
 
 /// Whether Heat is still working on the stack or resource (`*_IN_PROGRESS`):
-/// pages poll while it is (roadmap 46).
+/// pages poll while it is.
 pub fn stack_busy(status: &str) -> bool {
     status.ends_with("_IN_PROGRESS")
 }
@@ -79,7 +79,7 @@ pub struct TypeProperty {
     /// Each constraint compact (`allowed_values: [a, b]`, `custom_constraint: nova.flavor`).
     pub constraints: Vec<String>,
     /// The `allowed_values` constraint's values as text, for a select in the
-    /// Template Generator (roadmap 92); empty when unconstrained.
+    /// Template Generator; empty when unconstrained.
     #[serde(default)]
     pub allowed: Vec<String>,
     /// The `custom_constraint` (`neutron.network`, `nova.flavor`): what the value
@@ -242,6 +242,7 @@ pub struct StackDetail {
     /// Heat masks hidden parameters itself (`******`).
     pub parameters: Vec<(String, String)>,
     pub outputs: Vec<StackOutput>,
+    /// Minutes Heat gives a create or update; `None` = Heat's default.
     pub timeout_mins: Option<i64>,
     pub disable_rollback: bool,
     /// The parent stack's ID, for a nested stack.
@@ -254,4 +255,4 @@ pub struct StackDetail {
     pub template: String,
 }
 
-// --- Alarming (Aodh, roadmap 79) ----------------------------------------------
+// --- Alarming (Aodh) ----------------------------------------------

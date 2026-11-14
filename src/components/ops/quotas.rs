@@ -1,4 +1,4 @@
-//! Project › Quotas (roadmap 82).
+//! Project › Quotas.
 
 use super::*;
 
@@ -45,7 +45,7 @@ pub fn quota_label(lang: Lang, s: QuotaService, key: &str) -> String {
         (Network, "security_group_rule") => K::SecurityGroupRules,
         (Network, "rbac_policy") => K::QRbacPolicies,
         (Network, "trunk") => K::Trunks,
-        // neutron-fwaas v2 (roadmap 93, 113): read-only rows, not in `keys()`.
+        // neutron-fwaas v2: read-only rows, not in `keys()`.
         (Network, "firewall_group") => K::FirewallGroups,
         (Network, "firewall_policy") => K::FirewallPolicies,
         (Network, "firewall_rule") => K::FirewallRules,
@@ -79,8 +79,8 @@ pub fn quota_label(lang: Lang, s: QuotaService, key: &str) -> String {
 
 /// *Edit Quotas* of one service: a number per editable quota the service
 /// reported, sending only what changed. Shown as `[ui] quota_edit` says (to
-/// everyone by default, roadmap 112): whether the user may is then the cloud's
-/// policy, unknown beforehand (item 35), so a 403 gets its own message instead.
+/// everyone by default): whether the user may is then the cloud's
+/// policy, unknown beforehand, so a 403 gets its own message instead.
 pub fn edit_quotas_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
     let project_id = card.project_id.clone();
     let title = format!(
@@ -96,7 +96,7 @@ pub fn edit_quotas_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
     .forbidden(t(lang, K::QuotaForbidden))
 }
 
-/// Admin › Defaults' *Update Defaults* (roadmap 85): the same form over the
+/// Admin › Defaults' *Update Defaults*: the same form over the
 /// `default` quota class of Compute or Volume.
 pub fn update_defaults_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
     let title = format!(

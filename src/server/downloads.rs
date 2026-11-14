@@ -19,15 +19,19 @@ use minijinja::{AutoEscape, Environment, Value, context};
 
 use crate::model::Credentials;
 
-/// The five downloads, by template name.
+/// The five downloads, by template name: API Access's `openrc` (password sessions).
 pub const OPENRC: &str = "openrc.sh";
+/// API Access's `clouds.yaml` (password sessions).
 pub const CLOUDS_YAML: &str = "clouds.yaml";
+/// The `openrc` offered once after creating an application credential (holds its secret).
 pub const APP_OPENRC: &str = "app_credential_openrc.sh";
+/// The `clouds.yaml` offered once after creating an application credential.
 pub const APP_CLOUDS_YAML: &str = "app_credential_clouds.yaml";
 /// API Access's `clouds.yaml` for a WebSSO session (`auth_type: v3websso`,
-/// keystoneauth-websso), which has no password to use (roadmap 80).
+/// keystoneauth-websso), which has no password to use.
 pub const WEBSSO_CLOUDS_YAML: &str = "websso_clouds.yaml";
 
+/// The built-in templates, compiled in; `[api_access] *_template` replaces them one by one.
 const DEFAULTS: [(&str, &str); 5] = [
     (OPENRC, include_str!("templates/openrc.sh.j2")),
     (CLOUDS_YAML, include_str!("templates/clouds.yaml.j2")),
@@ -36,6 +40,7 @@ const DEFAULTS: [(&str, &str); 5] = [
     (WEBSSO_CLOUDS_YAML, include_str!("templates/websso_clouds.yaml.j2")),
 ];
 
+/// The template environment, set by [`init`] with the operator's overrides.
 static ENV: OnceLock<Environment<'static>> = OnceLock::new();
 
 /// Single-quoted shell word: safe for any value.
@@ -125,11 +130,14 @@ pub fn init(paths: &[(&'static str, Option<String>)]) -> Result<(), String> {
     Ok(())
 }
 
+/// The environment from [`init`], or the built-in templates before it (unit tests).
 fn env() -> &'static Environment<'static> {
     // Before `init` (unit tests): the built-in templates.
     ENV.get_or_init(|| build(&[]).expect("built-in templates are valid"))
 }
 
+/// Placeholder credentials `build` renders every template with (an operator's included), so a
+/// broken one fails at start-up rather than on download.
 fn sample_credentials() -> Credentials {
     Credentials {
         user_name: "user".into(),
@@ -174,6 +182,8 @@ fn context(c: &Credentials, app: Option<(&str, &str, &str)>) -> Value {
     }
 }
 
+/// Renders one template; on failure, logs it and returns a commented error line as the file,
+/// so the download still happens and shows what broke.
 fn render(name: &str, c: &Credentials, app: Option<(&str, &str, &str)>) -> String {
     match env().get_template(name).and_then(|t| t.render(context(c, app))) {
         Ok(s) => s,

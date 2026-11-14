@@ -1,5 +1,5 @@
 //! The role assignments editor of *Manage Members* and *Modify Groups* on a
-//! project (roadmap 57), in the Allocated/Available picker's layout (as a
+//! project, in the Allocated/Available picker's layout (as a
 //! group's *Manage Members*): the project's users (or groups) with a checkbox
 //! per role and ↓ to remove, and the *Available* ones, filtered, with ↑ to add. The value is a JSON list of [`AssignmentRow`];
 //! `model::assignment_changes` turns it into grants and revokes.

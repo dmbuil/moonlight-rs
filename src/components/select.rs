@@ -13,7 +13,7 @@ const SEARCH_FROM: usize = 8;
 
 /// Whether a combo of `len` options (with *None*) shows its search box: from
 /// [`SEARCH_FROM`] options, or always when the caller asks (`search`: the
-/// floating IP port pickers, roadmap 110).
+/// floating IP port pickers).
 pub fn shows_search(search: bool, len: usize) -> bool {
     search || len >= SEARCH_FROM
 }
@@ -57,6 +57,8 @@ pub fn typeahead(list: &[Choice], prefix: &str, from: usize) -> Option<usize> {
         .find(|&i| list[i].label.to_lowercase().starts_with(&p))
 }
 
+/// The themed select (see the module comment), used by dialog selects, the metadata catalog
+/// picker and member rows; `on_change` gets the picked value.
 #[component]
 pub fn Combo(
     #[prop(into)] id: String,
@@ -76,7 +78,7 @@ pub fn Combo(
     #[prop(optional, into)]
     aria_label: Option<Signal<String>>,
     /// Picking toggles a tick and keeps the list open; its *Add (n)* footer then calls
-    /// `on_change` once with the ticked values as a JSON list (roadmap 25: several catalog
+    /// `on_change` once with the ticked values as a JSON list (several catalog
     /// properties at once). Closing any other way drops the ticks.
     #[prop(optional)]
     multi: bool,
@@ -321,6 +323,7 @@ fn place(trigger: NodeRef<leptos::html::Button>) -> String {
     }
 }
 
+/// Scrolls option `_id` into the popup's view (keyboard navigation); nothing on the server.
 fn scroll_into_view(_id: &str) {
     #[cfg(feature = "hydrate")]
     if let Some(el) = document().get_element_by_id(_id) {

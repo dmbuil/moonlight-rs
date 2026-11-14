@@ -165,7 +165,7 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
     })
 }
 
-/// Horizon's *Create Image* (roadmap 45): details, source, requirements (kernel and ramdisk
+/// Horizon's *Create Image*: details, source, requirements (kernel and ramdisk
 /// for AMI-style formats), sharing and metadata. The *URL* source needs
 /// `[images] allow_location` (Horizon's `IMAGES_ALLOW_LOCATION`) and Glance's `web-download`;
 /// *File* needs `[images] upload` to be `proxy` or `direct`.
@@ -181,7 +181,7 @@ pub fn create_image_dialog(lang: Lang) -> Dialog {
     )
 }
 
-/// Admin › Images' *Create Image* (roadmap 89): Project's, plus the owning
+/// Admin › Images' *Create Image*: Project's, plus the owning
 /// project (empty: the session's).
 pub fn admin_create_image_dialog(lang: Lang) -> Dialog {
     let img = crate::components::dialog::prefs().images;
@@ -216,11 +216,11 @@ fn create_image_form(
         "private".into()
     };
     let mut sources = vec![("none".to_string(), tr(K::ImageSourceNone))];
-    // *File* (roadmap 45): `[images] upload`, whatever the cloud, since the upload is plain Glance.
+    // *File*: `[images] upload`, whatever the cloud, since the upload is plain Glance.
     if img.upload != ImageUpload::Off {
         sources.insert(0, ("file".to_string(), tr(K::ImageSourceFile)));
     }
-    // Glance rejects `web-download` when the method is off (`GET /v2/info/import`, roadmap 45).
+    // Glance rejects `web-download` when the method is off (`GET /v2/info/import`).
     if img.allow_location && url_import {
         sources.insert(0, ("url".to_string(), tr(K::ImageSourceUrl)));
     }
@@ -321,7 +321,7 @@ fn create_image_form(
             owner: v.opt("owner"),
         }))
     });
-    // Horizon's wizard: the details, then the metadata (item 25 adds the catalog to that step).
+    // Horizon's wizard: the details, then the metadata.
     dialog = dialog.wizard(vec![
         Step::new(tr(K::ImageDetails), &details),
         Step::new(tr(K::Metadata), &["metadata"]),
@@ -415,7 +415,7 @@ pub(super) fn pairs_item(
     })
 }
 
-/// *Import Public Key*: name, key type (SSH or X509, roadmap 51) and the key,
+/// *Import Public Key*: name, key type (SSH or X509) and the key,
 /// checked against the type before sending.
 pub fn import_keypair_dialog(lang: Lang) -> Dialog {
     Dialog::form(
@@ -515,6 +515,8 @@ pub fn server_group_detail_items(lang: Lang, g: &ServerGroup) -> Vec<MenuItem> {
     group_items(lang, g, Some("/project/server_groups"))
 }
 
+/// A server group's menu: *Delete Server Group* (`OsAction::ServerGroupDelete`). `back` is where a
+/// detail page goes once the group is gone (the list), `None` on a list row.
 fn group_items(lang: Lang, g: &ServerGroup, back: Option<&'static str>) -> Vec<MenuItem> {
     let (i, n) = (g.id.clone(), g.name.clone());
     vec![MenuItem::danger(t(lang, K::DeleteServerGroup), move || {
@@ -596,7 +598,11 @@ mod tests {
             ["name", "description", "source"]
         );
         let d = create_image_form(Lang::EnUs, &Default::default(), true, true, true);
-        assert_eq!(names(&d), ["name", "description", "owner"], "roadmap 89");
+        assert_eq!(
+            names(&d),
+            ["name", "description", "owner"],
+            "an admin picks the owner after the description"
+        );
         assert!(d.steps[0].fields.contains(&"owner"), "on the details step");
         let base = [
             ("name", "deb"),

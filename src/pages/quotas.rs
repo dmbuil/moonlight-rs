@@ -1,8 +1,8 @@
-//! Project › Quotas (roadmap 82): every quota each service reports for the
+//! Project › Quotas: every quota each service reports for the
 //! current project, with usage, and *Edit Quotas* per service. Unlike Horizon
 //! (Overview charts plus Identity › Projects › *Modify Quotas*), it is one
 //! panel for every user; the cloud's policy decides who may save, unless
-//! `[ui] quota_edit` (roadmap 112) hides *Edit Quotas* from members or everyone.
+//! `[ui] quota_edit` hides *Edit Quotas* from members or everyone.
 //! The same cards serve Identity › Projects › *Modify Quotas* for any project
 //! (admins), where that setting does not apply.
 
@@ -40,6 +40,7 @@ fn level(p: f64) -> &'static str {
     }
 }
 
+/// Project › Quotas: the current project's cards, one per service.
 #[component]
 pub fn QuotasPage() -> impl IntoView {
     let data = Resource::new(data_version, |_| list_quotas());
@@ -55,7 +56,7 @@ pub fn QuotasPage() -> impl IntoView {
     }
 }
 
-/// Identity › Projects › a project › *Quotas* (roadmap 82, Horizon's *Modify
+/// Identity › Projects › a project › *Quotas* (Horizon's *Modify
 /// Quotas*): another project's cards, each with *Edit Quotas* for that project.
 /// Admins only: the menu entry needs the role and the server checks it again.
 #[component]
@@ -104,6 +105,10 @@ fn QuotaCards(cards: Vec<QuotaCard>, own: bool) -> impl IntoView {
     }
 }
 
+/// One service's card: its quotas with used, reserved (only when some row has one), limit
+/// and a bar, its error when that service failed, the Key Manager usage note, and *Edit
+/// Quotas* when the service has keys Moonlight can edit and `[ui] quota_edit` allows it
+/// (only for the eye: `api::quota_edit_gate` refuses the same on the server).
 #[component]
 fn ServiceCard(card: QuotaCard, own: bool) -> impl IntoView {
     let i18n = use_i18n();
@@ -117,7 +122,7 @@ fn ServiceCard(card: QuotaCard, own: bool) -> impl IntoView {
     let error = card.error.clone();
     let rows = card.rows.clone();
     // Barbican reports no usage: `fetch::quotas` counts the lists, which skip
-    // secrets with project access off (roadmap 82). For another project it
+    // secrets with project access off. For another project it
     // counts nothing (no row has a *Used*), and unknown defaults are left out.
     let other = card.rows.iter().all(|r| r.used.is_none());
     let note_key = if other {
@@ -155,6 +160,8 @@ fn ServiceCard(card: QuotaCard, own: bool) -> impl IntoView {
     }
 }
 
+/// One quota's row: Horizon's label (plus the API key for a per-type or unknown one), the
+/// amounts in the quota's unit, and the bar coloured as the Overview donuts.
 fn row(service: QuotaService, r: QuotaRow, reserved: bool) -> impl IntoView {
     let i18n = use_i18n();
     let unit = service.unit(&r.key);

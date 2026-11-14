@@ -1,4 +1,4 @@
-//! Admin › Volume and Metadata (roadmap 85): volumes, types, QoS specs, metadefs.
+//! Admin › Volume and Metadata: volumes, types, QoS specs, metadefs.
 
 use super::*;
 
@@ -589,7 +589,7 @@ pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
                     Source::Set(ChoiceSet::MetadefResourceTypes),
                 )
                 .value(current.join(",")),
-                // Horizon's per-type *Prefix* (roadmap 89): resource type → prefix.
+                // Horizon's per-type *Prefix*: resource type → prefix.
                 Field::key_values("prefixes", t(lang, K::Prefixes), &old).help(t(lang, K::PrefixesHelp)),
             ],
             move |v| {
@@ -924,7 +924,7 @@ mod tests {
                 prefixes: vec![]
             }
         );
-        // Prefixes (roadmap 89): prefilled, a change re-adds the association, and one
+        // Prefixes: prefilled, a change re-adds the association, and one
         // for a type that isn't ticked is refused.
         let with = MetadefNamespace {
             prefixes: vec![("OS::Glance::Image".into(), "hw_".into())],

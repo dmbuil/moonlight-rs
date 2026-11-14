@@ -18,7 +18,7 @@
   --utility: #2b3447;
   --utility-ink: #d6dbe6;
   --utility-line: light-dark(transparent, #3b4557);
-  /* Login page (roadmap 114): one image per theme. `light-dark()` only takes colours, so the dark
+  /* Login page: one image per theme. `light-dark()` only takes colours, so the dark
      image is a layer over the light one and the rules below set its opacity (0 light, 1 dark);
      the opacity eases, so a theme switch crossfades. Each colour is its image's own backdrop,
      shown while it loads. */
@@ -67,7 +67,7 @@
   --radius: 8px;
   --font: "Telefonica Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* Motion (roadmap 98): short, no bounce; 0ms under reduced motion (below). */
+  /* Motion: short, no bounce; 0ms under reduced motion (below). */
   --motion-fast: 120ms;
   --motion: 160ms;
   --ease: cubic-bezier(.2, 0, 0, 1);
@@ -101,7 +101,7 @@ button { font: inherit; }
 .muted { color: var(--ink-3); }
 .strong { font-weight: 600; }
 .nowrap { white-space: nowrap; }
-/* Alarm conditions and history details: PromQL queries and JSON can be long (roadmap 79). */
+/* Alarm conditions and history details: PromQL queries and JSON can be long. */
 td.condition { max-width: 32rem; overflow-wrap: anywhere; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .spacer { flex: 1; }
@@ -239,7 +239,7 @@ a.btn, a.btn:hover { text-decoration: none; }
 }
 .filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 .filter input { flex: 1; border: 0; outline: 0; font: inherit; color: var(--ink); background: transparent; min-width: 0; }
-/* Server-paged lists (roadmap 88): the filter bar in the toolbar, Previous / Next under the table. */
+/* Server-paged lists: the filter bar in the toolbar, Previous / Next under the table. */
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
 .filter-bar select, .filter-bar .filter-value {
   min-height: 34px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 6px;
@@ -255,7 +255,7 @@ a.btn, a.btn:hover { text-decoration: none; }
 }
 .pager { display: flex; align-items: center; gap: 8px; padding: 4px 2px 10px; color: var(--ink-2); font-size: 13px; }
 .pager .spacer { flex: 1; }
-/* *Count all* (roadmap 88): reads as a link, is a button (it calls the server). */
+/* *Count all*: reads as a link, is a button (it calls the server). */
 .pager .count-all {
   padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer;
 }
@@ -270,7 +270,7 @@ a.btn, a.btn:hover { text-decoration: none; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 .table { width: 100%; border-collapse: collapse; }
 /* Headers may wrap at spaces: the auto layout only does it when the table would
-   otherwise scroll sideways (long Spanish headers, roadmap 72). */
+   otherwise scroll sideways (long Spanish headers). */
 .table th {
   position: sticky; top: 0; text-align: left; line-height: 1.25;
   padding: 0 12px; height: 40px; background: var(--th-bg); border-bottom: 1px solid var(--line);
@@ -336,7 +336,7 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .donut figcaption { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .donut figcaption span { color: var(--ink-3); font-size: 12px; }
 
-/* ---------- Project › Quotas (roadmap 82) ---------- */
+/* ---------- Project › Quotas ---------- */
 .page-intro { margin: 0 0 12px; color: var(--ink-2); font-size: 13.5px; }
 .quota-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 16px; }
 .quota-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 6px; }
@@ -352,7 +352,7 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .quota-bar.full span { background: var(--danger); }
 
 /* ---------- Instance detail ---------- */
-/* Tabs wrap, as Horizon's do, instead of scrolling (roadmap 96): with `overflow-x: auto`,
+/* Tabs wrap, as Horizon's do, instead of scrolling: with `overflow-x: auto`,
    `overflow-y` computed to `auto` too and the tabs' `margin-bottom: -1px` (their underline over
    the bar's border) overflowed by 1px, so every bar showed a useless vertical scroll control. */
 .tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line-2); margin-bottom: 16px; }
@@ -362,7 +362,7 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 }
 .tabs button:hover { color: var(--accent); }
 .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
-/* Tabs that are links (Project › Network › Firewall, roadmap 93). */
+/* Tabs that are links (Project › Network › Firewall). */
 .tabs a {
   display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px; border-bottom: 2px solid transparent;
   margin-bottom: -1px; color: var(--ink-2); text-decoration: none; white-space: nowrap; font-weight: 500;
@@ -375,7 +375,7 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .kv { display: grid; grid-template-columns: minmax(120px, 38%) 1fr; gap: 6px 14px; margin: 0; font-size: 13.5px; }
 .kv dt { color: var(--ink-2); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
-/* Key Manager › secret › Payload (roadmap 55) */
+/* Key Manager › secret › Payload */
 .payload { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; font-size: 13.5px; }
 .payload p { margin: 0; }
 .payload .copyable { max-width: 100%; overflow-wrap: anywhere; }
@@ -409,8 +409,8 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .login-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 .login-form .btn { min-height: 42px; margin-top: 4px; }
 .login-form .combo-trigger { min-height: 40px; }
-/* Wraps the credentials so a WebSSO choice can hide them (roadmap 80). A federated choice folds
-   them (roadmap 114): the row eases from 1fr to 0fr, so the card shrinks to its new height instead
+/* Wraps the credentials so a WebSSO choice can hide them. A federated choice folds
+   them: the row eases from 1fr to 0fr, so the card shrinks to its new height instead
    of jumping, and the negative margin takes back the form's gap the empty row would leave. */
 .login-fields {
   display: grid; grid-template-rows: 1fr;
@@ -422,7 +422,7 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .login-fields-inner { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: hidden; padding: 3px; margin: -3px; }
 .login-form a.btn { text-decoration: none; }
 
-/* ---------- Phone header (roadmap 101) ----------
+/* ---------- Phone header ----------
    Both headers are rendered; this media query picks one (`display: none` also keeps the hidden
    one out of the tab order and the accessibility tree). */
 .mobile-bar { display: none; }
@@ -465,14 +465,14 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .subtable-actions { display: flex; justify-content: flex-end; margin: 4px 0 -2px; }
 .subtable-title { margin: 22px 0 4px; font-size: 14px; font-weight: 700; color: var(--ink); }
 td.actions, th.actions { width: 1%; white-space: nowrap; text-align: right; }
-/* Bulk selection (roadmap 10) */
+/* Bulk selection */
 td.select, th.select { width: 1%; padding-right: 0; }
 td.select input, th.select input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); cursor: pointer; }
 td.select input:disabled { cursor: not-allowed; opacity: .4; }
 /* One-time secrets (key pairs, transfers, application credentials). */
 .secret-fields { margin: 8px 0 4px; }
 .secret-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-/* Row drawers (roadmap 56): a quiet chevron that turns down, and a full-width row under it. */
+/* Row drawers: a quiet chevron that turns down, and a full-width row under it. */
 td.drawer-toggle, th.drawer-toggle { width: 1%; padding-right: 0; }
 .btn-drawer { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0;
   border: 0; border-radius: 4px; background: none; color: var(--ink-3); opacity: .7; cursor: pointer; }
@@ -514,7 +514,7 @@ td.drawer-toggle, th.drawer-toggle { width: 1%; padding-right: 0; }
   width: 100%; max-width: 620px; background: var(--surface); border-radius: 12px;
   box-shadow: 0 24px 60px var(--shadow-strong);
   /* Capped to the window (the backdrop's padding is 6vh + 16px): the body scrolls inside, the
-     title and the buttons stay in view (roadmap 45). */
+     title and the buttons stay in view. */
   display: flex; flex-direction: column; max-height: calc(94vh - 16px); max-height: calc(94dvh - 16px);
 }
 .modal-head { flex: none; }
@@ -620,7 +620,7 @@ form.modal-body > .wizard-pane { overflow-y: auto; min-height: 0; flex: 1 1 auto
 .combo-trigger[aria-expanded=true] { border-color: var(--accent); }
 .combo-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combo-veil { position: fixed; inset: 0; z-index: 60; }
-/* Date and time pickers (roadmap 57): a text input and a button opening a themed popup. */
+/* Date and time pickers: a text input and a button opening a themed popup. */
 .picker { display: flex; gap: 6px; align-items: stretch; }
 .picker input { flex: 1; min-width: 0; }
 .picker-btn { flex: none; color: var(--ink-2); }
@@ -672,7 +672,7 @@ form.modal-body > .wizard-pane { overflow-y: auto; min-height: 0; flex: 1 1 auto
 .pick-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .pick-filter { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 6px; font: inherit; width: 240px; max-width: 100%; color: var(--ink); background: var(--surface); }
 .pick-scroll { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
-/* Manage Members / Modify Groups (roadmap 57): the picker's layout, plus role checkboxes. */
+/* Manage Members / Modify Groups: the picker's layout, plus role checkboxes. */
 .role-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .role-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
 .role-check input { accent-color: var(--accent); }
@@ -701,20 +701,20 @@ form.modal-body > .wizard-pane { overflow-y: auto; min-height: 0; flex: 1 1 auto
 }
 .req-body.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* ---------- text area loaded from a file (roadmap 41) ---------- */
+/* ---------- text area loaded from a file ---------- */
 .file-load { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .file-load label.btn { cursor: pointer; }
 .file-load label.btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 small.over { color: var(--danger-ink); }
 
-/* ---------- key/value rows (roadmap 25) ---------- */
+/* ---------- key/value rows ---------- */
 .kv-rows { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .kv-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 6px; width: 100%; }
 .kv-row input, .kv-row select { min-width: 0; }
 .kv-add { display: flex; gap: 6px; align-items: stretch; width: 100%; }
 .kv-catalog { flex: 1; min-width: 0; }
 .kv-custom { min-height: 38px; white-space: nowrap; }
-/* Load balancer members editor (roadmap 54), laid out like Horizon's *Pool Members* step. */
+/* Load balancer members editor, laid out like Horizon's *Pool Members* step. */
 .member-rows { display: flex; flex-direction: column; gap: 14px; width: 100%; }
 .members-title { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
 .members-toggle { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 2px 0;
@@ -738,9 +738,9 @@ small.over { color: var(--danger-ink); }
 .member-removed ul { margin: 4px 0 0; padding-left: 18px; }
 
 
-/* ---------- instance log and console (roadmap 31) ---------- */
+/* ---------- instance log and console ---------- */
 .log-bar, .console-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
-/* *Fit* / *1:1* (roadmap 99): a small segmented control, like the menus' theme picker. */
+/* *Fit* / *1:1*: a small segmented control, like the menus' theme picker. */
 .console-zoom { display: inline-flex; margin-left: auto; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
 .console-zoom button { padding: 4px 10px; border: 0; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
 .console-zoom button + button { border-left: 1px solid var(--line-2); }
@@ -752,7 +752,7 @@ small.over { color: var(--danger-ink); }
   background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 12px; line-height: 1.5;
 }
 /* The whole window below the page's header, tabs and console bar and the padding under it
-   (~370px on a desktop), never under 360px; noVNC scales the remote screen to it (roadmap 99).
+   (~370px on a desktop), never under 360px; noVNC scales the remote screen to it.
    Users may make it taller. */
 .console-frame {
   display: block; width: 100%; height: max(360px, calc(100dvh - 370px)); resize: vertical;
@@ -778,13 +778,13 @@ small.over { color: var(--danger-ink); }
 }
 .popover-title { display: block; margin-bottom: 6px; font-size: 13px; }
 .kv.mini { grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12.5px; }
-/* Extra specs (roadmap 109): long keys such as `aggregate_instance_extra_specs:…` wrap inside the card. */
+/* Extra specs: long keys such as `aggregate_instance_extra_specs:…` wrap inside the card. */
 .kv.mini.specs { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
 /* Wider than the flavor card; `widgets::SPECS_POPOVER_W` must match the max-width. */
 .popover.specs-card { max-width: 460px; min-width: 300px; }
 .kv.mini.specs > * { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .popover { transition: none; } }
-/* (i) beside a form label (Field::tip, roadmap 79): a round icon, not the dotted underline. */
+/* (i) beside a form label (Field::tip): a round icon, not the dotted underline. */
 .field-head { display: flex; align-items: center; gap: 6px; }
 .field-head > label, .field-head > .field-label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .info-tip { display: inline-flex; border-bottom: none; color: var(--ink-3); border-radius: 50%; }
@@ -801,8 +801,8 @@ small.over { color: var(--danger-ink); }
 /* ---------- Busy bar (ongoing task) ---------- */
 .task-cell { display: inline-flex; flex-direction: column; gap: 5px; min-width: 90px; }
 .busy { display: block; width: 100%; min-width: 80px; height: 4px; border-radius: 4px; background: var(--busy-track); overflow: hidden; position: relative; }
-/* `transform`, not `left`: the compositor moves it, no layout per frame on every busy row (roadmap
-   98). From -100% to 250% of its own 40% width is the old -40% to 100% of the track. */
+/* `transform`, not `left`: the compositor moves it, no layout per frame on every busy row.
+   From -100% to 250% of its own 40% width is the old -40% to 100% of the track. */
 .busy-bar { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 4px; background: var(--primary); animation: indeterminate 1.3s ease-in-out infinite; }
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) {
@@ -895,7 +895,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
   box-shadow: 0 6px 20px var(--shadow); font-size: 12.5px;
 }
 .topo-tip ul { margin-top: 4px; font-size: 11.5px; }
-/* Launch Stack / Change Stack Template (roadmap 62). */
+/* Launch Stack / Change Stack Template. */
 .stack-form { display: flex; flex-direction: column; gap: 14px; max-width: 880px; margin-bottom: 16px; }
 .stack-form h2 { margin: 6px 0 0; }
 .stack-form .seg { display: inline-flex; align-self: flex-start; }
@@ -905,7 +905,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .stack-form .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .stack-form .file-load { align-self: flex-start; }
 .preview-list li { padding: 3px 0; }
-/* Template Generator (roadmap 92): palette beside the draft's cards. */
+/* Template Generator: palette beside the draft's cards. */
 .tg { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .tg-palette { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .tg-palette h2, .tg-card h2 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
@@ -959,7 +959,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
   .tg { grid-template-columns: minmax(0, 1fr); }
   .tg-palette { position: static; }
 }
-/* Stack topology (roadmap 62): draw.io's OpenStack icons, coloured by status. */
+/* Stack topology: draw.io's OpenStack icons, coloured by status. */
 .stack-node { color: var(--ok); cursor: default; }
 .stack-node.link { cursor: pointer; }
 .stack-node.off { color: var(--off); }
@@ -994,10 +994,10 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .btn-reveal { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); border-radius: 6px; padding: 0 10px; font: inherit; font-size: 13px; cursor: pointer; }
 .btn-reveal:hover { background: var(--bg-soft); }
 
-/* Admin › Hypervisors › Resource Provider: a host's ▸/▾ device toggle (roadmap 85). */
+/* Admin › Hypervisors › Resource Provider: a host's ▸/▾ device toggle. */
 .tree-toggle { background: none; border: 0; padding: 0 0.2em; color: var(--accent); cursor: pointer; font: inherit; }
 
-/* Background bulk actions (roadmap 87): fixed bottom-right, above the page, below menus and
+/* Background bulk actions: fixed bottom-right, above the page, below menus and
    modals. A plain toast: even 1px border; the state is the dot and the bar's colour. */
 .jobs-tray { position: fixed; right: 16px; bottom: 16px; z-index: 30; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 32px)); max-height: 60vh; overflow-y: auto; }
 .job-card { --job: var(--accent); background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-strong); }
@@ -1019,7 +1019,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .job-stop { color: var(--alert-err-ink); }
 .job-failures { margin: 0; padding-left: 18px; max-height: 8em; overflow-y: auto; font-size: 0.9em; }
 .job-requests summary { cursor: pointer; }
-/* Template Generator canvas (roadmap 92). Icons are heat-dashboard's: ink, white cut-outs. */
+/* Template Generator canvas. Icons are heat-dashboard's: ink, white cut-outs. */
 .hot-icon { color: inherit; }
 .hot-icon .bg-f { fill: var(--surface); }
 .hot-icon .bg-s { stroke: var(--surface); }
@@ -1051,7 +1051,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .tg-link-menu p { margin: 0 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
 .tg-link-menu .btn { justify-content: flex-start; text-align: left; }
 
-/* ---------- Motion (roadmap 98) ----------
+/* ---------- Motion ----------
    Barely noticeable and never in the way: colours, opacity and transform only (no layout), one-shot
    on open, nothing on table rows, all 0ms under prefers-reduced-motion (the tokens on :root). */
 .tabs button, .tabs a, .secondary-bar .panel {

@@ -29,7 +29,7 @@ pub fn allocate_ip_dialog(lang: Lang) -> Dialog {
     )
 }
 
-/// Admin › Floating IPs' *Allocate IP To Project* (roadmap 85), Horizon's
+/// Admin › Floating IPs' *Allocate IP To Project*, Horizon's
 /// *Allocate Floating IP*: pool, project, optional address, description.
 pub fn admin_allocate_ip_dialog(lang: Lang) -> Dialog {
     let tr = |k| t(lang, k).to_string();
@@ -69,7 +69,7 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
     } else if let Some(owner) = project_id {
         // The owner's instance ports (Neutron needs the port and the floating
         // IP in one project), not the session project's, and only those the
-        // IP's pool reaches through a router, as Horizon (roadmap 89).
+        // IP's pool reaches through a router, as Horizon.
         let (i, ip, owner) = (
             f.id.clone(),
             f.ip.clone(),
@@ -87,7 +87,7 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
                         Source::Of(ChoiceSet::AllAssociablePorts, owner.clone()),
                     )
                     .required()
-                    // Search box however few ports there are (roadmap 110).
+                    // Search box however few ports there are.
                     .searchable(),
                 ],
                 move |v| {
@@ -133,7 +133,7 @@ pub fn port_forwarding_dialog(lang: Lang, floating_ip_id: &str, rule: Option<&Po
                 .unwrap_or_default(),
         )
         .required()
-        // Search box however few ports there are, as Associate (roadmap 110).
+        // Search box however few ports there are, as Associate.
         .searchable(),
         Field::text("internal_port", tr(K::InternalPort))
             .value(rule.map(|r| r.internal.clone()).unwrap_or_default())
@@ -227,7 +227,7 @@ pub fn floating_ip_items(lang: Lang, f: &FloatingIpRow) -> Vec<MenuItem> {
                         Source::Set(ChoiceSet::AssociablePorts),
                     )
                     .required()
-                    // Search box however few ports there are (roadmap 110).
+                    // Search box however few ports there are.
                     .searchable(),
                 ],
                 move |v| {
@@ -311,12 +311,9 @@ mod tests {
             matches!(&d.fields[0].kind, Kind::Select(Source::Of(ChoiceSet::AllAssociablePorts, p)) if p == "p9 net-public"),
             "the owner's ports its pool reaches, not the session's"
         );
-        assert!(
-            d.fields[0].searchable,
-            "port picker always has a search box (roadmap 110)"
-        );
+        assert!(d.fields[0].searchable, "port picker always has a search box");
         let d = dialog_of(&floating_ip_items(Lang::EnUs, &row), "Associate");
-        assert!(d.fields[0].searchable, "project port picker too (roadmap 110)");
+        assert!(d.fields[0].searchable, "project port picker too");
         assert_eq!(
             admin_floating_ip_items(Lang::EnUs, &row, None).len(),
             1,
@@ -331,7 +328,7 @@ mod tests {
 
     #[test]
     fn port_forwarding_port_picker_has_a_search_box() {
-        // As the Associate pickers (roadmap 110), even with a single instance port.
+        // As the Associate pickers, even with a single instance port.
         let d = port_forwarding_dialog(Lang::EnUs, "f1", None);
         let f = d.fields.iter().find(|f| f.name == "internal").unwrap();
         assert!(f.searchable);

@@ -17,9 +17,10 @@ use super::session::Session;
 use super::sfe;
 use crate::model::*;
 
+/// Every fetcher fails with an [`AppError`].
 type R<T> = Result<T, AppError>;
 
-/// Page size asked of every full list (roadmap 104). `Pagination::All` sends no `limit`, so each
+/// Page size asked of every full list. `Pagination::All` sends no `limit`, so each
 /// service used its own default page and the SDK followed `next` one page at a time: Glance's
 /// is 25, so two thousand images took 80 GETs. Services clamp a larger `limit` to their cap
 /// (Glance `api_limit_max`, Nova and Cinder `osapi_max_limit`, all 1000 by default).
@@ -42,6 +43,9 @@ macro_rules! list_where {
     };
 }
 
+/// The body of `list_where!`: builds the list request with the caller's setters, GETs every
+/// page (counted) and fails with `TooLarge` past `[ui] max_list_items` ([`within_cap`]). Call
+/// `list_where!` instead, which also sets the page size.
 macro_rules! list_paged {
     ($os:expr, $module:path, $what:literal, |$b:ident| $set:expr) => {{
         use $module as m;
@@ -60,7 +64,7 @@ macro_rules! list_paged {
     }};
 }
 
-/// `[ui] max_list_items` (roadmap 104); `None` = no cap. Before `config::init` (unit tests) the
+/// `[ui] max_list_items`; `None` = no cap. Before `config::init` (unit tests) the
 /// default.
 fn list_cap() -> Option<usize> {
     let n = super::config::try_state().map_or(super::settings::DEFAULT_MAX_LIST_ITEMS, |st| st.config.max_list_items);
@@ -79,6 +83,8 @@ fn within_cap(v: Vec<Value>, cap: Option<usize>, what: &str) -> R<Vec<Value>> {
     }
 }
 
+/// GETs one resource by ID (`$id_setter` is the builder's ID setter: `id`, `server_id`, …),
+/// counted; the raw JSON, for a mapper.
 macro_rules! get_one {
     ($os:expr, $module:path, $id_setter:ident, $id:expr, $what:literal) => {{
         use $module as m;
@@ -109,20 +115,23 @@ fn merge_by_id(lists: Vec<Vec<Value>>) -> Vec<Value> {
         .collect()
 }
 
-// Call counting (roadmap 65): each page shows how many GETs it took. A counter
+// Call counting: each page shows how many GETs it took. A counter
 // per server-function call (`serving`, set up by `api::scoped`) is bumped by
 // every request (`counted`) and read by `timed`, so the counts can't drift from
 // the code. A task-local, because `tokio::join!` runs the calls on one task;
 // `spawn_counted` carries it into spawned ones. It also holds the key of the
-// session's cached lookups (roadmap 66).
+// session's cached lookups.
+/// What one server-function call shares with its requests (see the comment above).
 #[derive(Default)]
 struct Serving {
+    /// Requests made so far by this server-function call.
     calls: AtomicU32,
     /// `os::scoped_key` of the session; `None`: lookups aren't cached.
     scope: Option<String>,
 }
 
 tokio::task_local! {
+    /// The current call's [`Serving`]; absent outside [`serving`].
     static SERVING: Arc<Serving>;
 }
 
@@ -134,7 +143,7 @@ pub async fn serving<F: Future>(scope: Option<String>, fut: F) -> F::Output {
 }
 
 /// [`serving`], also returning how many requests `fut` made (for the debug
-/// timing of `api::scoped`, roadmap 83).
+/// timing of `api::scoped`).
 pub async fn serving_counted<F: Future>(scope: Option<String>, fut: F) -> (F::Output, u32) {
     let serving = Arc::new(Serving {
         calls: AtomicU32::new(0),
@@ -169,12 +178,16 @@ const FAN_OUT: usize = 6;
 /// A [`tokio::task::JoinSet`] that runs at most `limit` tasks at once: `spawn`
 /// waits for a slot. Results come back in completion order, as `join_all`'s.
 struct Bounded<T> {
+    /// The tasks still running.
     tasks: tokio::task::JoinSet<T>,
+    /// Results collected while waiting for a slot.
     done: Vec<T>,
+    /// Most tasks in flight (at least 1).
     limit: usize,
 }
 
 impl<T: Send + 'static> Bounded<T> {
+    /// An empty set; [`FAN_OUT`] is the usual `limit`.
     fn new(limit: usize) -> Self {
         Bounded {
             tasks: tokio::task::JoinSet::new(),
@@ -195,6 +208,7 @@ impl<T: Send + 'static> Bounded<T> {
         spawn_counted(&mut self.tasks, fut);
     }
 
+    /// Waits for the rest; every result, in completion order. A task's panic is re-raised.
     async fn join_all(self) -> Vec<T> {
         let mut out = self.done;
         out.extend(self.tasks.join_all().await);
@@ -212,7 +226,7 @@ fn timed<T>(start: Instant, data: T) -> Timed<T> {
     }
 }
 
-// Lookup cache (roadmap 66): the lists a page fetches only to name IDs change
+// Lookup cache: the lists a page fetches only to name IDs change
 // rarely compared with how often pages load and poll, so they are reused for
 // `[cache] lookup_seconds`. Never a page's main list, never dialog choices
 // (they must show current states), and emptied for the session after a write.
@@ -240,7 +254,7 @@ async fn lookup(name: &'static str, fetch: impl Future<Output = R<Vec<Value>>>) 
 }
 
 /// `fetch` through `cache` under `key`: a hit skips it; only successes are kept. Concurrent
-/// misses on one key (a page load and a polling round, two tabs) share one fetch (roadmap 104):
+/// misses on one key (a page load and a polling round, two tabs) share one fetch:
 /// the others wait for it and get its result, error included.
 async fn cached(
     cache: &moka::future::Cache<String, Arc<Vec<Value>>>,
@@ -272,6 +286,7 @@ fn soft_lookup(r: R<Arc<Vec<Value>>>) -> Arc<Vec<Value>> {
 /// (incl. extra specs) and returns `locked` (>= 2.9). RHOSO supports up to 2.95.
 const COMPUTE_MICROVERSION: &str = "compute 2.47";
 
+/// The `OpenStack-API-Version` header for [`COMPUTE_MICROVERSION`].
 fn compute_mv() -> (http::HeaderName, http::HeaderValue) {
     (
         http::HeaderName::from_static("openstack-api-version"),
@@ -279,6 +294,7 @@ fn compute_mv() -> (http::HeaderName, http::HeaderValue) {
     )
 }
 
+/// The project's servers, `GET servers/detail` at compute 2.47.
 async fn servers(os: &AsyncOpenStack) -> R<Vec<Value>> {
     let (k, v) = compute_mv();
     list_where!(
@@ -289,9 +305,11 @@ async fn servers(os: &AsyncOpenStack) -> R<Vec<Value>> {
     )
     .await
 }
+/// `GET servers` (ID and name only): for pages that only name instances.
 async fn servers_brief(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(os, openstack_sdk::api::compute::v2::server::list_21, "servers").await
 }
+/// `GET flavors/detail` (the flavors the project may use).
 async fn flavors(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(
         os,
@@ -300,6 +318,7 @@ async fn flavors(os: &AsyncOpenStack) -> R<Vec<Value>> {
     )
     .await
 }
+/// Glance `GET images` with no filter: every image the token sees (all projects' to admins).
 async fn images_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(os, openstack_sdk::api::image::v2::image::list, "images").await
 }
@@ -318,6 +337,7 @@ async fn launch_images_raw(os: &AsyncOpenStack, project_id: &str) -> R<Vec<Value
     );
     Ok(merge_by_id(vec![public?, soft(community), soft(shared), own?]))
 }
+/// Cinder `GET volumes/detail`, already project-scoped.
 async fn volumes_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(
         os,
@@ -329,7 +349,7 @@ async fn volumes_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
 /// The networks a project sees, like Horizon: its own, shared ones and external
 /// ones. Filters are explicit because Neutron lists every project's networks to
 /// admins, which on a large cloud made each lookup download the whole cloud
-/// (roadmap 64). Only the project's own list is required.
+///. Only the project's own list is required.
 async fn visible_networks(os: &AsyncOpenStack, project_id: &str) -> R<Vec<Value>> {
     use openstack_sdk::api::network::v2::network::list as net;
     let (own, shared, external) = tokio::join!(
@@ -342,11 +362,13 @@ async fn visible_networks(os: &AsyncOpenStack, project_id: &str) -> R<Vec<Value>
 
 /// [`visible_networks`] and their subnets, for pages that name both.
 struct NetLookups {
+    /// [`visible_networks`]: the project's, shared and external ones.
     networks: Vec<Value>,
+    /// The project's and shared subnets, plus (admins) those of external networks.
     subnets: Vec<Value>,
 }
 
-/// Visible networks and their subnets (roadmap 64): the project's subnets
+/// Visible networks and their subnets: the project's subnets
 /// (`tenant_id`) and shared ones (`shared=true`, which Neutron copies from the
 /// network) with the networks. For admins a second round fetches, by
 /// `network_id`, the subnets of each external network that is neither the
@@ -443,7 +465,7 @@ pub async fn instance(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Time
         Ok::<_, AppError>(v)
     };
     // Name, admin state, VNIC type, port security and groups of each interface,
-    // which `os-interface` doesn't return (roadmap 44).
+    // which `os-interface` doesn't return.
     let ports = list_where!(
         os,
         openstack_sdk::api::network::v2::port::list,
@@ -451,7 +473,7 @@ pub async fn instance(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Time
         |b| b.device_id(id)
     );
     // The group holding the server, by membership: `server_groups` is only on
-    // the server from compute 2.71 and server reads use 2.47 (roadmap 52).
+    // the server from compute 2.71 and server reads use 2.47.
     let groups = list_all!(
         os,
         openstack_sdk::api::compute::v2::server_group::list_20,
@@ -524,6 +546,7 @@ pub async fn images(os: &AsyncOpenStack, project_id: &str, mine: &[ProjectRef]) 
 /// the list pages with `limit`/`marker`, which `paged` doesn't follow here.
 const KEYPAIR_MICROVERSION: &str = "compute 2.2";
 
+/// The `OpenStack-API-Version` header for [`KEYPAIR_MICROVERSION`].
 fn keypair_mv() -> (http::HeaderName, http::HeaderValue) {
     (
         http::HeaderName::from_static("openstack-api-version"),
@@ -531,6 +554,7 @@ fn keypair_mv() -> (http::HeaderName, http::HeaderValue) {
     )
 }
 
+/// Nova `GET os-keypairs` at 2.2: the user's key pairs (key pairs belong to users).
 async fn keypairs_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     let (k, v) = keypair_mv();
     list_where!(
@@ -582,7 +606,7 @@ pub async fn snapshots(os: &AsyncOpenStack) -> R<Timed<Vec<Snapshot>>> {
     Ok(timed(t, mapping::snapshots(&sn?, &soft_lookup(vo))))
 }
 
-// --- Volume backups (roadmap 5) -----------------------------------------------
+// --- Volume backups -----------------------------------------------
 
 /// Volumes › Backups, with their volumes' names (`soft`: a failing lookup only
 /// shows IDs).
@@ -609,7 +633,7 @@ pub async fn backup(os: &AsyncOpenStack, id: &str) -> R<Timed<BackupRow>> {
     Ok(timed(t, mapping::backups(&[bk?], &soft_lookup(vo)).remove(0)))
 }
 
-// --- Volume groups (roadmap 5) ------------------------------------------------
+// --- Volume groups ------------------------------------------------
 
 /// `OpenStack-API-Version: volume <v>`, overriding the SDK's negotiated one:
 /// volumes return `group_id` from 3.13, snapshots `group_snapshot_id` from 3.14.
@@ -620,6 +644,7 @@ fn volume_mv(v: &'static str) -> (http::HeaderName, http::HeaderValue) {
     )
 }
 
+/// Cinder `GET groups/detail` (3.13).
 async fn volume_groups_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(
         os,
@@ -628,6 +653,7 @@ async fn volume_groups_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     )
     .await
 }
+/// Cinder `GET group_snapshots/detail` (3.14).
 async fn group_snapshots_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(
         os,
@@ -862,7 +888,7 @@ pub async fn trunk(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Timed<T
     ))
 }
 
-// --- Firewall (FWaaS v2, roadmap 93) --------------------------------------------
+// --- Firewall (FWaaS v2) --------------------------------------------
 // Not in the SDK (`openstack-sdk-network` has no `fwaas` module): JSON GETs.
 
 /// One FWaaS collection the project can use: its own (`project_id`: admins see
@@ -990,7 +1016,7 @@ pub async fn firewall_group(os: &AsyncOpenStack, project_id: &str, id: &str) -> 
     ))
 }
 
-// --- Orchestration (Heat, roadmap 62) ------------------------------------------
+// --- Orchestration (Heat) ------------------------------------------
 
 /// Stacks per page (`limit`); the next page starts after the last one's ID.
 const HEAT_PAGE: usize = 100;
@@ -999,6 +1025,7 @@ const HEAT_MAX_PAGES: u32 = 50;
 /// The newest events the *Events* tab shows.
 const HEAT_EVENTS: &str = "500";
 
+/// A Heat GET built by hand: the SDK has no typed endpoint for these reads.
 fn heat_get(path: impl Into<String>) -> super::actions::JsonRequest {
     super::actions::JsonRequest::orchestration(http::Method::GET, path, None)
 }
@@ -1120,7 +1147,7 @@ pub async fn template_functions(os: &AsyncOpenStack, version: &str) -> R<Timed<V
     Ok(timed(t, mapping::template_functions(arr_of(&v, "template_functions"))))
 }
 
-// --- Alarming (Aodh, roadmap 79) -------------------------------------------------
+// --- Alarming (Aodh) -------------------------------------------------
 
 /// Alarms per page (`limit`); the next page starts after the last one's ID.
 /// Aodh caps unpaged lists at its `api.default_api_return_limit`, so always page.
@@ -1130,6 +1157,7 @@ const AODH_MAX_PAGES: u32 = 50;
 /// The newest history entries the *History* tab shows.
 const AODH_HISTORY: &str = "200";
 
+/// An Aodh GET built by hand: the SDK has no Aodh endpoints.
 fn aodh_get(path: impl std::fmt::Display) -> super::actions::JsonRequest {
     super::actions::JsonRequest::alarming(http::Method::GET, path, None)
 }
@@ -1188,7 +1216,7 @@ fn arr_of<'a>(v: &'a Value, key: &str) -> &'a [Value] {
     v.get(key).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
-// --- Key Manager (Barbican, roadmap 55) ---------------------------------------
+// --- Key Manager (Barbican) ---------------------------------------
 
 /// Barbican's largest page by default (`max_limit_paging`); fewer round trips
 /// than its default of 10.
@@ -1242,7 +1270,7 @@ async fn octavia_cert_refs(os: &AsyncOpenStack, project: Option<&str>) -> Vec<(S
 /// One secret: metadata, `read` ACL (users named, what uses it) and consumers
 /// (the consumers API is newer than the rest: `None` where Barbican lacks it).
 /// Never the payload. `lb_project` is the project whose Octavia listeners and
-/// pools are checked for it (roadmap 75), `None` when the `load-balancer` plugin
+/// pools are checked for it, `None` when the `load-balancer` plugin
 /// is off.
 pub async fn secret(
     os: &AsyncOpenStack,
@@ -1257,7 +1285,7 @@ pub async fn secret(
         get(format!("secrets/{id}"), "GET secret"),
         get(format!("secrets/{id}/acl"), "GET secret ACL"),
         get(format!("secrets/{id}/consumers"), "GET secret consumers"),
-        // Containers holding it and used by a service (roadmap 75's warning).
+        // Containers holding it and used by a service (for the delete warning).
         km_all(os, "containers", "GET containers"),
         octavia_cert_refs(os, lb_project),
     );
@@ -1379,14 +1407,14 @@ pub async fn containers(os: &AsyncOpenStack) -> R<Timed<Vec<ContainerRow>>> {
     Ok(timed(t, mapping::containers(&raw, &secrets)))
 }
 
-/// Key Manager › Orders (roadmap 58): the project's orders, newest first.
+/// Key Manager › Orders: the project's orders, newest first.
 pub async fn orders(os: &AsyncOpenStack) -> R<Timed<Vec<OrderRow>>> {
     let t = Instant::now();
     let raw = km_all(os, "orders", "GET orders").await?;
     Ok(timed(t, mapping::orders(&raw)))
 }
 
-/// One order (roadmap 58).
+/// One order.
 pub async fn order(os: &AsyncOpenStack, id: &str) -> R<Timed<OrderRow>> {
     use super::actions::JsonRequest;
     let t = Instant::now();
@@ -1499,7 +1527,7 @@ pub async fn load_balancer_detail(os: &AsyncOpenStack, project_id: &str, id: &st
         });
     }
     // Each pool's monitor by its ID, not the session project's monitors: an admin
-    // can open another project's load balancer (roadmap 54).
+    // can open another project's load balancer.
     let mut monitor_tasks = tokio::task::JoinSet::new();
     for monitor_id in po
         .iter()
@@ -1513,7 +1541,7 @@ pub async fn load_balancer_detail(os: &AsyncOpenStack, project_id: &str, id: &st
                 .ok()
         });
     }
-    // L7 policies by listener, then each one's rules (roadmap 54). Not by the
+    // L7 policies by listener, then each one's rules. Not by the
     // session's `project_id`: a policy belongs to its load balancer's project, and
     // an admin can open another project's load balancer (on ttcp-dev the session
     // was scoped to another project after a new sign-in, and the list came back empty).
@@ -1609,7 +1637,7 @@ pub async fn topology(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Topology
         floating_ips: &soft(fi),
     });
     // Everything is still fetched over the limit: the *List* view stays
-    // available and needs the devices and links (roadmap 100).
+    // available and needs the devices and links.
     topo.max_networks = super::config::state().config.prefs.network.topology_max_networks;
     Ok(timed(t, topo))
 }
@@ -1642,7 +1670,7 @@ pub async fn usage(os: &AsyncOpenStack, project_id: &str, start: &str, end: &str
     Ok(timed(t, out))
 }
 
-/// Admin › Overview (roadmap 85): every project's usage for `[start, end)`,
+/// Admin › Overview: every project's usage for `[start, end)`,
 /// detailed per server as Horizon asks (`detailed=1`), named from Keystone.
 /// Paged like [`usage`]: `limit` counts server usages across projects and the
 /// marker is the last instance, so a project can span two pages (merged by
@@ -1724,7 +1752,7 @@ pub async fn overview(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Vec<Quot
     ))
 }
 
-/// Project › Quotas (roadmap 82): each service's whole quota set, in parallel;
+/// Project › Quotas: each service's whole quota set, in parallel;
 /// a failing service keeps the others (`QuotaCard::error`). Octavia only with
 /// `load_balancer`, Barbican only with `key_manager` (each: its plugin enabled
 /// and the service in the catalog).
@@ -1878,6 +1906,7 @@ pub async fn quotas(
 // Detail views (GET only)
 // ---------------------------------------------------------------------------
 
+/// Neutron `GET security-groups?tenant_id=`: filtered, since admins see every project's.
 async fn security_groups_raw(os: &AsyncOpenStack, project_id: &str) -> R<Vec<Value>> {
     list_where!(
         os,
@@ -1887,6 +1916,7 @@ async fn security_groups_raw(os: &AsyncOpenStack, project_id: &str) -> R<Vec<Val
     )
     .await
 }
+/// Cinder `GET snapshots/detail`, project-scoped.
 async fn snapshots_raw(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(
         os,
@@ -2048,7 +2078,7 @@ pub async fn keypair_detail(os: &AsyncOpenStack, name: &str) -> R<Timed<KeyPairD
 }
 
 // ---------------------------------------------------------------------------
-// Identity (roadmap 57). Like Horizon, admins see the domain's projects and
+// Identity. Like Horizon, admins see the domain's projects and
 // users, others their own; if Keystone refuses the admin list (e.g. a cloud
 // that enforces system scope), the user's own is shown instead.
 // ---------------------------------------------------------------------------
@@ -2181,11 +2211,13 @@ pub async fn identity_domain_ref(os: &AsyncOpenStack, id: &str) -> R<(String, St
     Ok((id.to_string(), name))
 }
 
+/// Whether Keystone refused with 403 (a policy the user lacks): the Identity lists then fall
+/// back to what the user may see of their own instead of failing.
 fn forbidden(e: &AppError) -> bool {
     e.kind == ErrorKind::Forbidden
 }
 
-// --- Admin: every project's resources and cloud-wide objects (roadmap 85) ------
+// --- Admin: every project's resources and cloud-wide objects ------
 // Only for admins (`api::require_admin`). Lists take `all_tenants`, or no
 // project filter for Neutron and Glance, the opposite of the Project panels.
 
@@ -2200,6 +2232,7 @@ async fn all_servers(os: &AsyncOpenStack) -> R<Vec<Value>> {
     )
     .await
 }
+/// Every project's servers, IDs and names only (`servers?all_tenants`), for naming.
 async fn all_servers_brief(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_where!(
         os,
@@ -2209,6 +2242,7 @@ async fn all_servers_brief(os: &AsyncOpenStack) -> R<Vec<Value>> {
     )
     .await
 }
+/// Every project's volumes (`volumes/detail?all_tenants`).
 async fn all_volumes(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_where!(
         os,
@@ -2218,6 +2252,7 @@ async fn all_volumes(os: &AsyncOpenStack) -> R<Vec<Value>> {
     )
     .await
 }
+/// Every network: Neutron lists all projects' to admins without a filter.
 async fn all_networks(os: &AsyncOpenStack) -> R<Vec<Value>> {
     list_all!(os, openstack_sdk::api::network::v2::network::list, "networks (all)").await
 }
@@ -2457,18 +2492,21 @@ pub async fn admin_instances(os: &AsyncOpenStack) -> R<Timed<Vec<Owned<Instance>
 /// One page's raw rows, the next page's marker (`None` on the last page) and,
 /// from Cinder at volume 3.45, the total of rows matching the filter.
 struct RawPage {
+    /// At most `page_size` rows (the extra one only told whether a next page exists).
     rows: Vec<Value>,
+    /// The marker for *Next*: the last shown row's ID; `None` on the last page.
     next: Option<String>,
+    /// Rows matching the filter, from Cinder 3.45 (`with_count`); `None` elsewhere.
     count: Option<u64>,
 }
 
-/// One page of a paged list (roadmap 88): a single GET with `limit = page_size + 1`
+/// One page of a paged list: a single GET with `limit = page_size + 1`
 /// and the filter, sort and marker of `q` (`paging::params` validates them), cut
 /// into the page's raw rows and the next page's marker. Raw requests, not the SDK's
 /// list builders: they lack some filters (Cinder's) and paging is one request, not
 /// `Pagination::All`. `cinder_mv` is the cloud's Cinder microversion, which decides
 /// a Cinder list's name filter and count (`paging::cinder`). `project`: the
-/// session project for a Project panel (slice E), `None` for an Admin one
+/// session project for a Project panel, `None` for an Admin one
 /// (`paging::params_in`).
 async fn page_raw(
     os: &AsyncOpenStack,
@@ -2557,7 +2595,7 @@ pub const MAX_COUNT_PAGES: u32 = 100;
 /// `os::REQUEST_TIMEOUT` (20 s), and an "at least N" is more use than a timeout.
 const COUNT_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// *Count all* for a paged list (roadmap 88): the rows matching `q`'s filter in
+/// *Count all* for a paged list: the rows matching `q`'s filter in
 /// `project` (`None`: every project's, an Admin list), asked only when the user
 /// clicks, never before the table shows. One
 /// request when Cinder gives `count` (volume 3.45), else the lightest list
@@ -2652,7 +2690,7 @@ async fn volumes_by_ids(os: &AsyncOpenStack, ids: Vec<String>) -> R<Vec<Value>> 
 }
 
 /// These servers or volumes, one `GET servers/{id}` / `volumes/{id}` each,
-/// [`FAN_OUT`] at a time (neither API filters a list by several IDs, roadmap 88).
+/// [`FAN_OUT`] at a time (neither API filters a list by several IDs).
 /// An ID that isn't an ID, or a resource that can't be read (deleted, 404), is
 /// left out.
 async fn by_ids(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) -> R<Vec<Value>> {
@@ -2714,7 +2752,7 @@ async fn neutron_where(
     Ok(out)
 }
 
-/// Admin › Compute › Instances, one page (roadmap 88): the cost depends on the
+/// Admin › Compute › Instances, one page: the cost depends on the
 /// page, not the cloud. Besides the servers page and the project names, it reads
 /// only the images the page's servers were built from: no cloud-wide
 /// `volumes/detail?all_tenants` or image list. Boot-from-volume rows name their
@@ -2752,7 +2790,7 @@ pub async fn admin_instances_page(
 pub const MAX_BOOT_VOLUMES: usize = 100;
 
 /// The images of the servers booted from these volumes, `(server ID, image name)`,
-/// for a paged Instances list's second call (roadmap 88). Cinder keeps only the
+/// for a paged Instances list's second call. Cinder keeps only the
 /// last `id=` of a list query (probed on ttcp-dev, 2026-11-03), so it is one
 /// `volumes/{id}` per volume, [`FAN_OUT`] at a time.
 pub async fn boot_images(os: &AsyncOpenStack, ids: Vec<String>) -> R<Timed<Vec<(String, String)>>> {
@@ -2768,7 +2806,7 @@ pub async fn boot_images(os: &AsyncOpenStack, ids: Vec<String>) -> R<Timed<Vec<(
 pub const MAX_LATE_NAMES: usize = 100;
 
 /// The names (and, for volumes, hosts) of the servers or volumes a paged page
-/// points at, read after the table shows (roadmap 88).
+/// points at, read after the table shows.
 pub async fn late_names(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) -> R<Timed<Vec<LateName>>> {
     let t = Instant::now();
     if ids.len() > MAX_LATE_NAMES {
@@ -2778,7 +2816,7 @@ pub async fn late_names(os: &AsyncOpenStack, kind: NameKind, ids: Vec<String>) -
     Ok(timed(t, raw.iter().filter_map(mapping::late_name).collect()))
 }
 
-/// Admin › Volume › Volumes, one page (roadmap 88): the volumes page and the
+/// Admin › Volume › Volumes, one page: the volumes page and the
 /// project names. Attached servers are named afterwards ([`late_names`]), not
 /// from every server of the cloud. `volume_mv`: the cloud's Cinder microversion,
 /// for the name filter and the total.
@@ -2815,7 +2853,7 @@ pub async fn admin_volumes_page(
     ))
 }
 
-/// Admin › Volume › Snapshots, one page (roadmap 88). Each snapshot's volume, and
+/// Admin › Volume › Snapshots, one page. Each snapshot's volume, and
 /// with it the host column, is named afterwards ([`late_names`]), not from every
 /// project's volumes.
 pub async fn admin_snapshots_page(
@@ -2851,7 +2889,7 @@ pub async fn admin_snapshots_page(
     ))
 }
 
-/// Admin › Network › Floating IPs, one page (roadmap 88): the page, its pools in
+/// Admin › Network › Floating IPs, one page: the page, its pools in
 /// one `networks?id=…` GET and the project names. Instances are named afterwards
 /// ([`late_names`]), not from every server of the cloud.
 pub async fn admin_floating_ips_page(
@@ -2887,7 +2925,7 @@ pub async fn admin_floating_ips_page(
     ))
 }
 
-/// Admin › Network › Networks, one page (roadmap 88): the page, its subnets
+/// Admin › Network › Networks, one page: the page, its subnets
 /// (`subnets?network_id=…`, not every subnet of the cloud) and the project names.
 /// The DHCP-agent counts stay one call per agent, as [`admin_networks`].
 pub async fn admin_networks_page(
@@ -2936,7 +2974,7 @@ pub async fn admin_networks_page(
     ))
 }
 
-/// Admin › Network › Routers, one page (roadmap 88): the page, its external
+/// Admin › Network › Routers, one page: the page, its external
 /// networks by ID and the project names, not every network of the cloud.
 pub async fn admin_routers_page(
     os: &AsyncOpenStack,
@@ -2971,7 +3009,7 @@ pub async fn admin_routers_page(
     ))
 }
 
-/// Admin › Network › Trunks, one page (roadmap 88): the page, its parent and
+/// Admin › Network › Trunks, one page: the page, its parent and
 /// sub-ports by ID (`ports?id=…`, only names) and the project names, instead of
 /// every port of the cloud.
 pub async fn admin_trunks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<TrunkRow>>>> {
@@ -3003,7 +3041,7 @@ pub async fn admin_trunks_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u3
     ))
 }
 
-/// Admin › Compute › Images, one page (roadmap 88): the page and the project names.
+/// Admin › Compute › Images, one page: the page and the project names.
 pub async fn admin_images_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u32) -> R<Timed<Page<Owned<Image>>>> {
     let t = Instant::now();
     let (page, names) = tokio::join!(
@@ -3032,7 +3070,7 @@ pub async fn admin_images_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u3
     ))
 }
 
-/// Admin › Volume › Groups, one page (roadmap 88). Group and volume types stay
+/// Admin › Volume › Groups, one page. Group and volume types stay
 /// whole lists (a cloud has a handful), and so do the group snapshots that say
 /// whether a group has any: Cinder filters them by one `group_id` only.
 pub async fn admin_volume_groups_page(
@@ -3069,7 +3107,7 @@ pub async fn admin_volume_groups_page(
     ))
 }
 
-/// Admin › Volume › Group Snapshots, one page (roadmap 88): the page, the groups
+/// Admin › Volume › Group Snapshots, one page: the page, the groups
 /// it names (`groups/{id}`, [`FAN_OUT`] at a time: Cinder has no *any of*
 /// filter), the group types and the project names.
 pub async fn admin_group_snapshots_page(
@@ -3113,7 +3151,7 @@ pub async fn admin_group_snapshots_page(
     ))
 }
 
-// --- Paged Project panels (roadmap 88, slice E: `[ui] paged_lists = "all"`) ---------
+// --- Paged Project panels (`[ui] paged_lists = "all"`) ---------
 //
 // The Admin pages' pattern for the session project: one GET of `page_size + 1`
 // rows (`page_raw` with the project, so `paging::params_in` scopes it), lookups
@@ -3483,7 +3521,7 @@ async fn dhcp_agent_counts(os: &AsyncOpenStack) -> R<Option<std::collections::Ha
     .await?;
     // OVN serves DHCP itself and has no DHCP agent, yet may still advertise
     // `dhcp_agent_scheduler`: no counts then, and the page drops the column
-    // rather than show 0 on every network (roadmap 89).
+    // rather than show 0 on every network.
     if raw.is_empty() {
         return Ok(None);
     }
@@ -3589,7 +3627,7 @@ pub async fn admin_rbac_policies(os: &AsyncOpenStack) -> R<Timed<Vec<RbacPolicyR
     let rb = rb?;
     // The other object types' lists only when some policy shares one (most
     // policies are networks'); unfiltered, so every project's. Neutron's
-    // `object_type`s: `subnetpool` has no underscore (roadmap 89).
+    // `object_type`s: `subnetpool` has no underscore.
     let uses = |ty: &str| {
         rb.iter()
             .any(|r| r.get("object_type").and_then(Value::as_str) == Some(ty))
@@ -3644,7 +3682,7 @@ pub async fn admin_rbac_policies(os: &AsyncOpenStack) -> R<Timed<Vec<RbacPolicyR
     Ok(timed(t, mapping::rbac_policies(&rb, &objects, &names)))
 }
 
-/// Admin › System Information (roadmap 85): the catalog plus Nova's and
+/// Admin › System Information: the catalog plus Nova's and
 /// Cinder's `os-services` and Neutron's agents, in parallel, each failing on its
 /// own. A list whose service (or, for agents, the `agent` extension) `caps`
 /// says is missing is `None` and not asked for.
@@ -3714,7 +3752,7 @@ async fn when<T>(on: bool, f: impl Future<Output = T>) -> Option<T> {
     if on { Some(f.await) } else { None }
 }
 
-/// Admin › System › Defaults (roadmap 85): the default quotas new projects get,
+/// Admin › System › Defaults: the default quotas new projects get,
 /// per service, in parallel, each failing on its own. Nova and Cinder keep them
 /// in the `default` quota class; Neutron answers per project
 /// (`quotas/{project}/default`), the same for any project. A service the
@@ -3829,7 +3867,7 @@ async fn metadef_pages(os: &AsyncOpenStack, resource_type: Option<&str>) -> R<Ve
     Ok(all)
 }
 
-/// Admin › System › Metadata Definitions (roadmap 85): every namespace Glance
+/// Admin › System › Metadata Definitions: every namespace Glance
 /// shows the token (admins: all).
 pub async fn metadef_namespaces(os: &AsyncOpenStack) -> R<Timed<Vec<MetadefNamespace>>> {
     let t = Instant::now();
@@ -3846,7 +3884,7 @@ fn plain_namespace(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '.' | '-'))
 }
 
-/// Admin › Metadata Definitions › a namespace (roadmap 89): one GET of its
+/// Admin › Metadata Definitions › a namespace: one GET of its
 /// whole definition (no `resource_type`, so the names come without a prefix).
 pub async fn metadef_namespace(os: &AsyncOpenStack, namespace: &str) -> R<Timed<MetadefNamespaceDetail>> {
     use super::actions::JsonRequest;
@@ -3864,7 +3902,7 @@ pub async fn metadef_namespace(os: &AsyncOpenStack, namespace: &str) -> R<Timed<
     Ok(timed(t, d))
 }
 
-/// The catalog's suggestions for *Update Metadata* (roadmap 25): the properties of every
+/// The catalog's suggestions for *Update Metadata*: the properties of every
 /// namespace associated with `resource_type`. One GET lists the namespaces, then one per
 /// namespace for its properties, [`FAN_OUT`] at a time (AGENTS.md §6). A namespace whose
 /// details fail is skipped, so one broken namespace doesn't empty the picker.
@@ -3875,7 +3913,7 @@ pub async fn metadata_options(os: &AsyncOpenStack, resource_type: &str) -> R<Tim
     let mut tasks = Bounded::new(FAN_OUT);
     for name in list.iter().filter_map(|n| n.get("namespace").and_then(Value::as_str)) {
         // The name goes into the path unencoded: skip anything that isn't a plain
-        // namespace (`OS::Compute::Watchdog`), as `check_id` does for IDs (roadmap 48).
+        // namespace (`OS::Compute::Watchdog`), as `check_id` does for IDs.
         if !plain_namespace(name) {
             continue;
         }
@@ -4012,6 +4050,7 @@ pub async fn identity_user(
     Ok(timed(t, d))
 }
 
+/// [`soft`] for a single object: `null` when the lookup failed.
 fn soft_value(r: R<Value>) -> Value {
     r.unwrap_or(Value::Null)
 }
@@ -4220,7 +4259,7 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
         ChoiceSet::Networks => {
             use openstack_sdk::api::network::v2::{network::list as net, subnet::list as sub};
             // Own and shared networks (not external: instances don't plug into
-            // them), and the subnets of those, filtered the same way (roadmap 64).
+            // them), and the subnets of those, filtered the same way.
             let (own, shared, own_sn, shared_sn) = tokio::join!(
                 list_where!(os, net, "networks?tenant_id", |b| b.tenant_id(project_id)),
                 list_where!(os, net, "networks?shared", |b| b.shared(true)),
@@ -4272,7 +4311,7 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
             let v: Vec<Value> = counted(ep.query_async(os)).await.map_err(sfe("GET compute AZs"))?;
             zones(&v)
         }
-        // Admin › *Create RBAC Policy* (roadmap 85): every project's, named with
+        // Admin › *Create RBAC Policy*: every project's, named with
         // their project (names repeat across projects); `*` first, as Horizon.
         ChoiceSet::RbacTargets | ChoiceSet::AllProjects => {
             let names = project_names(os, &[]).await;
@@ -4341,7 +4380,7 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
         // Trunks' port list (2 s). Filtered to the owner and the floating IP's
         // pool in the dialog. Routers (every project's: Neutron accepts any
         // router between the subnet and the pool) only with the topology
-        // check, the external networks only without it (roadmap 89).
+        // check, the external networks only without it.
         ChoiceSet::AllAssociablePorts => {
             let topology = super::config::state().config.prefs.network.fip_topology_check;
             let routers = async {
@@ -4558,7 +4597,7 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
             mapping::lb_certificate_choices(&c?, &sec?)
         }
         // The project's subnets and shared networks' (`shared=true`, which Neutron
-        // copies onto their subnets), like Horizon's VIP list (roadmap 54).
+        // copies onto their subnets), like Horizon's VIP list.
         ChoiceSet::LbVipSubnets => {
             use openstack_sdk::api::network::v2::subnet::list as sub;
             let (own, shared, ne) = tokio::join!(
@@ -4621,7 +4660,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Roadmap 85: hundreds of simultaneous Placement GETs got ttcp-dev to refuse
+    /// Hundreds of simultaneous Placement GETs got ttcp-dev to refuse
     /// this machine for minutes; a fan-out never has more than `limit` in flight.
     #[tokio::test]
     async fn bounded_fan_out_caps_requests_in_flight() {
@@ -4650,7 +4689,7 @@ mod tests {
     }
 
     /// Counts come from the requests, joined or spawned, not from hand-typed
-    /// numbers (roadmap 65); outside `serving` nothing is counted.
+    /// numbers; outside `serving` nothing is counted.
     #[tokio::test]
     async fn timed_counts_every_request_of_the_call() {
         let t = Instant::now();
@@ -4670,7 +4709,7 @@ mod tests {
         assert_eq!(fresh, 0, "each server function starts at 0");
     }
 
-    /// Roadmap 66: a hit costs no request; failures and other keys still fetch.
+    /// A hit costs no request; failures and other keys still fetch.
     #[tokio::test]
     async fn cached_lookups_skip_the_request_until_they_expire() {
         let cache = moka::future::Cache::builder()
@@ -4695,7 +4734,7 @@ mod tests {
         assert!(cache.get("s/flavors").await.is_none(), "gone after its time to live");
     }
 
-    /// Roadmap 104: two misses on one key at once fetch once and share the result.
+    /// Two misses on one key at once fetch once and share the result.
     #[tokio::test]
     async fn concurrent_misses_on_one_key_share_one_fetch() {
         let cache = moka::future::Cache::builder().build();
@@ -4731,7 +4770,7 @@ mod tests {
         assert!(cache.get("s/images").await.is_none());
     }
 
-    /// Roadmap 104: a list cut by the total cap fails rather than showing part of it.
+    /// A list cut by the total cap fails rather than showing part of it.
     #[test]
     fn a_list_over_the_cap_fails_instead_of_being_cut() {
         let rows = |n: usize| (0..n).map(|i| json!({"id": i})).collect::<Vec<_>>();

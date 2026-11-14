@@ -15,10 +15,14 @@ use crate::components::widgets::{Copyable, Skeleton, dash, render};
 use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
+/// A rule value Neutron leaves out for this rule type, or `-`.
 fn num(n: Option<i64>) -> String {
     n.map(|n| n.to_string()).unwrap_or_else(|| "-".into())
 }
 
+/// Project › Network › Network QoS › a policy: *Information* and its rules (bandwidth
+/// limit, DSCP marking, minimum bandwidth / packet rate), with *Add Rule* and each rule's
+/// menu only when the project owns the policy.
 #[component]
 pub fn QosPolicyDetailPage() -> impl IntoView {
     let i18n = use_i18n();

@@ -7,7 +7,7 @@ pub(super) fn qos_field(lang: Lang) -> Field {
     Field::select("qos", t(lang, K::QosPolicy), Source::Set(ChoiceSet::QosPolicies))
 }
 
-/// *Create Router*: name, external network, SNAT (roadmap 30).
+/// *Create Router*: name, external network, SNAT.
 pub fn create_router_dialog(lang: Lang) -> Dialog {
     let mut fields = vec![
         Field::text("name", t(lang, K::Name)),
@@ -97,7 +97,7 @@ pub fn router_items(lang: Lang, r: &RouterRow) -> Vec<MenuItem> {
 }
 
 /// *Edit Router*: name, admin state and, with a gateway, SNAT. Admin's
-/// (`admin`, roadmap 89) adds Horizon's *Router Type* and *High Availability*
+/// (`admin`) adds Horizon's *Router Type* and *High Availability*
 /// where Neutron has `dvr` / `l3-ha` and shows the router's current value.
 fn edit_router_item(lang: Lang, r: &RouterRow, admin: bool) -> MenuItem {
     let (i, n, up) = (r.id.clone(), r.name.clone(), r.admin_up);
@@ -175,6 +175,7 @@ fn edit_router_item(lang: Lang, r: &RouterRow, admin: bool) -> MenuItem {
     })
 }
 
+/// *Delete Router* (`OsAction::RouterDelete`).
 fn delete_router_item(lang: Lang, r: &RouterRow) -> MenuItem {
     let (i, n) = (r.id.clone(), r.name.clone());
     MenuItem::danger(t(lang, K::DeleteRouter), move || {
@@ -193,7 +194,7 @@ pub fn admin_router_items(lang: Lang, r: &RouterRow) -> Vec<MenuItem> {
     vec![edit_router_item(lang, r, true), delete_router_item(lang, r)]
 }
 
-/// Admin › Routers' *Create Router* (roadmap 85), Horizon's admin form: the
+/// Admin › Routers' *Create Router*, Horizon's admin form: the
 /// owner project, then Project's fields, SNAT with a gateway, and *Router Type*,
 /// *High Availability Mode* and *Availability Zone Hints* where Neutron has
 /// them. *Use Server Default* leaves a field out of the request.

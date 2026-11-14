@@ -1,7 +1,8 @@
-//! Key Manager (Barbican, roadmap 55; orders, roadmap 58).
+//! Key Manager (Barbican), orders included.
 
 use super::*;
 
+/// Barbican's `secret_type` values, in the order *Store Secret* offers them.
 const SECRET_TYPES: &[&str] = &["opaque", "passphrase", "symmetric", "certificate", "private", "public"];
 
 /// The role fields of *Create Container*, per type: (field, role). A role in
@@ -16,6 +17,7 @@ const CONTAINER_ROLE_FIELDS: &[(&str, &str, &str)] = &[
     ("rsa", "rsa_passphrase", "private_key_passphrase"),
 ];
 
+/// Barbican terms as select choices: the API value, labelled in the user's language.
 fn km_options(lang: Lang, items: &[&str]) -> Source {
     Source::Static(
         items
@@ -53,7 +55,7 @@ pub fn store_secret_dialog(lang: Lang) -> Dialog {
         Field::text("algorithm", tr(K::Algorithm)).help(tr(K::AlgorithmHelp)),
         Field::number("bit_length", tr(K::BitLength), 1).help(tr(K::BitLengthHelp)),
         Field::text("mode", tr(K::CipherMode)).help(tr(K::CipherModeHelp)),
-        // One value, so on one line: date left, time right (roadmap 111).
+        // One value, so on one line: date left, time right.
         Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
         Field::time("expiration_time", tr(K::ExpirationTime))
             .half()
@@ -84,7 +86,7 @@ pub fn secret_items(lang: Lang, x: &SecretRow) -> Vec<MenuItem> {
     vec![delete_secret(lang, x, None)]
 }
 
-/// The detail page's menu: *Edit Access* and *Reset Access* (roadmap 75), then
+/// The detail page's menu: *Edit Access* and *Reset Access*, then
 /// *Delete Secret*, listing the secret's consumers.
 pub fn secret_detail_items(lang: Lang, d: &SecretDetail) -> Vec<MenuItem> {
     let id = d.secret.id.clone();
@@ -101,8 +103,8 @@ pub fn secret_detail_items(lang: Lang, d: &SecretDetail) -> Vec<MenuItem> {
     items
 }
 
-/// The container detail page's menu: *Edit Access* and *Reset Access* (roadmap
-/// 75; the dialog reminds that the secrets inside have their own ACLs), then
+/// The container detail page's menu: *Edit Access* and *Reset Access* (the
+/// dialog reminds that the secrets inside have their own ACLs), then
 /// *Delete Container*.
 pub fn container_detail_items(lang: Lang, d: &ContainerDetail) -> Vec<MenuItem> {
     let c = &d.container;
@@ -199,6 +201,8 @@ fn reset_access(lang: Lang, name: &str, acl: &KmAcl, reset: OsAction, warning: O
     })
 }
 
+/// *Delete Secret* (`OsAction::SecretDelete`). The confirmation lists `consumers` when known (the
+/// detail page), and warns in general when `None` (a list row, which does not fetch them).
 fn delete_secret(lang: Lang, x: &SecretRow, consumers: Option<Vec<SecretConsumer>>) -> MenuItem {
     let (i, n) = (x.id.clone(), x.name.clone());
     MenuItem::danger(t(lang, K::DeleteSecret), move || {
@@ -304,7 +308,7 @@ pub fn container_items(lang: Lang, c: &ContainerRow) -> Vec<MenuItem> {
     })]
 }
 
-/// *Order Key* (roadmap 58, Barbican `POST /v1/orders`): Barbican generates
+/// *Order Key* (Barbican `POST /v1/orders`): Barbican generates
 /// an AES key (a secret) or an RSA key pair (an `rsa` container), so the
 /// material never goes through the browser. Bit lengths are those Barbican's
 /// simple crypto plugin makes ([`ORDER_TYPES`]); one field per type, since a
@@ -399,10 +403,10 @@ pub fn order_items(lang: Lang, o: &OrderRow) -> Vec<MenuItem> {
     })]
 }
 
-// --- Orchestration (Heat, roadmap 62) -----------------------------------------
+// --- Orchestration (Heat) -----------------------------------------
 
-/// A stack's menu, row and detail header alike: *Change Stack Template* (a page),
-/// *Check*, *Suspend* or *Resume* (whichever applies), *Delete*. Heat refuses actions while it works on the
+/// A stack's menu, row and detail header alike: *Change Stack Template* (a page), *Check*,
+/// *Suspend* or *Resume* (whichever applies), *Delete*. Heat refuses actions while it works on the
 /// stack (`*_IN_PROGRESS`), so only *Delete* is offered then.
 pub fn stack_items(lang: Lang, x: &StackRow) -> Vec<MenuItem> {
     let (name, id) = (x.name.clone(), x.id.clone());

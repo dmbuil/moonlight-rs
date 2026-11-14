@@ -1,4 +1,4 @@
-//! Identity (roadmap 57).
+//! Identity.
 
 use super::*;
 
@@ -14,7 +14,7 @@ pub fn create_app_credential_dialog(lang: Lang) -> Dialog {
         Field::text("name", tr(K::Name)).required(),
         Field::text("description", tr(K::Description)),
         Field::password("secret", tr(K::Secret)).help(tr(K::SecretHelp)),
-        // One value, so on one line: date left, time right (roadmap 111).
+        // One value, so on one line: date left, time right.
         Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
         Field::time("expiration_time", tr(K::ExpirationTime)).half().help(tr(K::ExpirationHelp)),
         Field::multi("roles", tr(K::Roles), Source::Set(ChoiceSet::TokenRoles)).help(tr(K::AppCredRolesHelp)),
@@ -191,7 +191,7 @@ pub fn identity_project_items(
             })
         })
     }));
-    // After *Edit Project*, as Horizon. *Modify Quotas* (roadmap 82): any project's quotas, for the
+    // After *Edit Project*, as Horizon. *Modify Quotas*: any project's quotas, for the
     // `admin` role only (`needs::ADMIN`); the server checks the role again. The
     // session's own project is edited from Project › Quotas by whoever may.
     if admin {
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn expiration_date_and_time_share_a_line() {
-        // Roadmap 111: the two halves of one value, side by side (Store Secret too).
+        // The two halves of one value, side by side (Store Secret too).
         for d in [
             create_app_credential_dialog(Lang::EnUs),
             super::super::store_secret_dialog(Lang::EnUs),
@@ -499,7 +499,7 @@ mod tests {
         assert_eq!(
             labels(true),
             ["Edit Project", "Modify Quotas", "Delete Project"],
-            "Horizon's order (roadmap 82)"
+            "Horizon's order"
         );
         assert!(
             !labels(false).iter().any(|l| l == "Modify Quotas"),

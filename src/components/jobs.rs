@@ -1,4 +1,4 @@
-//! Bulk actions in the background (roadmap 87). A bulk dialog of
+//! Bulk actions in the background. A bulk dialog of
 //! `[ui] background_batch_from` items or more closes on submit and hands its
 //! [`OsAction::Batch`] here: the items are sent in order, [`CHUNK`] at a time,
 //! each chunk an ordinary `run_action(OsAction::Batch(chunk))`, so every server
@@ -43,6 +43,7 @@ pub fn chunks(items: Vec<(String, OsAction)>) -> Vec<Vec<(String, OsAction)>> {
 /// Where a job is.
 #[derive(Clone, Debug, PartialEq)]
 pub enum JobState {
+    /// Chunks are still being sent.
     Running,
     /// Every item was sent (each may still have failed: [`Job::failed`]).
     Finished,
@@ -56,8 +57,11 @@ pub enum JobState {
 /// One bulk action running in the background.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Job {
+    /// Unique in the tray, from [`Jobs`]' counter.
     pub id: u64,
+    /// The dialog's title (*Delete Instances*), the card's heading.
     pub title: String,
+    /// How many items were picked.
     pub total: usize,
     /// Items answered so far, failed ones included.
     pub done: usize,
@@ -71,6 +75,7 @@ pub struct Job {
 }
 
 impl Job {
+    /// A job that has just started: nothing answered yet.
     pub fn new(id: u64, title: String, total: usize) -> Self {
         Job {
             id,
@@ -128,6 +133,7 @@ pub struct Jobs {
 }
 
 impl Jobs {
+    /// Creates the tray state and provides it as context (once, in the layout).
     pub fn provide() -> Self {
         let j = Jobs {
             list: RwSignal::new(vec![]),
@@ -137,10 +143,13 @@ impl Jobs {
         j
     }
 
+    /// Applies `f` to job `id` if it is still there; `try_update`, as the tray may be gone
+    /// (the spawned sender outlives a navigation away, see AGENTS.md §6 on disposed signals).
     fn update(&self, id: u64, f: impl FnOnce(&mut Job)) {
         self.list.try_update(|l| l.iter_mut().find(|j| j.id == id).map(f));
     }
 
+    /// Removes the card of job `id` (its close button, or the fade of a clean finish).
     fn dismiss(&self, id: u64) {
         self.list.try_update(|l| l.retain(|j| j.id != id));
     }
@@ -190,6 +199,8 @@ pub fn JobsTray() -> impl IntoView {
     }
 }
 
+/// One job's card in the tray: title, progress bar and counts while running; then the outcome,
+/// the failed items with OpenStack's error, and the requests in dry-run.
 #[component]
 fn JobCard(job: Job, jobs: Jobs) -> impl IntoView {
     let i18n = use_i18n();

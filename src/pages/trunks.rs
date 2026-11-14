@@ -15,6 +15,9 @@ use crate::components::widgets::{Copyable, Skeleton, dash, render};
 use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
+/// Project › Network › Trunks › a trunk: *Information* (parent port, status) and its
+/// sub-ports (port, segmentation type and ID) with *Add Sub-port* and each one's *Remove
+/// Sub-port*.
 #[component]
 pub fn TrunkDetailPage() -> impl IntoView {
     let i18n = use_i18n();

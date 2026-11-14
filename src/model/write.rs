@@ -41,11 +41,12 @@ pub struct RequestPreview {
     pub body: Option<String>,
 }
 
-/// What an instance *Log* / *Console* call returned (roadmap 31): `data` is
+/// What an instance *Log* / *Console* call returned: `data` is
 /// `None` unless the request was sent (`[writes] mode = on`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ConsoleReply<T> {
     pub mode: WriteMode,
+    /// The requests, sent or previewed; cleared unless `[ui] show_requests`.
     pub requests: Vec<RequestPreview>,
     pub data: Option<T>,
 }
@@ -59,7 +60,7 @@ pub struct RemoteConsole {
 }
 
 impl RemoteConsole {
-    /// The URL for the *Console* tab's frame (roadmap 99): noVNC asked to scale
+    /// The URL for the *Console* tab's frame: noVNC asked to scale
     /// the remote screen to the frame (`scale=true` for `vnc_lite.html` and
     /// `vnc_auto.html`, `resize=scale` for `vnc.html`; each page ignores the
     /// other's). Never `resize=remote`, which changes the guest's resolution.
@@ -102,13 +103,13 @@ pub struct ActionOutcome {
     #[serde(default)]
     pub results: Vec<ItemResult>,
     /// The ID of the last resource the action created (`None` in dry-run, where nothing
-    /// exists): *Create Image* › *File* uploads to it (roadmap 45).
+    /// exists): *Create Image* › *File* uploads to it.
     #[serde(default)]
     pub created: Option<String>,
 }
 
 impl ActionOutcome {
-    /// Without the REST requests unless `[ui] show_requests` (roadmap 78): the
+    /// Without the REST requests unless `[ui] show_requests`: the
     /// server clears them, so they never reach the browser. Dry-run included.
     pub fn shown(mut self, show_requests: bool) -> Self {
         if !show_requests {
@@ -150,7 +151,7 @@ pub struct Secret {
     #[serde(default)]
     pub fields: Vec<(String, String)>,
     /// More downloads, `(file name, content)` (an application credential's
-    /// `openrc` and `clouds.yaml`, roadmap 57).
+    /// `openrc` and `clouds.yaml`).
     #[serde(default)]
     pub extra: Vec<(String, String)>,
 }
@@ -164,7 +165,7 @@ pub enum SecretKind {
     Password,
     /// A volume transfer's ID and authorization key, for the receiving project.
     Transfer,
-    /// An application credential's ID and secret (roadmap 57).
+    /// An application credential's ID and secret.
     AppCredential,
 }
 
@@ -197,11 +198,15 @@ pub enum BootSource {
 pub struct LaunchSpec {
     pub name: String,
     pub availability_zone: Option<String>,
+    /// Instances to create in one request (`min_count` = `max_count`), 1 to 100.
     pub count: u32,
     pub source: BootSource,
+    /// The image, volume or volume snapshot ID, per `source`.
     pub source_id: String,
     /// Image source only: create a new volume from the image (boot from volume).
     pub create_volume: bool,
+    /// GiB of the new boot volume: required with `create_volume`; from a volume snapshot,
+    /// `None` (or 0) keeps the snapshot's size. Ignored for an existing volume.
     pub volume_size_gb: Option<u32>,
     pub delete_volume_on_terminate: bool,
     pub flavor_id: String,
@@ -209,8 +214,10 @@ pub struct LaunchSpec {
     /// Existing ports (Horizon's *Network Ports* step), after the networks.
     #[serde(default)]
     pub port_ids: Vec<String>,
+    /// Security group **names** (Nova's `security_groups` takes names).
     pub security_groups: Vec<String>,
     pub key_name: Option<String>,
+    /// Sent as the `group` scheduler hint.
     pub server_group_id: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
@@ -284,7 +291,7 @@ pub const CONTROL_LOCATIONS: &[&str] = &["front-end", "back-end"];
 /// Horizon's *Update Status* choices for a volume snapshot.
 pub const SNAPSHOT_STATUSES: &[&str] = &["available", "creating", "deleting", "error", "error_deleting"];
 
-/// Admin › Volumes' *Manage Volume* (roadmap 85), Horizon's form: a volume
+/// Admin › Volumes' *Manage Volume*, Horizon's form: a volume
 /// that exists on a back end but not in Cinder, found by name or ID there.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ManageVolumeSpec {
@@ -304,6 +311,9 @@ pub struct ManageVolumeSpec {
     pub metadata: Vec<(String, String)>,
 }
 
+/// The provider network types Neutron's ML2 plugin knows, with the range of their segmentation
+/// ID (VLAN tag, GRE key, VNI); `None` for the types that have none. Horizon's
+/// `SEGMENTATION_ID_RANGE` defaults; `[network] segmentation_id_range` may narrow them.
 pub const PROVIDER_NETWORK_TYPES: &[(&str, Option<(u32, u32)>)] = &[
     ("local", None),
     ("flat", None),
@@ -371,7 +381,7 @@ pub struct AdminNetworkSpec {
     pub subnet: Option<SubnetSpec>,
 }
 
-/// Admin › Flavors' *Create Flavor* (roadmap 85), Horizon's form. A flavor
+/// Admin › Flavors' *Create Flavor*, Horizon's form. A flavor
 /// with `projects` is private and those projects get access (Horizon's
 /// *Flavor Access* tab); without, it is public.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -391,7 +401,7 @@ pub struct FlavorSpec {
     pub projects: Vec<String>,
 }
 
-/// Admin › Routers' *Create Router* (roadmap 85): Project's fields plus the
+/// Admin › Routers' *Create Router*: Project's fields plus the
 /// owner and Horizon's admin options. `None` and empty fields are left out of
 /// the body, so Neutron applies its defaults.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -462,10 +472,12 @@ pub struct RuleSpec {
     pub security_group_id: String,
     pub direction: String,
     pub ethertype: String,
-    /// `None` = any protocol
+    /// `None` = any protocol.
     pub protocol: Option<String>,
+    /// `None` = any port; alone (no `port_max`) it is a single port, sent as both bounds.
     pub port_min: Option<i32>,
     pub port_max: Option<i32>,
+    /// The remote CIDR or the remote group, never both; neither = any source.
     pub remote_ip_prefix: Option<String>,
     pub remote_group_id: Option<String>,
     pub description: Option<String>,
@@ -491,7 +503,7 @@ mod request_tests {
             created: None,
         };
         assert_eq!(out.clone().shown(true).requests.len(), 1);
-        assert!(out.shown(false).requests.is_empty(), "dry-run too (roadmap 78)");
+        assert!(out.shown(false).requests.is_empty(), "dry-run too");
         let reply = ConsoleReply {
             mode: WriteMode::On,
             requests: vec![req],

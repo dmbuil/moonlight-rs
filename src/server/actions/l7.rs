@@ -2,6 +2,8 @@
 
 use super::*;
 
+/// `OsAction::L7PolicyCreate`: `POST /v2/lbaas/l7policies` on a listener, with the redirect
+/// target (pool or URL) its action needs. Checked by `LbL7PolicySpec::check`.
 pub(super) async fn l7_policy_create(x: &mut Exec<'_>, listener_id: &str, spec: &LbL7PolicySpec) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::l7policy::create as m;
     spec.check().map_err(AppError::invalid)?;
@@ -38,6 +40,8 @@ pub(super) async fn l7_policy_create(x: &mut Exec<'_>, listener_id: &str, spec: 
     Ok(())
 }
 
+/// `OsAction::L7PolicyUpdate`: `PUT /v2/lbaas/l7policies/{id}`, as JSON so the redirect target
+/// the action doesn't use is sent as `null` (the SDK builder can't).
 pub(super) async fn l7_policy_update(x: &mut Exec<'_>, id: &str, spec: &LbL7PolicySpec) -> R<()> {
     spec.check().map_err(AppError::invalid)?;
     let (pool, url) = spec.targets();
@@ -62,12 +66,15 @@ pub(super) async fn l7_policy_update(x: &mut Exec<'_>, id: &str, spec: &LbL7Poli
     Ok(())
 }
 
+/// `OsAction::L7PolicyDelete`: `DELETE /v2/lbaas/l7policies/{id}` (its rules go with it).
 pub(super) async fn l7_policy_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::l7policy::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::L7RuleCreate`: `POST /v2/lbaas/l7policies/{policy_id}/rules`. Checked by
+/// `LbL7RuleSpec::check` (a key only for the header and cookie types).
 pub(super) async fn l7_rule_create(x: &mut Exec<'_>, policy_id: &str, spec: &LbL7RuleSpec) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::l7policy::rule::create as m;
     spec.check().map_err(AppError::invalid)?;
@@ -89,6 +96,8 @@ pub(super) async fn l7_rule_create(x: &mut Exec<'_>, policy_id: &str, spec: &LbL
     Ok(())
 }
 
+/// `OsAction::L7RuleUpdate`: `PUT /v2/lbaas/l7policies/{policy_id}/rules/{id}`, as JSON so a
+/// removed key is sent as `null`.
 pub(super) async fn l7_rule_update(x: &mut Exec<'_>, policy_id: &str, id: &str, spec: &LbL7RuleSpec) -> R<()> {
     spec.check().map_err(AppError::invalid)?;
     let body = json!({"rule": {
@@ -108,6 +117,7 @@ pub(super) async fn l7_rule_update(x: &mut Exec<'_>, policy_id: &str, id: &str, 
     Ok(())
 }
 
+/// `OsAction::L7RuleDelete`: `DELETE /v2/lbaas/l7policies/{policy_id}/rules/{id}`.
 pub(super) async fn l7_rule_delete(x: &mut Exec<'_>, policy_id: &str, id: &str) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::l7policy::rule::delete as m;
     x.send(
@@ -126,7 +136,7 @@ mod tests {
     use super::super::testing::*;
     use super::*;
 
-    /// Roadmap 54, slice 4: L7 policies and rules, created with the SDK and
+    /// L7 policies and rules, created with the SDK and
     /// saved as JSON so the unused redirect target and a removed key are `null`.
     #[tokio::test]
     async fn l7_policies_and_rules() {

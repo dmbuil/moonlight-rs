@@ -1,11 +1,11 @@
-//! Where the server log goes (`[log]`, roadmap 81): stdout (systemd's journal,
+//! Where the server log goes (`[log]`): stdout (systemd's journal,
 //! containers) and/or a file rotated by `tracing-appender`, as text or JSON.
 //! Built once in `main.rs`, right after the settings are read, so the start-up
 //! lines reach every output; a log file that can't be written stops start-up
 //! like any other bad setting. The file holds usernames and client addresses,
 //! never tokens (AGENTS.md §1.5), so it is created without access for others.
 //! Old files are deleted here, not by `tracing-appender`: its pruning deletes the
-//! current file on every start when it may keep only one (roadmap 84).
+//! current file on every start when it may keep only one.
 
 use std::path::Path;
 use std::time::Duration;
@@ -19,6 +19,7 @@ use tracing_subscriber::{EnvFilter, Layer, Registry};
 
 use super::settings::{Log, LogFormat, Rotation};
 
+/// One output (stdout or the file) of the subscriber, chosen at run time.
 type BoxedLayer = Box<dyn Layer<Registry> + Send + Sync>;
 
 /// The subscriber `[log]` asks for, and the guard of the file's background
@@ -91,7 +92,7 @@ fn appender(path: &Path, log: &Log) -> Result<RollingFileAppender, String> {
     }
     // No `max_log_files`: `tracing-appender` prunes before opening the current
     // file and keeps `max - 1`, so with 1 it deletes the file it is about to
-    // append to, on every start (0.2.5, `prune_old_logs`; roadmap 84).
+    // append to, on every start (0.2.5, `prune_old_logs`;).
     let appender = rolling::Builder::new()
         .rotation(rotation)
         .filename_prefix(name)
@@ -278,7 +279,7 @@ mod tests {
 
     #[test]
     fn a_restart_keeps_the_current_file_unless_keep_is_off() {
-        // Roadmap 84: with one file allowed, tracing-appender deleted the current
+        // With one file allowed, tracing-appender deleted the current
         // file on every start; the log then only had lines since the last restart.
         let today = current_name("m.log", Rotation::Daily, chrono::Utc::now());
         for rotation in [Rotation::Daily, Rotation::Never] {

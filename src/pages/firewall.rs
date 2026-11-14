@@ -1,4 +1,4 @@
-//! Project › Network › Firewall (FWaaS v2, roadmap 93): the tab bar the three
+//! Project › Network › Firewall (FWaaS v2): the tab bar the three
 //! lists share, the cells they share, and the group, policy and rule detail
 //! pages. The lists are in `lists.rs`. Another project's shared policies and
 //! rules are shown read-only (no actions).
@@ -59,6 +59,7 @@ pub fn rule_links(rs: &[Ref]) -> AnyView {
     joined(rs, "/project/firewall/rules")
 }
 
+/// `refs` linked to `{base}/{id}` and comma-separated; `-` for none.
 fn joined(refs: &[Ref], base: &'static str) -> AnyView {
     if refs.is_empty() {
         return "-".into_any();
@@ -97,6 +98,8 @@ pub fn action_pill(l: Lang, action: &str) -> AnyView {
 
 // --- Rule ---------------------------------------------------------------------------
 
+/// Firewall rule detail: the rule's cards and its menu (*Edit Rule*, *Delete Rule*; none for
+/// another project's shared rule).
 #[component]
 pub fn FirewallRuleDetailPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -118,6 +121,8 @@ pub fn FirewallRuleDetailPage() -> impl IntoView {
     }
 }
 
+/// The rule's *Information* and *Firewall Rule* (match and action) cards; Neutron's `null`
+/// addresses and ports read *Any*.
 #[component]
 fn RuleCards(r: FirewallRuleRow) -> impl IntoView {
     let i18n = use_i18n();
@@ -189,6 +194,8 @@ fn policy_rule_columns(policy: Option<FirewallPolicyRow>) -> Vec<Col<(usize, Fir
     cols
 }
 
+/// Firewall policy detail: its *Information* card and its rules in evaluation order, with
+/// *Insert Rule* and each rule's *Remove Rule* when the project owns the policy.
 #[component]
 pub fn FirewallPolicyDetailPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -240,6 +247,8 @@ pub fn FirewallPolicyDetailPage() -> impl IntoView {
 
 // --- Group --------------------------------------------------------------------------
 
+/// The group page's port table: port, fixed IPs, whether it is a router's or an instance's
+/// port, the device linked, and *Remove Port* when the project owns the group.
 fn group_port_columns(group: FirewallGroupRow) -> Vec<Col<FirewallPort>> {
     let mut cols = vec![
         col(K::Port, |p: &FirewallPort, _| {
@@ -280,12 +289,15 @@ fn group_port_columns(group: FirewallGroupRow) -> Vec<Col<FirewallPort>> {
     cols
 }
 
+/// Firewall group detail: its *Information* card (ingress and egress policies, status),
+/// notes for an inactive group and for `default`, and its ports with *Add Port* / *Remove
+/// Port*. It polls while Neutron moves the group through `PENDING_*`.
 #[component]
 pub fn FirewallGroupDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_firewall_group(id));
-    // Neutron moves the group through `PENDING_*` on its own (roadmap 46).
+    // Neutron moves the group through `PENDING_*` on its own.
     let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if td.data.busy())));
     view! {
         <Transition fallback=|| view! { <Skeleton rows=8/> }>

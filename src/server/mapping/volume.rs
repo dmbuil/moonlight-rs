@@ -9,7 +9,7 @@ pub fn volumes(raw: &[Value], servers: &[Value]) -> Vec<Volume> {
     out
 }
 
-/// [`volumes`] in Cinder's order, for a paged list (roadmap 88): the next page's
+/// [`volumes`] in Cinder's order, for a paged list: the next page's
 /// marker is the last row. `servers` may be empty: the attachments then carry only
 /// the server IDs, named later (`api::get_late_names`).
 pub fn volumes_page(raw: &[Value], servers: &[Value]) -> Vec<Volume> {
@@ -48,7 +48,7 @@ pub fn snapshots(raw: &[Value], volumes: &[Value]) -> Vec<Snapshot> {
     out
 }
 
-/// [`snapshots`] in Cinder's order, for a paged list (roadmap 88). `volumes` may be
+/// [`snapshots`] in Cinder's order, for a paged list. `volumes` may be
 /// empty: the volume is then named later (`api::get_late_names`).
 pub fn snapshots_page(raw: &[Value], volumes: &[Value]) -> Vec<Snapshot> {
     let vol_names: HashMap<String, String> = volumes
@@ -73,7 +73,7 @@ pub fn snapshots_page(raw: &[Value], volumes: &[Value]) -> Vec<Snapshot> {
         .collect()
 }
 
-/// Volumes › Backups (roadmap 5), newest first, with the names of their volumes
+/// Volumes › Backups, newest first, with the names of their volumes
 /// (`volumes` may be empty: the ID is shown then). `is_incremental` and
 /// `fail_reason` are absent on older Cinders; a backup of a deleted volume
 /// keeps its `volume_id`, so the link may point nowhere.
@@ -108,7 +108,7 @@ pub(super) fn named_ref(id: String, names: &HashMap<String, String>) -> Ref {
     }
 }
 
-/// One generic volume group (roadmap 5). `group_snapshots` only tells whether
+/// One generic volume group. `group_snapshots` only tells whether
 /// it has any (Horizon's *Has Snapshots*).
 fn volume_group(
     g: &Value,
@@ -148,7 +148,7 @@ pub fn volume_groups(
     out
 }
 
-/// [`volume_groups`] in Cinder's order, for a paged list (roadmap 88).
+/// [`volume_groups`] in Cinder's order, for a paged list.
 pub fn volume_groups_page(
     raw: &[Value],
     group_types: &[Value],
@@ -193,7 +193,7 @@ pub fn group_snapshots_rows(raw: &[Value], groups: &[Value], group_types: &[Valu
     out
 }
 
-/// [`group_snapshots_rows`] in Cinder's order, for a paged list (roadmap 88);
+/// [`group_snapshots_rows`] in Cinder's order, for a paged list;
 /// `groups` need only be the page's ([`group_ids`]).
 pub fn group_snapshots_page(raw: &[Value], groups: &[Value], group_types: &[Value]) -> Vec<GroupSnapshotRow> {
     let (gn, gt) = (names_by_id(groups), names_by_id(group_types));
@@ -210,7 +210,7 @@ pub fn group_snapshots_page(raw: &[Value], groups: &[Value], group_types: &[Valu
         .collect()
 }
 
-/// The groups a page of group snapshots belongs to, each once (roadmap 88).
+/// The groups a page of group snapshots belongs to, each once.
 pub fn group_ids(raw: &[Value]) -> Vec<String> {
     distinct(raw.iter().filter_map(|x| s(x, "group_id")))
 }

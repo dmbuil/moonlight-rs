@@ -2,6 +2,7 @@
 
 use super::*;
 
+/// `OsAction::QosPolicyCreate`: `POST /v2.0/qos/policies` (extension `qos`).
 pub(super) async fn qos_policy_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -25,6 +26,8 @@ pub(super) async fn qos_policy_create(
     Ok(())
 }
 
+/// `OsAction::QosPolicyUpdate`: `PUT /v2.0/qos/policies/{id}`. The description is always
+/// sent, so an empty one clears it.
 pub(super) async fn qos_policy_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -44,14 +47,18 @@ pub(super) async fn qos_policy_update(
     Ok(())
 }
 
+/// `OsAction::QosPolicyDelete`: `DELETE /v2.0/qos/policies/{id}` (Neutron refuses it while a
+/// port, network or floating IP uses the policy).
 pub(super) async fn qos_policy_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::qos::policy::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
-/// Rules: one JSON path for the four types (`…/<type>_rules`), the body
-/// built and checked by `QosRuleSpec::body`.
+/// `OsAction::QosRuleCreate`: `POST /v2.0/qos/policies/{policy_id}/<type>_rules`.
+///
+/// One JSON request for the four rule types, the body built and
+/// checked by `QosRuleSpec::body`.
 pub(super) async fn qos_rule_create(x: &mut Exec<'_>, policy_id: &str, spec: &QosRuleSpec) -> R<()> {
     let body = spec.body().map_err(AppError::invalid)?;
     let path = format!("qos/policies/{}/{}_rules", non_empty(policy_id, "policy")?, spec.kind);
@@ -65,6 +72,8 @@ pub(super) async fn qos_rule_create(x: &mut Exec<'_>, policy_id: &str, spec: &Qo
     Ok(())
 }
 
+/// `OsAction::QosRuleUpdate`: `PUT /v2.0/qos/policies/{policy_id}/<type>_rules/{id}`; the
+/// rule's type can't change, so `spec.kind` must be its current one.
 pub(super) async fn qos_rule_update(x: &mut Exec<'_>, policy_id: &str, id: &str, spec: &QosRuleSpec) -> R<()> {
     let body = spec.body().map_err(AppError::invalid)?;
     let path = format!(
@@ -83,6 +92,8 @@ pub(super) async fn qos_rule_update(x: &mut Exec<'_>, policy_id: &str, id: &str,
     Ok(())
 }
 
+/// `OsAction::QosRuleDelete`: `DELETE /v2.0/qos/policies/{policy_id}/<kind>_rules/{id}`.
+/// `kind` reaches the path, so it is checked against `QOS_RULE_TYPES` first.
 pub(super) async fn qos_rule_delete(x: &mut Exec<'_>, policy_id: &str, kind: &str, id: &str) -> R<()> {
     if !QOS_RULE_TYPES.contains(&kind) {
         return Err(AppError::invalid(format!("unknown rule type {kind}")));

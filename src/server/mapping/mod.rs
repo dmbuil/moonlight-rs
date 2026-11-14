@@ -38,14 +38,17 @@ pub use octavia::*;
 pub use quota::*;
 pub use volume::*;
 
+/// `v[k]` as a string; `None` when missing or not a string.
 fn s(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(Value::as_str).map(str::to_string)
 }
 
+/// [`s`], with `""` treated as missing.
 fn s_ne(v: &Value, k: &str) -> Option<String> {
     s(v, k).filter(|x| !x.is_empty())
 }
 
+/// `v[k]` as a boolean, accepting Cinder's `"true"`/`"false"` strings; missing = `false`.
 fn b(v: &Value, k: &str) -> bool {
     match v.get(k) {
         Some(Value::Bool(x)) => *x,
@@ -55,14 +58,17 @@ fn b(v: &Value, k: &str) -> bool {
     }
 }
 
+/// `v[k]` as an integer.
 fn i(v: &Value, k: &str) -> Option<i64> {
     v.get(k).and_then(Value::as_i64)
 }
 
+/// `v[k]` as an array; empty when missing or `null`.
 fn arr<'a>(v: &'a Value, k: &str) -> &'a [Value] {
     v.get(k).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
+/// The string elements of the array `v[k]`, others skipped.
 fn strs(v: &Value, k: &str) -> Vec<String> {
     arr(v, k)
         .iter()
@@ -75,6 +81,7 @@ fn name_or_id(v: &Value) -> String {
     s_ne(v, "name").or_else(|| s(v, "id")).unwrap_or_default()
 }
 
+/// The items by their `id`, for joins; items without one are skipped.
 fn index_by_id(items: &[Value]) -> HashMap<String, &Value> {
     items.iter().filter_map(|x| Some((s(x, "id")?, x))).collect()
 }
@@ -87,6 +94,7 @@ fn distinct(ids: impl Iterator<Item = String>) -> Vec<String> {
     out
 }
 
+/// [`name_or_id`] by `id`: the name lookups a list joins against.
 fn names_by_id(items: &[Value]) -> HashMap<String, String> {
     items
         .iter()
@@ -99,6 +107,7 @@ fn unwrap<'a>(v: &'a Value, k: &str) -> &'a Value {
     v.get(k).unwrap_or(v)
 }
 
+/// An object's entries sorted by key (metadata, tags with values), non-strings as JSON text.
 fn kv_pairs(v: Option<&Value>) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = v
         .and_then(Value::as_object)
@@ -162,7 +171,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    // --- Key Manager (roadmap 55)
+    // --- Key Manager
 
     #[test]
     fn barbican_refs_end_in_the_id() {
@@ -191,7 +200,7 @@ mod tests {
         assert_eq!(next_offset(&json!({"next": null}), 0, 10), None);
     }
 
-    // --- Admin (roadmap 85) ---
+    // --- Admin ---
 
     #[test]
     fn timestamps_of_nova_cinder_and_neutron_become_rfc3339_utc() {

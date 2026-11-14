@@ -73,6 +73,9 @@ fn subnet_check(
     }
 }
 
+/// The subnet of [`subnet_fields`] (*Create Network*, Admin *Create Network* and *Create
+/// Subnet*): allocation pools and host routes one per line, `a,b`; a line that does not parse
+/// names its field.
 fn subnet_spec(v: &Values, lang: Lang) -> Result<SubnetSpec, String> {
     let pools = v
         .lines("pools")
@@ -155,7 +158,7 @@ pub fn create_network_dialog(lang: Lang) -> Dialog {
     .check(subnet_check(lang, net))
 }
 
-/// Admin › Networks' *Create Network* (roadmap 85): Horizon's admin form (the
+/// Admin › Networks' *Create Network*: Horizon's admin form (the
 /// owner project, the provider attributes, *Shared*, *External*), then the same
 /// optional subnet steps as Project's.
 pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
@@ -267,7 +270,7 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
     .check(subnet_check(lang, net))
 }
 
-/// Admin › RBAC Policies' *Create RBAC Policy* (roadmap 85), Horizon's form:
+/// Admin › RBAC Policies' *Create RBAC Policy*, Horizon's form:
 /// *Target Project* (`*` = every project), *Action and Object Type*, then the
 /// network or the QoS policy it shares. *Shared QoS Policy* needs Neutron's `qos`.
 pub fn create_rbac_policy_dialog(lang: Lang) -> Dialog {
@@ -397,7 +400,7 @@ pub fn network_items(lang: Lang, net: &NetworkRow) -> Vec<MenuItem> {
     network_menu(lang, net, false)
 }
 
-/// Admin › Networks' row menu (roadmap 85): every project's network, as
+/// Admin › Networks' row menu: every project's network, as
 /// Horizon's admin table: *Edit Network*, *Create Subnet*, *Delete Network*.
 pub fn admin_network_items(lang: Lang, net: &NetworkRow) -> Vec<MenuItem> {
     network_menu(lang, net, true)

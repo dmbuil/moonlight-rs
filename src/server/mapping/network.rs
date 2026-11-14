@@ -10,7 +10,7 @@ pub fn networks(raw: &[Value], subnets: &[Value], project_id: &str) -> Vec<Netwo
     out
 }
 
-/// [`networks`] in Neutron's order, for a paged list (roadmap 88); `subnets`
+/// [`networks`] in Neutron's order, for a paged list; `subnets`
 /// need only be the page's (`subnets?network_id=…`).
 pub fn networks_page(raw: &[Value], subnets: &[Value], project_id: &str) -> Vec<NetworkRow> {
     let subnet_label: HashMap<String, String> = subnets
@@ -157,7 +157,7 @@ pub fn routers(raw: &[Value], networks: &[Value]) -> Vec<RouterRow> {
     out
 }
 
-/// The external networks of a page of routers, each once (roadmap 88).
+/// The external networks of a page of routers, each once.
 pub fn gateway_ids(raw: &[Value]) -> Vec<String> {
     distinct(raw.iter().filter_map(|r| {
         r.get("external_gateway_info")
@@ -166,7 +166,7 @@ pub fn gateway_ids(raw: &[Value]) -> Vec<String> {
     }))
 }
 
-/// [`routers`] in Neutron's order, for a paged list (roadmap 88); `networks`
+/// [`routers`] in Neutron's order, for a paged list; `networks`
 /// need only be the page's gateways ([`gateway_ids`]).
 pub fn routers_page(raw: &[Value], networks: &[Value]) -> Vec<RouterRow> {
     let net_names = names_by_id(networks);
@@ -204,6 +204,8 @@ pub struct TopologyInputs<'a> {
     pub floating_ips: &'a [Value],
 }
 
+/// The `ip_address` of each entry in `v[key]` (a port's `fixed_ips`, a gateway's
+/// `external_fixed_ips`).
 pub(super) fn fixed_ips(v: &Value, key: &str) -> Vec<String> {
     arr(v, key).iter().filter_map(|ip| s(ip, "ip_address")).collect()
 }
@@ -395,7 +397,7 @@ pub fn floating_ips(raw: &[Value], networks: &[Value], servers: &[Value]) -> Vec
     out
 }
 
-/// [`floating_ips`] in Neutron's order, for a paged list (roadmap 88). `servers`
+/// [`floating_ips`] in Neutron's order, for a paged list. `servers`
 /// may be empty: instances are then named later (`api::get_late_names`).
 pub fn floating_ips_page(raw: &[Value], networks: &[Value], servers: &[Value]) -> Vec<FloatingIpRow> {
     let net_names = names_by_id(networks);
@@ -429,7 +431,7 @@ pub fn pool_ids(raw: &[Value]) -> Vec<String> {
     distinct(raw.iter().filter_map(|f| s(f, "floating_network_id")))
 }
 
-/// A server's or volume's name for `api::get_late_names` (roadmap 88), from its
+/// A server's or volume's name for `api::get_late_names`, from its
 /// `GET servers/{id}` or `volumes/{id}` body (wrapped or not): unnamed → its ID;
 /// a volume also gives its host.
 pub fn late_name(v: &Value) -> Option<LateName> {
@@ -676,7 +678,7 @@ pub fn trunks(raw: &[Value], ports: &[Value]) -> Vec<TrunkRow> {
     out
 }
 
-/// The ports a page of trunks names (parents and sub-ports), each once (roadmap 88).
+/// The ports a page of trunks names (parents and sub-ports), each once.
 pub fn trunk_port_ids(raw: &[Value]) -> Vec<String> {
     distinct(raw.iter().flat_map(|t| {
         s(t, "port_id")
@@ -685,7 +687,7 @@ pub fn trunk_port_ids(raw: &[Value]) -> Vec<String> {
     }))
 }
 
-/// [`trunks`] in Neutron's order, for a paged list (roadmap 88); `ports` need
+/// [`trunks`] in Neutron's order, for a paged list; `ports` need
 /// only be the page's ([`trunk_port_ids`]).
 pub fn trunks_page(raw: &[Value], ports: &[Value]) -> Vec<TrunkRow> {
     let port_names = names_by_id(ports);
@@ -841,7 +843,7 @@ mod tests {
             json!({"floating_ip_address": "203.0.113.7", "port_id": "port-vip"}),
             json!({"floating_ip_address": "203.0.113.8", "port_id": "other"}),
         ];
-        // L7 (roadmap 54): the project's policies, one on another load balancer's listener.
+        // L7: the project's policies, one on another load balancer's listener.
         let (ls_id, pool_id) = (
             listeners[0]["id"].as_str().unwrap().to_string(),
             pools[0]["id"].as_str().unwrap().to_string(),

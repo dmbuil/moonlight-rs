@@ -100,14 +100,14 @@ pub fn compressible(h: &http::HeaderMap) -> bool {
     )
 }
 
-/// Refuses state-changing requests from another origin (roadmap 48): server
+/// Refuses state-changing requests from another origin: server
 /// functions are POSTs, and the session cookie's `SameSite=Lax` doesn't stop a
 /// sibling subdomain, nor login CSRF. Horizon uses Django's CSRF token.
 pub async fn same_origin_only(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
     use axum::response::IntoResponse;
     let cfg = &config::state().config;
     // Keystone posts the WebSSO token from its own origin: that one route
-    // checks its nonce cookie instead (`websso::callback`, roadmap 80).
+    // checks its nonce cookie instead (`websso::callback`).
     if websso::is_callback(req.method(), req.uri().path(), cfg.websso.is_some())
         || same_origin(req.method(), req.headers(), cfg.public_origin.as_deref())
     {
@@ -150,7 +150,7 @@ pub fn same_origin(method: &http::Method, h: &http::HeaderMap, public: Option<&s
 
 /// Converts any displayable error into a classified `AppError`, logging it.
 /// The browser only gets the full SDK text with `[ui] show_error_details`
-/// (roadmap 50); otherwise the log keeps it (see [`errors::public`]).
+///; otherwise the log keeps it (see [`errors::public`]).
 pub fn sfe<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> AppError {
     move |e| {
         tracing::warn!("{context}: {e}");

@@ -32,15 +32,15 @@ pub struct Instance {
     pub power_state: i64,
     /// RFC 3339
     pub created: String,
-    /// Nova server metadata (roadmap 25).
+    /// Nova server metadata.
     #[serde(default)]
     pub metadata: Vec<(String, String)>,
     /// Security group **names** of the server (Nova lists one entry per port, so
-    /// deduplicated and sorted), for *Edit Security Groups* (roadmap 42).
+    /// deduplicated and sorted), for *Edit Security Groups*.
     #[serde(default)]
     pub security_groups: Vec<String>,
     /// Volumes still to read to name the image of a server booted from a volume:
-    /// set only by a paged list (roadmap 88), which shows the page first and fills
+    /// set only by a paged list, which shows the page first and fills
     /// the *Image* cell later (`api::get_boot_images`). Empty when the image
     /// is known or the server has no volume.
     #[serde(default)]
@@ -49,12 +49,12 @@ pub struct Instance {
 
 /// Volume IDs per `api::get_boot_images` call: a paged Instances page sends
 /// its rows' `boot_volume_ids` in chunks this size, so each GET's query string stays
-/// a few KiB and the *Image* cells fill in chunk by chunk (roadmap 88).
+/// a few KiB and the *Image* cells fill in chunk by chunk.
 pub const BOOT_IMAGE_CHUNK: usize = 50;
 
 /// What `api::get_late_names` looks up: a paged page names the resources its rows
 /// point at after the table shows, since neither Nova nor Cinder lists several
-/// IDs in one request (probed on ttcp-dev, roadmap 88).
+/// IDs in one request (probed on ttcp-dev).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NameKind {
     /// Nova `servers/{id}`: a volume's attachments, a floating IP's instance.
@@ -78,6 +78,7 @@ pub struct LateName {
 pub struct FlavorInfo {
     pub id: String,
     pub name: String,
+    /// `None` when Nova did not say (a deleted flavor, not in the list). Swap 0 is `None`.
     pub vcpus: Option<i64>,
     pub ram_mb: Option<i64>,
     pub disk_gb: Option<i64>,
@@ -85,7 +86,7 @@ pub struct FlavorInfo {
     pub swap_mb: Option<i64>,
 }
 
-/// Nova's `fault` on an instance in `ERROR` (message, code, date).
+/// Nova's `fault` on an instance in `ERROR`: the HTTP-like code and the message.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fault {
     pub code: i64,
@@ -102,9 +103,10 @@ pub struct InstanceDetail {
     pub locked: bool,
     pub updated: Option<String>,
     pub flavor: FlavorInfo,
+    /// Nova's `image.id`, else the boot volume's `volume_image_metadata.image_id`.
     pub image_id: Option<String>,
     pub security_groups: Vec<String>,
-    /// Rules of each of `security_groups` the project can list (roadmap 37).
+    /// Rules of each of `security_groups` the project can list.
     #[serde(default)]
     pub security_group_rules: Vec<(String, Vec<String>)>,
     pub volumes: Vec<AttachedVolume>,
@@ -213,12 +215,13 @@ pub struct Image {
     pub visibility: String,
     pub protected: bool,
     pub disk_format: Option<String>,
+    /// Bytes; `None` until data is uploaded.
     pub size: Option<u64>,
     pub owned_by_project: bool,
     pub owner_id: Option<String>,
     /// Project name of the owner, when Keystone lets us resolve it.
     pub owner_name: Option<String>,
-    /// Custom properties: every key that is not a Glance core field (roadmap 25).
+    /// Custom properties: every key that is not a Glance core field.
     #[serde(default)]
     pub properties: Vec<(String, String)>,
     #[serde(default)]
@@ -226,7 +229,7 @@ pub struct Image {
     #[serde(default)]
     pub min_ram_mb: Option<i64>,
     /// Why the last import failed (`os_glance_failed_import`, Glance sets it on
-    /// `web-download` / `glance-direct` errors); `None` when it has not (roadmap 45).
+    /// `web-download` / `glance-direct` errors); `None` when it has not.
     #[serde(default)]
     pub import_failed: Option<String>,
 }
@@ -238,7 +241,7 @@ impl Image {
     }
 }
 
-/// A row of the Key Pairs list; `key_type` needs compute 2.2 (roadmap 51).
+/// A row of the Key Pairs list; `key_type` needs compute 2.2.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyPair {
     pub name: String,
@@ -255,7 +258,7 @@ pub struct ServerGroup {
     pub members: Vec<String>,
 }
 
-/// The server group detail page (roadmap 52).
+/// The server group detail page.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerGroupDetail {
     pub group: ServerGroup,
@@ -311,7 +314,7 @@ pub struct ImageChanges {
     pub remove: Vec<String>,
 }
 
-/// *Create Image* (roadmap 45): a Glance record plus, when `url` is set, the `web-download` import.
+/// *Create Image*: a Glance record plus, when `url` is set, the `web-download` import.
 /// Description, architecture, kernel and ramdisk IDs and the metadata editor's pairs are all
 /// custom image properties (`properties`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -329,17 +332,17 @@ pub struct ImageSpec {
     pub min_ram_mb: Option<u32>,
     pub properties: Vec<(String, String)>,
     /// Size of the file the browser sends next (`[images] upload`), in bytes. Only the record is
-    /// created here: the upload itself is not an [`OsAction`] (it is streamed, roadmap 45), so
+    /// created here: the upload itself is not an [`OsAction`] (it is streamed), so
     /// this is what the dry-run preview, the size limit and the mode checks go by. Excludes `url`.
     #[serde(default)]
     pub upload_bytes: Option<u64>,
-    /// Admin › Images' *Create Image* (roadmap 89): the owning project; `None`
+    /// Admin › Images' *Create Image*: the owning project; `None`
     /// = the session's, as Project's.
     #[serde(default)]
     pub owner: Option<String>,
 }
 
-/// Where the browser `PUT`s an image's data in `proxy` mode (axum syntax, roadmap 45).
+/// Where the browser `PUT`s an image's data in `proxy` mode (axum syntax).
 pub const IMAGE_UPLOAD_ROUTE: &str = "/upload/image/{id}";
 
 /// [`IMAGE_UPLOAD_ROUTE`] for image `id`.
@@ -347,8 +350,8 @@ pub fn image_upload_path(id: &str) -> String {
     IMAGE_UPLOAD_ROUTE.replace("{id}", id)
 }
 
-/// What the browser needs for one direct upload to Glance (`[images] upload = direct`, roadmap
-/// 45): the URL and a scoped token for that request. Not `Debug`-printable, so it can't end up
+/// What the browser needs for one direct upload to Glance (`[images] upload = direct`):
+/// the URL and a scoped token for that request. Not `Debug`-printable, so it can't end up
 /// in a log by accident.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct UploadTicket {

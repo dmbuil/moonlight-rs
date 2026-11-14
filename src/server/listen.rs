@@ -1,4 +1,4 @@
-//! The HTTPS listener (roadmap 107): `[server] tls_cert_file` / `tls_key_file`.
+//! The HTTPS listener: `[server] tls_cert_file` / `tls_key_file`.
 //!
 //! Moonlight terminates TLS itself, so a `reencrypt` Route (OpenShift's service CA) or any other
 //! proxy can keep the last hop encrypted. The certificate is renewed behind the process's back
@@ -31,16 +31,22 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// The certificate and key Moonlight serves, and where they come from.
 pub struct Tls {
+    /// `[server] tls_cert_file`: PEM chain, leaf first.
     cert_file: PathBuf,
+    /// `[server] tls_key_file`: PEM private key.
     key_file: PathBuf,
+    /// The rustls crypto provider the key is loaded with.
     provider: Arc<CryptoProvider>,
+    /// Shared with the `ServerConfig`; a reload swaps the pair inside it.
     current: Arc<Resolver>,
 }
 
 /// Hands rustls the current pair on every handshake, so the `ServerConfig` is built only once.
 struct Resolver(RwLock<Loaded>);
 
+/// The pair in use.
 struct Loaded {
+    /// The chain and its signing key, as rustls takes them.
     key: Arc<CertifiedKey>,
     /// SHA-256 of both files as read: tells a renewal from an unchanged pair without keeping the
     /// key's bytes around for the comparison.

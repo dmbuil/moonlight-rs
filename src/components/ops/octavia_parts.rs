@@ -2,6 +2,7 @@
 
 use super::*;
 
+/// `(id, name)` pairs of `items`, for a `Source::Static` select.
 fn refs_of<T>(items: &[T], f: impl Fn(&T) -> (String, String)) -> Vec<(String, String)> {
     items.iter().map(f).collect()
 }
@@ -42,7 +43,7 @@ pub fn listener_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL
                 .unwrap_or_default(),
         ),
     ]);
-    // Also on a new listener (roadmap 54).
+    // Also on a new listener.
     fields.push(Field::check(
         "admin_up",
         tr(K::EnableAdminState),
@@ -158,7 +159,7 @@ pub fn pool_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbPool>
             .when("persistence", "APP_COOKIE"),
     ]);
     fields.extend(pool_tls_fields(lang, existing, None));
-    // Also on a new pool (roadmap 54).
+    // Also on a new pool.
     fields.push(Field::check(
         "admin_up",
         tr(K::EnableAdminState),
@@ -211,7 +212,7 @@ pub fn pool_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbPool>
 
 /// *Add Member* (an instance address, or any address on a subnet, into one of
 /// this load balancer's pools) / *Edit Member*. Both set the monitor address
-/// and port (roadmap 54).
+/// and port.
 pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMember>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let pools = refs_of(&d.pools, |p| (p.id.clone(), p.name.clone()));
@@ -319,7 +320,7 @@ pub fn member_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbMem
 
 /// *Edit Members* of a pool: the whole list at once, sent as Octavia's batch
 /// update, which deletes the members left out; so it is destructive, and the
-/// editor lists the members a save would delete (roadmap 54).
+/// editor lists the members a save would delete.
 pub fn pool_members_dialog(lang: Lang, d: &LoadBalancerDetail, pool: &LbPool) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let current: Vec<LbMember> = d.members.iter().filter(|m| m.pool.id == pool.id).cloned().collect();
@@ -473,7 +474,7 @@ pub fn monitor_items(lang: Lang, d: &LoadBalancerDetail, m: &LbMonitor) -> Vec<M
 }
 
 /// Listeners that can take L7 policies: Octavia applies them to HTTP and
-/// `TERMINATED_HTTPS` listeners only (roadmap 54).
+/// `TERMINATED_HTTPS` listeners only.
 pub fn l7_listeners(d: &LoadBalancerDetail) -> Vec<(String, String)> {
     d.listeners
         .iter()
@@ -487,7 +488,7 @@ pub fn l7_listeners(d: &LoadBalancerDetail) -> Vec<(String, String)> {
         .collect()
 }
 
-/// *Create L7 Policy* / *Edit L7 Policy* (roadmap 54), as octavia-dashboard
+/// *Create L7 Policy* / *Edit L7 Policy*, as octavia-dashboard
 /// has it: the redirect pool or URL shows for its action only.
 pub fn l7_policy_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&LbL7Policy>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
@@ -552,7 +553,7 @@ pub fn l7_policy_dialog(lang: Lang, d: &LoadBalancerDetail, existing: Option<&Lb
     })
 }
 
-/// *Add L7 Rule* / *Edit L7 Rule* (roadmap 54). `policy`: the policy it goes
+/// *Add L7 Rule* / *Edit L7 Rule*. `policy`: the policy it goes
 /// to (from the policy's menu, or an edit); `None` offers a choice.
 pub fn l7_rule_dialog(
     lang: Lang,
@@ -726,7 +727,7 @@ mod tests {
         );
     }
 
-    /// Roadmap 54, slice 2: the *Advanced* box opens on a listener that has
+    /// The *Advanced* box opens on a listener that has
     /// options, *Insert Headers* only for HTTP, and unticked leaves them alone.
     #[test]
     fn listener_and_pool_dialogs_carry_the_advanced_options() {
@@ -829,7 +830,7 @@ mod tests {
         );
     }
 
-    /// Roadmap 54, slice 4: policies only on HTTP listeners; the policy's own
+    /// Policies only on HTTP listeners; the policy's own
     /// menu presets it on a new rule; the key is dropped for keyless types.
     #[test]
     fn l7_dialogs_build_policies_and_rules() {

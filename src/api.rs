@@ -2,9 +2,9 @@
 //! Bodies run on the server; the browser gets a typed RPC stub.
 //!
 //! OpenStack calls made from here are GETs, except `run_action` (writes),
-//! `run_instance_log` / `run_instance_console` (read-only Nova POSTs, roadmap 31)
-//! and `run_stack_validate` / `run_stack_preview` (read-only Heat POSTs, roadmap
-//! 62), which all go through `Exec` and `[writes] mode`. Moonlight's own session
+//! `run_instance_log` / `run_instance_console` (read-only Nova POSTs)
+//! and `run_stack_validate` / `run_stack_preview` (read-only Heat POSTs),
+//! which all go through `Exec` and `[writes] mode`. Moonlight's own session
 //! cookie is written on login, logout and project/region switch.
 
 use leptos::prelude::*;
@@ -36,7 +36,7 @@ pub fn login_domain(prefs: &crate::prefs::LoginPrefs, submitted: &str) -> Result
 
 /// Signs in with a password (Keystone `v3password`, unscoped), keeps the token in
 /// the encrypted cookie scoped to the first project, and redirects to `/project`.
-/// Throttled per username and address (roadmap 50).
+/// Throttled per username and address.
 #[server]
 pub async fn login(username: String, password: String, domain: String) -> Result<(), AppError> {
     let username = username.trim().to_string();
@@ -44,7 +44,7 @@ pub async fn login(username: String, password: String, domain: String) -> Result
     if username.is_empty() || password.is_empty() {
         return Err(AppError::invalid("missing credentials"));
     }
-    // Throttling (roadmap 50): refuse before Keystone sees the attempt; only
+    // Throttling: refuse before Keystone sees the attempt; only
     // rejected credentials count, not a Keystone that is down.
     let throttle = &crate::server::config::state().login_throttle;
     let client = session::client_ip();
@@ -73,7 +73,7 @@ pub async fn login(username: String, password: String, domain: String) -> Result
 /// Keystone revokes it too, through `Exec`, so only with `[writes] mode = on`.
 /// Revocation is best effort: a failure is logged and the logout completes.
 /// A WebSSO session then goes to `[websso] logout_url` when set, so the
-/// identity provider ends its own session too (roadmap 80); else `/login`.
+/// identity provider ends its own session too; else `/login`.
 #[server]
 pub async fn logout() -> Result<(), AppError> {
     let mut to = "/login".to_string();
@@ -212,8 +212,8 @@ async fn ctx() -> Result<(session::Session, openstack_sdk::AsyncOpenStack), AppE
 
 /// Runs a server function's body with the session and its scoped connection,
 /// bounded by `os::REQUEST_TIMEOUT`; `name` is what a timeout reports. The
-/// body's GETs are counted for `Timed::calls` (`fetch::serving`, roadmap 65), and
-/// its name lookups cached per session scope (roadmap 66).
+/// body's GETs are counted for `Timed::calls` (`fetch::serving`), and
+/// its name lookups cached per session scope.
 #[cfg(feature = "ssr")]
 async fn scoped<T, F>(
     name: &str,
@@ -223,7 +223,7 @@ where
     F: std::future::Future<Output = Result<T, AppError>>,
 {
     let run = async move {
-        // Debug timing (roadmap 83): getting the session and its connection,
+        // Debug timing: getting the session and its connection,
         // then the body's requests, per server function and kind of session.
         let started = std::time::Instant::now();
         let (s, c) = ctx().await?;
@@ -238,7 +238,7 @@ where
 }
 
 /// `scoped` for a resource named in the URL: checks `id` first, because it is
-/// pasted into the request path unencoded (roadmap 48), then hands it to `body`.
+/// pasted into the request path unencoded, then hands it to `body`.
 #[cfg(feature = "ssr")]
 async fn scoped_id<T, F>(
     name: &str,
@@ -268,7 +268,7 @@ pub async fn overview() -> Result<Timed<Vec<QuotaSection>>, AppError> {
     .await
 }
 
-/// Project › Quotas (roadmap 82): every quota of the current project, per service.
+/// Project › Quotas: every quota of the current project, per service.
 #[server(input = GetUrl)]
 pub async fn list_quotas() -> Result<Timed<Vec<QuotaCard>>, AppError> {
     scoped("list_quotas", |s, c| async move {
@@ -287,7 +287,7 @@ pub async fn list_quotas() -> Result<Timed<Vec<QuotaCard>>, AppError> {
     .await
 }
 
-/// Identity › Projects › *Modify Quotas* (roadmap 82): every quota of project
+/// Identity › Projects › *Modify Quotas*: every quota of project
 /// `id`, any project, with its name for the page header. Admins only, checked
 /// on the token before any call (the menu is not the gate).
 #[server(input = GetUrl)]
@@ -347,7 +347,7 @@ pub async fn get_usage(start: String, end: String) -> Result<Timed<UsageSummary>
 }
 
 /// Project › Compute › Instances: one page of `[ui] page_size` filtered and sorted
-/// by `q` when `[ui] paged_lists = "all"` (roadmap 88 slice E), else every server.
+/// by `q` when `[ui] paged_lists = "all"`, else every server.
 #[server(input = GetUrl)]
 pub async fn list_instances(q: ListQuery) -> Result<Timed<Page<Instance>>, AppError> {
     scoped("list_instances", |s, c| async move {
@@ -369,7 +369,7 @@ pub async fn get_instance(id: String) -> Result<Timed<InstanceDetail>, AppError>
 }
 
 /// Project › Compute › Images: every image Glance shows the project, its own first;
-/// one page in Glance's order when the Project panels are paged (roadmap 88).
+/// one page in Glance's order when the Project panels are paged.
 #[server(input = GetUrl)]
 pub async fn list_images(q: ListQuery) -> Result<Timed<Page<Image>>, AppError> {
     scoped("list_images", |s, c| async move {
@@ -399,7 +399,7 @@ pub async fn list_server_groups() -> Result<Timed<Vec<ServerGroup>>, AppError> {
 }
 
 /// Project › Volumes › Volumes; one page with Cinder's total when the Project
-/// panels are paged (roadmap 88).
+/// panels are paged.
 #[server(input = GetUrl)]
 pub async fn list_volumes(q: ListQuery) -> Result<Timed<Page<Volume>>, AppError> {
     scoped("list_volumes", |s, c| async move {
@@ -439,7 +439,7 @@ pub async fn list_networks() -> Result<Timed<Vec<NetworkRow>>, AppError> {
 }
 
 /// Project › Network › Routers; one page when the Project panels are paged
-/// (roadmap 88).
+///.
 #[server(input = GetUrl)]
 pub async fn list_routers(q: ListQuery) -> Result<Timed<Page<RouterRow>>, AppError> {
     scoped("list_routers", |s, c| async move {
@@ -461,7 +461,7 @@ pub async fn list_security_groups() -> Result<Timed<Vec<SecurityGroupRow>>, AppE
 }
 
 /// Project › Network › Floating IPs; one page when the Project panels are paged
-/// (roadmap 88).
+///.
 #[server(input = GetUrl)]
 pub async fn list_floating_ips(q: ListQuery) -> Result<Timed<Page<FloatingIpRow>>, AppError> {
     scoped("list_floating_ips", |s, c| async move {
@@ -539,26 +539,26 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
     use crate::server::actions::{Exec, apply};
     let mode = cfg().writes;
     let s = session::require()?;
-    // IDs end up in request paths, unencoded (roadmap 48).
+    // IDs end up in request paths, unencoded.
     action.check_ids()?;
-    // Users manage their own application credentials (roadmap 57).
+    // Users manage their own application credentials.
     let mut action = action;
     action.set_user(&s.user_id);
     // Projects, users and groups go to the user's domain (or the domain context),
-    // never Keystone's default one (roadmap 57). A GET, so also in dry-run.
+    // never Keystone's default one. A GET, so also in dry-run.
     if action.needs_domain() {
         let domain = fetch::operation_domain(&os::scoped(&s).await?, &s).await?;
         action.set_domain(&domain);
     }
-    // Horizon's identity safety rules (roadmap 57), whatever the dialogs allowed.
+    // Horizon's identity safety rules, whatever the dialogs allowed.
     action
         .identity_safety(&s.user_id, &s.project_id)
         .map_err(AppError::invalid)?;
     action.plugins().into_iter().try_for_each(plugin_enabled)?;
-    // Admin-dashboard writes (roadmap 85) and another project's quotas (roadmap
-    // 82): the token's role, not only the menu or the services' policy. A
+    // Admin-dashboard writes and another project's quotas: the
+    // token's role, not only the menu or the services' policy. A
     // rescope, so also in dry-run.
-    // `[ui] quota_edit` (roadmap 112) for the session's own quotas: `off` refuses
+    // `[ui] quota_edit` for the session's own quotas: `off` refuses
     // them, `admin` needs the role as above.
     let own_quotas_need_admin = quota_edit_gate(&action, &s.project_id, cfg().prefs.quota_edit)?;
     if action.admin_only() || action.other_projects_quotas(&s.project_id) || own_quotas_need_admin {
@@ -587,7 +587,7 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
     match apply(&mut x, &action).await {
         Ok(()) => {
             // Names may have changed (a renamed network, a new volume): the next
-            // page loads fetch the lookups again (roadmap 66). Dry-run changes nothing.
+            // page loads fetch the lookups again. Dry-run changes nothing.
             if mode == WriteMode::On {
                 crate::server::fetch::forget_lookups(&os::scoped_key(&s.token, &s.project_id, s.region.as_deref()))
                     .await;
@@ -616,7 +616,7 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
     }
 }
 
-/// *Create Image* › *File* with `[images] upload = direct` (roadmap 45): the URL and a
+/// *Create Image* › *File* with `[images] upload = direct`: the URL and a
 /// scoped token for one `PUT` of `bytes` straight to Glance. Only with `[writes] mode = on`.
 #[server]
 pub async fn get_image_upload_ticket(id: String, bytes: u64) -> Result<UploadTicket, AppError> {
@@ -755,7 +755,7 @@ pub async fn get_trunk(id: String) -> Result<Timed<TrunkRow>, AppError> {
     .await
 }
 
-/// Project › Network › Firewall › *Firewall Groups* (`firewall` plugin, roadmap 93).
+/// Project › Network › Firewall › *Firewall Groups* (`firewall` plugin).
 #[server(input = GetUrl)]
 pub async fn list_firewall_groups() -> Result<Timed<Vec<FirewallGroupRow>>, AppError> {
     plugin_enabled(Plugin::Firewall)?;
@@ -765,7 +765,7 @@ pub async fn list_firewall_groups() -> Result<Timed<Vec<FirewallGroupRow>>, AppE
     .await
 }
 
-/// Project › Network › Firewall › *Firewall Policies* (`firewall` plugin, roadmap 93).
+/// Project › Network › Firewall › *Firewall Policies* (`firewall` plugin).
 #[server(input = GetUrl)]
 pub async fn list_firewall_policies() -> Result<Timed<Vec<FirewallPolicyRow>>, AppError> {
     plugin_enabled(Plugin::Firewall)?;
@@ -775,7 +775,7 @@ pub async fn list_firewall_policies() -> Result<Timed<Vec<FirewallPolicyRow>>, A
     .await
 }
 
-/// Project › Network › Firewall › *Firewall Rules* (`firewall` plugin, roadmap 93).
+/// Project › Network › Firewall › *Firewall Rules* (`firewall` plugin).
 #[server(input = GetUrl)]
 pub async fn list_firewall_rules() -> Result<Timed<Vec<FirewallRuleRow>>, AppError> {
     plugin_enabled(Plugin::Firewall)?;
@@ -785,7 +785,7 @@ pub async fn list_firewall_rules() -> Result<Timed<Vec<FirewallRuleRow>>, AppErr
     .await
 }
 
-/// Firewall group detail page (`firewall` plugin, roadmap 93).
+/// Firewall group detail page (`firewall` plugin).
 #[server(input = GetUrl)]
 pub async fn get_firewall_group(id: String) -> Result<Timed<FirewallGroupRow>, AppError> {
     plugin_enabled(Plugin::Firewall)?;
@@ -795,7 +795,7 @@ pub async fn get_firewall_group(id: String) -> Result<Timed<FirewallGroupRow>, A
     .await
 }
 
-/// Firewall policy detail page (`firewall` plugin, roadmap 93).
+/// Firewall policy detail page (`firewall` plugin).
 #[server(input = GetUrl)]
 pub async fn get_firewall_policy(id: String) -> Result<Timed<FirewallPolicyDetail>, AppError> {
     plugin_enabled(Plugin::Firewall)?;
@@ -805,7 +805,7 @@ pub async fn get_firewall_policy(id: String) -> Result<Timed<FirewallPolicyDetai
     .await
 }
 
-/// Firewall rule detail page (`firewall` plugin, roadmap 93).
+/// Firewall rule detail page (`firewall` plugin).
 #[server(input = GetUrl)]
 pub async fn get_firewall_rule(id: String) -> Result<Timed<FirewallRuleRow>, AppError> {
     plugin_enabled(Plugin::Firewall)?;
@@ -835,7 +835,7 @@ pub async fn get_qos_policy(id: String) -> Result<Timed<QosPolicyRow>, AppError>
     .await
 }
 
-/// Key Manager › Secrets (`key-manager` plugin, roadmap 55): metadata only.
+/// Key Manager › Secrets (`key-manager` plugin): metadata only.
 #[server(input = GetUrl)]
 pub async fn list_secrets() -> Result<Timed<Vec<SecretRow>>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
@@ -860,7 +860,7 @@ pub async fn get_secret(id: String) -> Result<Timed<SecretDetail>, AppError> {
     .await
 }
 
-/// *Show Payload* (`[key_manager] allow_payload`, roadmap 55): the secret
+/// *Show Payload* (`[key_manager] allow_payload`): the secret
 /// material, on click only. A POST so no cache keeps it; never logged.
 #[server]
 pub async fn get_secret_payload(id: String) -> Result<SecretPayload, AppError> {
@@ -889,7 +889,7 @@ pub async fn list_containers() -> Result<Timed<Vec<ContainerRow>>, AppError> {
 }
 
 /// Container detail page (`key-manager` plugin): the container and its `read`
-/// ACL, editable by its creator or an admin (roadmap 75).
+/// ACL, editable by its creator or an admin.
 #[server(input = GetUrl)]
 pub async fn get_container(id: String) -> Result<Timed<ContainerDetail>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
@@ -906,21 +906,21 @@ pub async fn get_container(id: String) -> Result<Timed<ContainerDetail>, AppErro
     .await
 }
 
-/// Key Manager › Orders (`key-manager` plugin, roadmap 58).
+/// Key Manager › Orders (`key-manager` plugin).
 #[server(input = GetUrl)]
 pub async fn list_orders() -> Result<Timed<Vec<OrderRow>>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
     scoped("list_orders", |_, c| async move { fetch::orders(&c).await }).await
 }
 
-/// Order detail page (`key-manager` plugin, roadmap 58).
+/// Order detail page (`key-manager` plugin).
 #[server(input = GetUrl)]
 pub async fn get_order(id: String) -> Result<Timed<OrderRow>, AppError> {
     plugin_enabled(Plugin::KeyManager)?;
     scoped_id("get_order", id, |_, c, id| async move { fetch::order(&c, &id).await }).await
 }
 
-/// Orchestration › Stacks (`orchestration` plugin, roadmap 62).
+/// Orchestration › Stacks (`orchestration` plugin).
 #[server(input = GetUrl)]
 pub async fn list_stacks() -> Result<Timed<Vec<StackRow>>, AppError> {
     plugin_enabled(Plugin::Orchestration)?;
@@ -975,7 +975,7 @@ pub async fn get_template_functions(id: String) -> Result<Timed<Vec<TemplateFunc
     .await
 }
 
-/// Monitoring › Alarms (`alarming` plugin, roadmap 79): the project's Aodh alarms.
+/// Monitoring › Alarms (`alarming` plugin): the project's Aodh alarms.
 #[server(input = GetUrl)]
 pub async fn list_alarms() -> Result<Timed<Vec<AlarmRow>>, AppError> {
     plugin_enabled(Plugin::Alarming)?;
@@ -1076,7 +1076,7 @@ pub async fn get_snapshot(id: String) -> Result<Timed<Snapshot>, AppError> {
     .await
 }
 
-/// Project › Volumes › Backups (the `backup` plugin, roadmap 5).
+/// Project › Volumes › Backups (the `backup` plugin).
 #[server(input = GetUrl)]
 pub async fn list_backups() -> Result<Timed<Vec<BackupRow>>, AppError> {
     plugin_enabled(Plugin::Backup)?;
@@ -1090,7 +1090,7 @@ pub async fn get_backup(id: String) -> Result<Timed<BackupRow>, AppError> {
     scoped_id("get_backup", id, |_, c, id| async move { fetch::backup(&c, &id).await }).await
 }
 
-/// Project › Volumes › Groups (generic volume groups, roadmap 5).
+/// Project › Volumes › Groups (generic volume groups).
 #[server(input = GetUrl)]
 pub async fn list_volume_groups() -> Result<Timed<Vec<VolumeGroupRow>>, AppError> {
     scoped(
@@ -1109,7 +1109,7 @@ pub async fn get_volume_group(id: String) -> Result<Timed<VolumeGroupDetail>, Ap
     .await
 }
 
-/// Project › Volumes › Group Snapshots (roadmap 5).
+/// Project › Volumes › Group Snapshots.
 #[server(input = GetUrl)]
 pub async fn list_group_snapshots() -> Result<Timed<Vec<GroupSnapshotRow>>, AppError> {
     scoped("list_group_snapshots", |_, c| async move {
@@ -1138,13 +1138,13 @@ pub async fn get_image(id: String) -> Result<Timed<ImageDetail>, AppError> {
 }
 
 /// Whether the scoped token has the `admin` role: Horizon's split between the
-/// domain-wide Identity lists and the user's own (roadmap 57).
+/// domain-wide Identity lists and the user's own.
 #[cfg(feature = "ssr")]
 async fn is_admin(s: &session::Session, c: &openstack_sdk::AsyncOpenStack) -> bool {
     os::capabilities(s, c).await.roles.iter().any(|r| r == "admin")
 }
 
-/// `[ui] quota_edit` (roadmap 112) on a write: whether it holds a quota update of
+/// `[ui] quota_edit` on a write: whether it holds a quota update of
 /// the session's own project that needs the `admin` role (`admin`), or an error
 /// when such updates are off (`off`), whatever the button showed. Other actions,
 /// and another project's quotas (always admins), pass with `false`.
@@ -1163,7 +1163,7 @@ fn quota_edit_gate(action: &OsAction, session_project: &str, edit: crate::prefs:
     }
 }
 
-/// The Admin dashboard's gate (roadmap 85): the scoped token must carry the
+/// The Admin dashboard's gate: the scoped token must carry the
 /// `admin` role, read from the token itself (`needs::ADMIN` only hides the
 /// menu, and capability detection fails open). Before any OpenStack call.
 #[cfg(feature = "ssr")]
@@ -1233,7 +1233,7 @@ pub async fn list_metadef_namespaces() -> Result<Timed<Vec<MetadefNamespace>>, A
     .await
 }
 
-/// Admin › Metadata Definitions › a namespace (roadmap 89). Admins only.
+/// Admin › Metadata Definitions › a namespace. Admins only.
 #[server(input = GetUrl)]
 pub async fn get_metadef_namespace(namespace: String) -> Result<Timed<MetadefNamespaceDetail>, AppError> {
     scoped("get_metadef_namespace", |_s, c| async move {
@@ -1243,7 +1243,7 @@ pub async fn get_metadef_namespace(namespace: String) -> Result<Timed<MetadefNam
     .await
 }
 
-/// *Update Metadata*'s suggestions (roadmap 25): the Glance metadata catalog's properties for
+/// *Update Metadata*'s suggestions: the Glance metadata catalog's properties for
 /// `resource_type` (one of [`METADATA_RESOURCE_TYPES`]). Read-only; any project member.
 #[server(input = GetUrl)]
 pub async fn list_metadata_options(resource_type: String) -> Result<Timed<Vec<MetadataOption>>, AppError> {
@@ -1295,7 +1295,7 @@ pub async fn get_admin_aggregates() -> Result<Timed<Aggregates>, AppError> {
 }
 
 /// A whole list as a [`Page`] that isn't paged (`[ui] page_size = 0`): the page
-/// then shows its client-side table and search box, as before roadmap 88.
+/// then shows its client-side table and search box.
 #[cfg(feature = "ssr")]
 fn whole<T>(all: Timed<Vec<T>>) -> Timed<Page<T>> {
     Timed {
@@ -1312,7 +1312,7 @@ fn whole<T>(all: Timed<Vec<T>>) -> Timed<Page<T>> {
     }
 }
 
-/// `[admin] filter_first` (Horizon's `FILTER_DATA_FIRST`, roadmap 89): `list`
+/// `[admin] filter_first` (Horizon's `FILTER_DATA_FIRST`): `list`
 /// waits for a filter and `q` has none.
 #[cfg(feature = "ssr")]
 fn waits_for_filter(list: PagedList, q: &ListQuery) -> bool {
@@ -1337,7 +1337,7 @@ fn filter_first_page<T>(page_size: u32) -> Timed<Page<T>> {
 }
 
 /// Admin › Compute › Instances: every project's servers, one page of
-/// `[ui] page_size` filtered and sorted by `q` (roadmap 88); all of them when
+/// `[ui] page_size` filtered and sorted by `q`; all of them when
 /// paging is off. Admins only.
 #[server(input = GetUrl)]
 pub async fn list_admin_instances(q: ListQuery) -> Result<Timed<Page<Owned<Instance>>>, AppError> {
@@ -1353,7 +1353,7 @@ pub async fn list_admin_instances(q: ListQuery) -> Result<Timed<Page<Owned<Insta
     .await
 }
 
-/// *Count all* on a paged list (roadmap 88): how many rows match the filter `q`
+/// *Count all* on a paged list: how many rows match the filter `q`
 /// (its marker and sort are ignored), asked only on a click, since it costs what
 /// the whole list did before paging (`fetch::count_rows`). GETs only. An Admin
 /// list (`ListScope::Admin`) counts every project's rows and needs the role; a
@@ -1380,7 +1380,7 @@ pub async fn count_rows(list: PagedList, scope: ListScope, q: ListQuery) -> Resu
 }
 
 /// The images of a paged Instances page's boot-from-volume rows, as `(server ID,
-/// image name)`, from the volumes in their `boot_volume_ids` (roadmap 88). Called
+/// image name)`, from the volumes in their `boot_volume_ids`. Called
 /// after the table shows; at most `fetch::MAX_BOOT_VOLUMES` IDs. Plain
 /// `volumes/{id}` GETs with the session's token, so OpenStack decides which it may
 /// read: an admin's Admin › Instances, or a Project panel's own volumes.
@@ -1406,7 +1406,7 @@ pub async fn list_admin_flavors() -> Result<Timed<Vec<FlavorRow>>, AppError> {
 }
 
 /// Admin › Compute › Images: every project's images, one page of `[ui] page_size`
-/// filtered and sorted by `q` (roadmap 88); all of them when paging is off.
+/// filtered and sorted by `q`; all of them when paging is off.
 /// Admins only.
 #[server(input = GetUrl)]
 pub async fn list_admin_images(q: ListQuery) -> Result<Timed<Page<Owned<Image>>>, AppError> {
@@ -1422,7 +1422,7 @@ pub async fn list_admin_images(q: ListQuery) -> Result<Timed<Page<Owned<Image>>>
 }
 
 /// Admin › Volume › Volumes: every project's volumes, one page of `[ui] page_size`
-/// filtered and sorted by `q` (roadmap 88), with the total at volume 3.45; all of
+/// filtered and sorted by `q`, with the total at volume 3.45; all of
 /// them when paging is off. Admins only.
 #[server(input = GetUrl)]
 pub async fn list_admin_volumes(q: ListQuery) -> Result<Timed<Page<Owned<Volume>>>, AppError> {
@@ -1460,7 +1460,7 @@ pub async fn list_admin_snapshots(q: ListQuery) -> Result<Timed<Page<Owned<Snaps
 
 /// The names of servers or volumes a paged page points at (a volume's
 /// attachments, a floating IP's instance, a snapshot's volume and host), read after
-/// the table shows (roadmap 88): at most `fetch::MAX_LATE_NAMES` IDs, sent in
+/// the table shows: at most `fetch::MAX_LATE_NAMES` IDs, sent in
 /// chunks of [`BOOT_IMAGE_CHUNK`]. A resource that can't be read is left out.
 /// `servers/{id}` / `volumes/{id}` GETs with the session's token, so OpenStack
 /// decides which it may read (an admin's any, a member's its project's).
@@ -1557,7 +1557,7 @@ pub async fn list_admin_routers(q: ListQuery) -> Result<Timed<Page<Owned<RouterR
 }
 
 /// Admin › Network › Floating IPs: every project's, one page of `[ui] page_size`
-/// filtered and sorted by `q` (roadmap 88); all of them when paging is off.
+/// filtered and sorted by `q`; all of them when paging is off.
 /// Admins only.
 #[server(input = GetUrl)]
 pub async fn list_admin_floating_ips(q: ListQuery) -> Result<Timed<Page<Owned<FloatingIpRow>>>, AppError> {
@@ -1681,7 +1681,7 @@ pub async fn set_domain_context(id: Option<String>) -> Result<(), AppError> {
     s.domain_context = match id {
         None => None,
         Some(id) => {
-            // Pasted into the request path unencoded (roadmap 48).
+            // Pasted into the request path unencoded.
             check_id(&id)?;
             let c = os::scoped(&s).await?;
             Some(fetch::identity_domain_ref(&c, &id).await?)
@@ -1720,7 +1720,7 @@ pub async fn list_app_credentials() -> Result<Timed<Vec<AppCredential>>, AppErro
     .await
 }
 
-/// Server group detail page: policy, rules and members (roadmap 52).
+/// Server group detail page: policy, rules and members.
 #[server(input = GetUrl)]
 pub async fn get_server_group(id: String) -> Result<Timed<ServerGroupDetail>, AppError> {
     scoped_id("get_server_group", id, |_, c, id| async move {

@@ -1,3 +1,8 @@
+//! Shared UI pieces used by the pages: layout and navigation, `DataTable`, the dialog engine,
+//! the per-resource actions (`ops`), widgets, and the pure models behind the Heat and topology
+//! drawings. Compiled for both `ssr` and `hydrate`; writes leave only as `OsAction`s
+//! (AGENTS.md §1.2).
+
 pub mod assignment_rows;
 pub mod datetime;
 pub mod dialog;

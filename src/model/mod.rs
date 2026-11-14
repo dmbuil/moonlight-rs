@@ -73,7 +73,7 @@ pub struct SessionInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Capabilities (roadmap 19)
+// Capabilities
 // ---------------------------------------------------------------------------
 
 /// Optional panels that Horizon gets from plugins. Opt-in: only those listed in
@@ -88,13 +88,13 @@ pub enum Plugin {
     Qos,
     /// Neutron's `trunk` extension (Trunks panel).
     Trunk,
-    /// Barbican (Key Manager › Secrets, Containers; roadmap 55).
+    /// Barbican (Key Manager › Secrets, Containers;).
     KeyManager,
-    /// Aodh (Monitoring › Alarms; roadmap 79).
+    /// Aodh (Monitoring › Alarms;).
     Alarming,
-    /// Cinder backups (Volumes › Backups; Horizon's `enable_backup`, roadmap 5).
+    /// Cinder backups (Volumes › Backups; Horizon's `enable_backup`).
     Backup,
-    /// Neutron's `fwaas_v2` extension (Network › Firewall; neutron-fwaas-dashboard, roadmap 93).
+    /// Neutron's `fwaas_v2` extension (Network › Firewall; neutron-fwaas-dashboard).
     Firewall,
 }
 
@@ -158,7 +158,7 @@ pub struct Capabilities {
     #[serde(default)]
     pub multidomain: bool,
     /// Glance's enabled import methods (`GET /v2/info/import`: `web-download`,
-    /// `glance-direct`…). `None` when the call failed: the check then passes (roadmap 45).
+    /// `glance-direct`…). `None` when the call failed: the check then passes.
     #[serde(default)]
     pub image_import: Option<Vec<String>>,
 }
@@ -199,7 +199,7 @@ pub enum Requires {
     /// Enabled in `[plugins] enabled`: configuration, so checked even when
     /// detection failed (it does not fail open).
     Plugin(Plugin),
-    /// Glance has this import method enabled (`web-download`, roadmap 45). Fails open when
+    /// Glance has this import method enabled (`web-download`). Fails open when
     /// the list could not be read, like the microversions.
     ImageImport(&'static str),
     /// One of these roles on the scoped token. Neutron's policy can't be read
@@ -234,7 +234,7 @@ impl Requires {
     }
 
     /// Whether a role this needs is missing, as opposed to a service, version
-    /// or setting: the user is refused something the cloud has (roadmap 85).
+    /// or setting: the user is refused something the cloud has.
     pub fn lacks_role(&self, c: &Capabilities) -> bool {
         match *self {
             Requires::AnyRole(_) => !self.met(c),
@@ -263,16 +263,16 @@ pub mod needs {
     pub const VOLUME_MESSAGES: Requires = Requires::VolumeMv(3, 3);
     /// Volumes › Groups and Group Snapshots (generic volume groups). Cinder has
     /// them from 3.13/3.14; Horizon shows the panels from 3.27 (its `groups`
-    /// microversion feature), and so do we (roadmap 5).
+    /// microversion feature), and so do we.
     pub const VOLUME_GROUPS: Requires = Requires::VolumeMv(3, 27);
-    /// Listener timeouts (Octavia API 2.1, roadmap 54).
+    /// Listener timeouts (Octavia API 2.1).
     pub const LB_TIMEOUTS: Requires = Requires::LbMv(2, 1);
     /// `tls_enabled` on pools: re-encrypt to the members (Octavia 2.8).
     pub const LB_POOL_TLS: Requires = Requires::LbMv(2, 8);
     /// `allowed_cidrs` on listeners (Octavia 2.12).
     pub const LB_ALLOWED_CIDRS: Requires = Requires::LbMv(2, 12);
     /// `TERMINATED_HTTPS` listeners: certificates come from Barbican, so the
-    /// `key-manager` plugin is on and the service is in the catalog (roadmap 54).
+    /// `key-manager` plugin is on and the service is in the catalog.
     pub const LB_TLS_TERMINATION: Requires = KEY_MANAGER;
     /// `tls_ciphers` on pools and listeners (Octavia 2.15).
     pub const LB_POOL_CIPHERS: Requires = Requires::LbMv(2, 15);
@@ -298,20 +298,20 @@ pub mod needs {
         Requires::NetExt("qos"),
         Requires::NetExt("qos-fip"),
     ]);
-    /// Key Manager panels (Barbican, roadmap 55).
+    /// Key Manager panels (Barbican).
     pub const KEY_MANAGER: Requires = Requires::All(&[
         Requires::Plugin(super::Plugin::KeyManager),
         Requires::Service("key-manager"),
     ]);
-    /// Orchestration panels (Heat, roadmap 62).
+    /// Orchestration panels (Heat).
     pub const ORCHESTRATION: Requires = Requires::All(&[
         Requires::Plugin(super::Plugin::Orchestration),
         Requires::Service("orchestration"),
     ]);
-    /// Monitoring › Alarms (Aodh, roadmap 79).
+    /// Monitoring › Alarms (Aodh).
     pub const ALARMING: Requires =
         Requires::All(&[Requires::Plugin(super::Plugin::Alarming), Requires::Service("alarming")]);
-    /// Volumes › Backups (Cinder's backup service, roadmap 5). The catalog only says
+    /// Volumes › Backups (Cinder's backup service). The catalog only says
     /// Cinder exists, not that `cinder-backup` runs: a missing service shows as
     /// an error on *Create Backup*, like in Horizon.
     pub const BACKUP: Requires = Requires::All(&[
@@ -320,21 +320,21 @@ pub mod needs {
     ]);
     /// Trunks panel.
     pub const TRUNK: Requires = Requires::All(&[Requires::Plugin(super::Plugin::Trunk), Requires::NetExt("trunk")]);
-    /// Network › Firewall (FWaaS v2, roadmap 93).
+    /// Network › Firewall (FWaaS v2).
     pub const FIREWALL: Requires =
         Requires::All(&[Requires::Plugin(super::Plugin::Firewall), Requires::NetExt("fwaas_v2")]);
     /// `dns_name` / `dns_domain` on floating IPs and ports.
     pub const DNS: Requires = Requires::NetExt("dns-integration");
     /// Making an image `public`: Glance's default policy `publicize_image` is admin only.
     pub const PUBLICIZE_IMAGE: Requires = Requires::AnyRole(&["admin"]);
-    /// *Create Image* › *URL*: without `web-download` Glance rejects the import (roadmap 45).
+    /// *Create Image* › *URL*: without `web-download` Glance rejects the import.
     pub const IMAGE_URL_IMPORT: Requires = Requires::ImageImport("web-download");
     /// `POST /servers/{id}/remote-consoles`; older clouds get `os-getVNCConsole`.
     pub const REMOTE_CONSOLE: Requires = Requires::ComputeMv(2, 6);
     /// `enable_snat` on a router gateway: `ext-gw-mode`, and Neutron's default
     /// policy `update_router:external_gateway_info:enable_snat` is admin only.
     pub const SNAT: Requires = Requires::All(&[Requires::NetExt("ext-gw-mode"), Requires::AnyRole(&["admin"])]);
-    /// Identity › Groups and Roles (roadmap 57). Horizon shows them when its
+    /// Identity › Groups and Roles. Horizon shows them when its
     /// bundled Keystone policy passes `identity:list_groups` / `list_roles`,
     /// which with a project-scoped token means the `admin` role.
     pub const IDENTITY_ADMIN: Requires = Requires::AnyRole(&["admin"]);
@@ -345,7 +345,7 @@ pub mod needs {
     pub const PORT_BINDING: Requires = Requires::NetExt("binding");
     /// *Port Security* in *Edit Port* (`port_security_enabled`).
     pub const PORT_SECURITY: Requires = Requires::NetExt("port-security");
-    /// The Admin dashboard (roadmap 85): Horizon shows it to the `admin` role.
+    /// The Admin dashboard: Horizon shows it to the `admin` role.
     /// The menu only; every admin server function checks the token itself.
     pub const ADMIN: Requires = Requires::AnyRole(&["admin"]);
     /// Admin › System Information › *Network Agents*: Neutron's `agent` extension.
@@ -370,6 +370,8 @@ pub mod needs {
     /// A target host in *Migrate Instance* (compute 2.56); without, the
     /// scheduler picks one.
     pub const MIGRATE_HOST: Requires = Requires::ComputeMv(2, 56);
+    /// *HA Mode* on a new router and the router's HA column: Neutron's `l3-ha`; like `dvr`, its
+    /// default policy (`create_router:ha`) is admin only.
     pub const L3_HA: Requires = Requires::All(&[Requires::NetExt("l3-ha"), Requires::AnyRole(&["admin"])]);
 }
 
@@ -395,9 +397,9 @@ pub enum ErrorKind {
     /// The request was rejected before reaching OpenStack (validation).
     Invalid,
     /// Too many failed sign-ins: `login` refuses without asking Keystone
-    /// for a while (`[login] max_failures`, roadmap 50).
+    /// for a while (`[login] max_failures`).
     TooManyAttempts,
-    /// A full list has more items than `[ui] max_list_items` allows (roadmap 104).
+    /// A full list has more items than `[ui] max_list_items` allows.
     TooLarge,
     Internal,
 }
@@ -471,7 +473,7 @@ pub struct Timed<T> {
     pub calls: u32,
 }
 
-// --- Paged lists (roadmap 88) ------------------------------------------------------
+// --- Paged lists ------------------------------------------------------
 
 /// Which page of a paged list to load, and how it is filtered and sorted. Flat
 /// (no tuples) because server functions encode their arguments in the URL. It
@@ -512,13 +514,13 @@ pub struct Page<T> {
     /// Rows per page that was asked for; `0` when not paged.
     #[serde(default)]
     pub page_size: u32,
-    /// `[admin] filter_first` (roadmap 89): empty because no filter was given;
+    /// `[admin] filter_first`: empty because no filter was given;
     /// OpenStack was not asked.
     #[serde(default)]
     pub needs_filter: bool,
 }
 
-/// What *Count all* found (roadmap 88): the rows matching a paged list's filter.
+/// What *Count all* found: the rows matching a paged list's filter.
 /// `more` = the count stopped early (`fetch::MAX_COUNT_PAGES` requests, or its
 /// time budget), so there are at least `count`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -537,7 +539,7 @@ pub enum FilterKind {
     Exact,
     /// A resource picked by name from a choice set; the value sent is its ID.
     /// `AllProjects` for projects; `Flavors` and `Images` for Nova's `flavor` and
-    /// `image` filters, which take IDs only (a typed name found nothing, roadmap 88).
+    /// `image` filters, which take IDs only (a typed name found nothing).
     Pick(ChoiceSet),
     /// One of the API's values, e.g. a status.
     Choice(&'static [&'static str]),
@@ -567,6 +569,7 @@ pub enum SortStyle {
     Colon,
 }
 
+/// Nova's server statuses offered by the instance filter bar's *Status* (the API's upper case).
 const SERVER_STATUSES: &[&str] = &[
     "ACTIVE",
     "BUILD",
@@ -583,6 +586,7 @@ const SERVER_STATUSES: &[&str] = &[
     "REBUILD",
 ];
 
+/// Shorthand for a [`FilterDef`] in the tables below (a `const fn`, so they stay `const`).
 const fn filter(key: &'static str, param: &'static str, kind: FilterKind) -> FilterDef {
     FilterDef { key, param, kind }
 }
@@ -677,6 +681,7 @@ const NETWORK_FILTERS: &[FilterDef] = &[
     filter("external", "router:external", FilterKind::Choice(&["true", "false"])),
 ];
 
+/// Neutron matches whole values; `status` is one of a router's four.
 const ROUTER_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
@@ -750,6 +755,7 @@ const VOLUME_GROUP_FILTERS: &[FilterDef] = &[
     ),
 ];
 
+/// Cinder's group snapshots, matched whole like the groups.
 const GROUP_SNAPSHOT_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
@@ -772,7 +778,7 @@ const NEUTRON_SORTS: &[SortDef] = &[
     },
 ];
 
-/// The big lists that load one page at a time (roadmap 88).
+/// The big lists that load one page at a time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PagedList {
     /// Admin › Compute › Instances (Nova `servers/detail?all_tenants`).
@@ -798,7 +804,7 @@ pub enum PagedList {
 }
 
 impl PagedList {
-    /// The name `[admin] filter_first` uses for it (roadmap 89).
+    /// The name `[admin] filter_first` uses for it.
     pub const KEYS: &[(&str, PagedList)] = &[
         ("instances", PagedList::Instances),
         ("volumes", PagedList::Volumes),
@@ -813,8 +819,8 @@ impl PagedList {
     ];
 }
 
-/// Whose rows a paged list shows (roadmap 88): an Admin panel's, every project's;
-/// a Project panel's (`[ui] paged_lists = "all"`, slice E), the session project's.
+/// Whose rows a paged list shows: an Admin panel's, every project's;
+/// a Project panel's (`[ui] paged_lists = "all"`), the session project's.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ListScope {
     #[default]
@@ -867,7 +873,7 @@ impl PagedList {
                 },
                 // Not `host`: the test cloud's Nova answers `sort_key=host` with HTTP 500
                 // (multi-cell listings merge the cells' rows in Python, and a server with no
-                // host can't be compared); its header sorts the page instead (roadmap 88).
+                // host can't be compared); its header sorts the page instead.
                 SortDef {
                     key: "status",
                     param: "vm_state",
@@ -892,7 +898,7 @@ impl PagedList {
                 },
             ],
             // No `size`: a snapshot's column is `volume_size`, and Cinder refuses
-            // `sort=size` on snapshots with HTTP 400 (seen on the test cloud, roadmap 88).
+            // `sort=size` on snapshots with HTTP 400 (seen on the test cloud).
             PagedList::Snapshots => &[
                 SortDef {
                     key: "name",
@@ -1001,7 +1007,7 @@ impl PagedList {
     }
 }
 
-/// Refuses a value that would change the URL it is pasted into (roadmap 48):
+/// Refuses a value that would change the URL it is pasted into:
 /// the SDK and our JSON requests build paths with `format!("servers/{id}")`,
 /// unencoded, so `/`, `..`, `?` or `#` would reach another endpoint of the same
 /// service, past Moonlight's own gates. OpenStack IDs (UUIDs) and names never

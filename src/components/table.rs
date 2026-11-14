@@ -1,5 +1,5 @@
 //! A generic, client-side filterable and sortable table, with Horizon's
-//! "Displaying N items" header and footer. On a server-paged list (roadmap 88)
+//! "Displaying N items" header and footer. On a server-paged list
 //! the columns the API can sort by sort on the server instead ([`ServerSort`]).
 
 use std::sync::Arc;
@@ -16,7 +16,9 @@ pub enum SortKey {
     Text(String),
 }
 
+/// Renders a row's cell in the given language.
 type CellFn<T> = Arc<dyn Fn(&T, Lang) -> AnyView + Send + Sync>;
+/// A row's sort key for a column.
 type SortFn<T> = Arc<dyn Fn(&T) -> SortKey + Send + Sync>;
 
 /// One column of a [`DataTable`]: header, cell renderer, and optionally a sort key,
@@ -29,7 +31,7 @@ pub struct Col<T> {
     /// Shown only when the cloud offers it (e.g. a Neutron extension).
     pub requires: Requires,
     /// Neutral sort key (`model::SortDef::key`) of this column on a server-paged
-    /// list; used only when the table's [`ServerSort`] lists it (roadmap 88).
+    /// list; used only when the table's [`ServerSort`] lists it.
     pub server: Option<&'static str>,
 }
 
@@ -46,7 +48,7 @@ impl<T> Clone for Col<T> {
     }
 }
 
-/// How a server-paged table sorts on the server (roadmap 88): the neutral keys
+/// How a server-paged table sorts on the server: the neutral keys
 /// the API sorts by, the URL's current sort (`(key, descending)`) and what a
 /// header click asks for (`None` = the API's default order).
 #[derive(Clone)]
@@ -102,7 +104,7 @@ impl<T> Col<T> {
         self.class = c;
         self
     }
-    /// Hidden when the cloud lacks `r` (roadmap 19).
+    /// Hidden when the cloud lacks `r`.
     pub fn requires(mut self, r: Requires) -> Self {
         self.requires = r;
         self
@@ -155,7 +157,7 @@ pub fn retain_present(picked: &mut Vec<(String, String)>, present: &[&str]) -> b
     picked.len() != before
 }
 
-/// Renders the drawer opened under a row (roadmap 56).
+/// Renders the drawer opened under a row.
 pub type DrawerFn<T> = fn(&T, Lang) -> AnyView;
 
 /// Opens or closes the drawer of the row with key `k` (its [`row_keys`] entry,
@@ -176,7 +178,7 @@ pub fn retain_visible<K: PartialEq>(open: &mut Vec<K>, visible: &[K]) -> bool {
     open.len() != before
 }
 
-/// A stable key per row (roadmap 103), for the keyed `<For>` and the open
+/// A stable key per row, for the keyed `<For>` and the open
 /// drawers: the row's ID when it has one (`ids[i]`), else its search text. A
 /// repeated key gets `#2`, `#3`… so every key is unique, as `<For>` needs.
 pub fn row_keys(ids: &[Option<String>], haystacks: &[String]) -> Vec<String> {
@@ -192,14 +194,14 @@ pub fn row_keys(ids: &[Option<String>], haystacks: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// What a table remembers when it is rebuilt (roadmap 103): every refetch (a
+/// What a table remembers when it is rebuilt: every refetch (a
 /// dialog's `data_version` bump, a polling round) renders the page's
 /// `DataTable` anew, and with state of its own the filter, sort and open
 /// drawers were lost each time. Reference-counted signals, so they outlive the
 /// table that uses them and go away with the map entry.
 #[derive(Clone)]
 struct TableState {
-    /// What the filter box shows; `filter` follows it after [`FILTER_DEBOUNCE_MS`].
+    /// What the filter box shows; `filter` follows it after `FILTER_DEBOUNCE_MS`.
     typed: ArcRwSignal<String>,
     filter: ArcRwSignal<String>,
     sort: ArcRwSignal<Option<(usize, bool)>>,
@@ -208,6 +210,7 @@ struct TableState {
 }
 
 impl TableState {
+    /// An empty filter, no sort, no drawer open.
     fn new() -> Self {
         TableState {
             typed: ArcRwSignal::new(String::new()),
@@ -225,10 +228,14 @@ impl TableState {
 pub struct TableStates(Arc<std::sync::Mutex<std::collections::HashMap<String, TableState>>>);
 
 impl TableStates {
+    /// Provides the empty map as context (once, in `Layout`).
     pub fn provide() {
         provide_context(TableStates::default());
     }
 
+    /// The state of table `key` on page `path`, created on first use; the states of other pages are
+    /// dropped here, which is how leaving a page forgets them. A poisoned lock is taken over (the
+    /// map holds only UI state).
     fn get(&self, path: &str, key: String) -> TableState {
         let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let prefix = format!("{path}#");
@@ -245,7 +252,7 @@ pub fn table_key(path: &str, search: usize, headers: &[K]) -> String {
 }
 
 /// How long the filter box waits after the last keystroke before filtering
-/// (roadmap 103), so typing in a long list stays smooth.
+///, so typing in a long list stays smooth.
 #[cfg(feature = "hydrate")]
 const FILTER_DEBOUNCE_MS: u64 = 150;
 
@@ -266,6 +273,9 @@ pub fn visible_rows(haystacks: &[String], keys: Option<&[SortKey]>, query: &str,
     idx
 }
 
+/// The list table of every panel: toolbar (filter, count, refresh, timing), sortable headers,
+/// optional checkboxes and drawers, and Horizon's *Displaying N items* line. Its filter, sort and
+/// open drawers live in `TableStates`, so a refetch that rebuilds it keeps them.
 #[component]
 pub fn DataTable<T>(
     rows: Vec<T>,
@@ -287,7 +297,7 @@ pub fn DataTable<T>(
     /// (the table is rebuilt) and when the filter hides their row.
     #[prop(default = None)]
     drawer: Option<DrawerFn<T>>,
-    /// A server-paged list (roadmap 88): the rows are one page and the page's filter
+    /// A server-paged list: the rows are one page and the page's filter
     /// bar (in `extra`) searches every record on the server, so the client-side
     /// search box, which would only see this page, is not drawn.
     #[prop(optional)]
@@ -323,7 +333,7 @@ where
         keys.iter().map(|k| k.as_ref().map(|(id, _)| id.clone())).collect()
     };
     let row_keys = StoredValue::new(row_keys(&ids, &haystacks));
-    // Filter, sort and open drawers survive the rebuild a refetch causes (roadmap 103).
+    // Filter, sort and open drawers survive the rebuild a refetch causes.
     let state = use_context::<TableStates>()
         .map(|st| {
             let path = leptos_router::hooks::use_location().pathname.get_untracked();
@@ -492,7 +502,7 @@ where
         })
     };
 
-    // Keyed rows (roadmap 103): a filter keystroke or a sort moves, adds or drops rows instead
+    // Keyed rows: a filter keystroke or a sort moves, adds or drops rows instead
     // of rebuilding every one. The language is part of the key, so switching it redraws them.
     let empty = Memo::new(move |_| visible.with(Vec::is_empty));
     let stored = rows;
@@ -761,7 +771,7 @@ mod tests {
         assert!(open.is_empty());
     }
 
-    /// Roadmap 103: a drawer follows its row's key, so a refetch that reorders or
+    /// A drawer follows its row's key, so a refetch that reorders or
     /// adds rows keeps the same row open.
     #[test]
     fn row_keys_use_the_id_and_stay_unique() {

@@ -18,6 +18,9 @@ use crate::components::widgets::{Copyable, Skeleton, dash, render, short_time};
 use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
+/// Floating IP detail (`/project/floating_ips/:id`): *Overview* and, with
+/// `floating-ip-port-forwarding`, a *Port Forwarding* tab, opened directly by `?tab=forwarding`
+/// (the row menu's *Port Forwarding Rules*).
 #[component]
 pub fn FloatingIpDetailPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -54,6 +57,7 @@ pub fn FloatingIpDetailPage() -> impl IntoView {
     }
 }
 
+/// *Overview*: *Information* and *Mapped Fixed IP* (instance, fixed IP, port, router).
 fn overview(d: FloatingIpDetail) -> impl IntoView {
     let i18n = use_i18n();
     let status = d.row.status.clone();
@@ -95,6 +99,8 @@ fn overview(d: FloatingIpDetail) -> impl IntoView {
     }
 }
 
+/// *Port Forwarding*: the rules and each rule's menu. *Add Rule* only while the address is not
+/// associated with a port, which Neutron refuses; a note says so instead.
 fn rules(d: FloatingIpDetail) -> impl IntoView {
     let i18n = use_i18n();
     let fip = d.row.id.clone();

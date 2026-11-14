@@ -13,7 +13,7 @@ pub(super) fn invalid(lang: Lang, e: String) -> String {
     format!("{}: {e}", t(lang, K::InvalidSettings))
 }
 
-/// A listener's *Advanced* options (roadmap 54) behind one check box, as
+/// A listener's *Advanced* options behind one check box, as
 /// octavia-dashboard has them: each only when the cloud's Octavia has it
 /// (`needs::LB_*`). `headers_if`: when *Insert Headers* shows (HTTP listeners),
 /// `None` for none. `when`: the condition of the check box itself (the wizard's
@@ -93,7 +93,7 @@ pub(super) fn listener_option_fields(
                 .when("lb_advanced", "true"),
         );
     }
-    // `TERMINATED_HTTPS` listeners only (roadmap 54); named apart from the pool's
+    // `TERMINATED_HTTPS` listeners only; named apart from the pool's
     // field, both being in the wizard.
     if let Some(cond) = ciphers_if.filter(|_| needs::LB_POOL_CIPHERS.met(&c)) {
         fields.push(
@@ -108,7 +108,7 @@ pub(super) fn listener_option_fields(
 }
 
 /// Listener protocols for a new listener: `TERMINATED_HTTPS` too when the
-/// `key-manager` plugin is on and Barbican is in the catalog (roadmap 54).
+/// `key-manager` plugin is on and Barbican is in the catalog.
 pub(super) fn listener_protocols() -> Source {
     let mut p = LB_PROTOCOLS.to_vec();
     if needs::LB_TLS_TERMINATION.met(&caps()) {
@@ -117,8 +117,8 @@ pub(super) fn listener_protocols() -> Source {
     options_raw(&p)
 }
 
-/// A `TERMINATED_HTTPS` listener's certificate and SNI certificates (roadmap
-/// 54), from `ChoiceSet::LbCertificates`. `tls_if`: when they show (the new
+/// A `TERMINATED_HTTPS` listener's certificate and SNI certificates,
+/// from `ChoiceSet::LbCertificates`. `tls_if`: when they show (the new
 /// listener's protocol); `None` on an edit, which only offers them for such a
 /// listener.
 pub(super) fn listener_certificate_fields(
@@ -154,14 +154,17 @@ fn wizard_tls(v: &Vals) -> bool {
     v.get("listener_protocol").map(String::as_str) == Some(LB_TLS_PROTOCOL)
 }
 
+/// The wizard's new listener inserts headers (`HTTP` or `TERMINATED_HTTPS`).
 fn wizard_headers(v: &Vals) -> bool {
     v.get("listener_protocol").is_some_and(|p| lb_inserts_headers(p))
 }
 
+/// *Create Listener*'s protocol is `TERMINATED_HTTPS`: the certificate fields show.
 pub(super) fn dialog_tls(v: &Vals) -> bool {
     v.get("protocol").map(String::as_str) == Some(LB_TLS_PROTOCOL)
 }
 
+/// *Create Listener*'s protocol inserts headers: the *Insert Headers* fields show.
 pub(super) fn dialog_headers(v: &Vals) -> bool {
     v.get("protocol").is_some_and(|p| lb_inserts_headers(p))
 }
@@ -183,7 +186,7 @@ pub(super) fn listener_options_of(v: &Values, lang: Lang) -> Result<Option<LbLis
     }))
 }
 
-/// *TLS Enabled* and *TLS Cipher String* of a pool (roadmap 54), when the
+/// *TLS Enabled* and *TLS Cipher String* of a pool, when the
 /// cloud's Octavia has them (2.8, 2.15).
 pub(super) fn pool_tls_fields(
     lang: Lang,
@@ -227,8 +230,8 @@ pub(super) fn pool_tls_of(v: &Values) -> Option<(bool, Option<String>)> {
 }
 
 /// Moves a listener's port between 80 and 443 when its protocol changes to or
-/// from HTTPS / TERMINATED_HTTPS, unless the user typed another port (roadmap 54;
-/// octavia-dashboard leaves the port empty instead).
+/// from HTTPS / TERMINATED_HTTPS, unless the user typed another port
+/// (octavia-dashboard leaves the port empty instead).
 pub(super) fn suggest_port(changed: &str, v: &mut Vals, protocol: &str, port: &str) {
     if changed != protocol {
         return;
@@ -242,18 +245,23 @@ pub(super) fn suggest_port(changed: &str, v: &mut Vals, protocol: &str, port: &s
     v.insert(port.to_string(), next.to_string());
 }
 
-/// An *Admin State Up* box of a create form (roadmap 54): on unless shown
+/// An *Admin State Up* box of a create form: on unless shown
 /// and unticked, so a form without it creates the resource up.
 fn admin_up_of(v: &Values, k: &str) -> bool {
     !v.0.contains_key(k) || v.flag(k)
 }
 
+/// Session persistence and its cookie name; the cookie only with `APP_COOKIE` (Octavia refuses it
+/// otherwise), so a hidden field's leftover is not sent.
 pub(super) fn persistence_of(v: &Values) -> (Option<String>, Option<String>) {
     let kind = v.opt("persistence");
     let cookie = v.opt("cookie_name").filter(|_| kind.as_deref() == Some("APP_COOKIE"));
     (kind, cookie)
 }
 
+/// The health monitor of [`monitor_fields`], of type `kind`, with defaults for empty fields (delay
+/// and timeout 5 s, 3 retries); the HTTP fields only for `HTTP`/`HTTPS` types, so hidden leftovers
+/// are not sent.
 pub(super) fn monitor_spec(v: &Values, lang: Lang, kind: String) -> Result<LbMonitorSpec, String> {
     let http = kind.starts_with("HTTP");
     let retries = |k: &str, label| -> Result<Option<u8>, String> {
@@ -278,6 +286,8 @@ pub(super) fn monitor_spec(v: &Values, lang: Lang, kind: String) -> Result<LbMon
     })
 }
 
+/// The health monitor fields of the *Create Load Balancer* wizard (shown under `when`), *Create
+/// Health Monitor* and, with `m`, *Edit Health Monitor*, where the type is fixed and prefilled.
 pub(super) fn monitor_fields(
     lang: Lang,
     when: Option<(&'static str, &'static str)>,
@@ -333,7 +343,7 @@ pub(super) fn monitor_fields(
             .value(m.and_then(|m| m.expected_codes.clone()).unwrap_or_else(|| "200".into()))
             .help(tr(K::ExpectedCodesHelp))),
     ]);
-    // A new monitor; an edit has its own *Enable Admin State* box (roadmap 54).
+    // A new monitor; an edit has its own *Enable Admin State* box.
     if m.is_none() {
         out.push(w(Field::check("monitor_admin_up", tr(K::EnableAdminState), true)));
     }
@@ -356,7 +366,7 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
         Field::select("vip_subnet", tr(K::Subnet), Source::Set(ChoiceSet::LbVipSubnets)).required(),
         Field::text("vip_address", tr(K::IpAddress)).help(tr(K::VipAddressHelp)),
         Field::select("flavor", tr(K::Flavor), Source::Set(ChoiceSet::LbFlavors)),
-        // octavia-dashboard's details step (roadmap 54); empty = the cloud's default.
+        // octavia-dashboard's details step; empty = the cloud's default.
         Field::select(
             "lb_az",
             tr(K::AvailabilityZone),
@@ -373,7 +383,7 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
             .required()
             .when("with_listener", "true"),
     ];
-    // Right after the port, as in octavia-dashboard's listener form (roadmap 54).
+    // Right after the port, as in octavia-dashboard's listener form.
     fields.extend(
         listener_certificate_fields(lang, None, Some(wizard_tls))
             .into_iter()
@@ -407,7 +417,7 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
         Field::select("persistence", tr(K::SessionPersistence), options_raw(&LB_PERSISTENCE)).when("with_pool", "true"),
         Field::text("cookie_name", tr(K::CookieName)).when("persistence", "APP_COOKIE"),
         Field::check("pool_admin_up", tr(K::EnableAdminState), true).when("with_pool", "true"),
-        // One row per member, new rows on the listener's port (roadmap 54).
+        // One row per member, new rows on the listener's port.
         Field::member_rows("members", tr(K::Members), &[], Some("listener_port"), vec![]).when("with_pool", "true"),
         Field::yes_no("with_monitor", tr(K::CreateHealthMonitor), true).when("with_pool", "true"),
     ]);
@@ -565,6 +575,8 @@ pub fn load_balancer_detail_items(lang: Lang, d: &LoadBalancerDetail) -> Vec<Men
     load_balancer_menu(lang, &d.row, Some(d))
 }
 
+/// The load balancer's menu, shared by the row and the detail header; `d` (the detail page) adds
+/// the entries that need its listeners and pools.
 fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDetail>) -> Vec<MenuItem> {
     let mut items = Vec::new();
     let (i, n, desc, up) = (
@@ -720,7 +732,7 @@ mod tests {
         assert_eq!(
             (ext.address.as_str(), ext.port, ext.weight, ext.backup, ext.monitor_port),
             ("192.0.2.10", 9443, None, true, Some(9000)),
-            "an external member with its own port (roadmap 54)"
+            "an external member with its own port"
         );
         assert!(ext.admin_up, "a row without admin state is enabled");
         let mut twice = full.clone();
@@ -753,7 +765,7 @@ mod tests {
         );
     }
 
-    /// Roadmap 54: TLS listeners move the default port to 443 and back, but a
+    /// TLS listeners move the default port to 443 and back, but a
     /// typed port stays.
     #[test]
     fn the_port_follows_the_protocol_until_typed() {

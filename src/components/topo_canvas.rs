@@ -115,6 +115,8 @@ pub fn Canvas(
     }
 }
 
+/// Whether the element's rectangle (`x, y, w, h`) has a size, i.e. the browser has laid it out
+/// (a hidden tab measures 0 × 0).
 fn laid_out(rect: Option<(f64, f64, f64, f64)>) -> bool {
     rect.is_some_and(|(_, _, w, h)| w > 0.0 && h > 0.0)
 }

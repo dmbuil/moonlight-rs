@@ -1,8 +1,8 @@
-//! Admin writes (roadmap 85): quotas, metadata definitions, flavors, aggregates, compute services, instance migration.
+//! Admin writes: quotas, metadata definitions, flavors, aggregates, compute services, instance migration.
 
 use super::*;
 
-/// *Edit Quotas* (roadmap 82): the changed limits of one service. JSON, not
+/// *Edit Quotas*: the changed limits of one service. JSON, not
 /// the typed `quota_set::set_*` builders: their fields are fixed per release,
 /// and only `values` (each a key of `service.keys()`) is sent. Nova gets no
 /// microversion, so the keys 2.57 dropped (`injected_files`…) are accepted.
@@ -123,7 +123,6 @@ fn nova_action(id: &str, body: Value, microversion: Option<&'static str>) -> R<J
     Ok(r)
 }
 
-/// `addTenantAccess` / `removeTenantAccess` of a flavor, one action per project.
 /// *Create Flavor*'s `POST /flavors`, its values checked (Horizon: a flavor
 /// given to projects is private; `auto` or no ID lets Nova pick one).
 fn flavor_request(spec: &FlavorSpec) -> R<openstack_sdk::api::compute::v2::flavor::create_21::Request<'_>> {
@@ -156,6 +155,7 @@ fn flavor_request(spec: &FlavorSpec) -> R<openstack_sdk::api::compute::v2::flavo
         .map_err(build_err)
 }
 
+/// `addTenantAccess` / `removeTenantAccess` of a flavor, one action per project.
 async fn flavor_access(x: &mut Exec<'_>, id: &str, add: &[String], remove: &[String]) -> R<()> {
     use openstack_sdk::api::compute::v2::flavor::{add_tenant_access as a, remove_tenant_access as r};
     for p in add {
@@ -225,6 +225,8 @@ fn at_least_zero(n: i64, field: &str) -> R<i32> {
         .ok_or_else(|| AppError::invalid(format!("{field} can't be negative")))
 }
 
+/// `MetadefNamespaceImport`: Glance `POST /metadefs/namespaces` with the whole definition
+/// (properties, objects, resource type associations), as Horizon's *Import Namespace*.
 pub(super) async fn metadef_namespace_import(
     x: &mut Exec<'_>,
     definition: &str,
@@ -237,6 +239,8 @@ pub(super) async fn metadef_namespace_import(
     Ok(())
 }
 
+/// `MetadefNamespaceUpdate`: Glance `PUT /metadefs/namespaces/{id}`. The body repeats
+/// `namespace` (Glance requires it); unset display name and description are left out.
 pub(super) async fn metadef_namespace_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -262,12 +266,15 @@ pub(super) async fn metadef_namespace_update(
     Ok(())
 }
 
+/// `MetadefNamespaceDelete`: Glance `DELETE /metadefs/namespaces/{id}`.
 pub(super) async fn metadef_namespace_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(metadef(http::Method::DELETE, format!("metadefs/namespaces/{id}"), None))
         .await?;
     Ok(())
 }
 
+/// `MetadefNamespaceSetTypes`: one `DELETE …/resource_types/{name}` per removed
+/// association, then one `POST …/resource_types` per added one (with its prefix, if any).
 pub(super) async fn metadef_namespace_set_types(
     x: &mut Exec<'_>,
     id: &str,
@@ -302,12 +309,17 @@ pub(super) async fn metadef_namespace_set_types(
     Ok(())
 }
 
+/// `FlavorCreate`: Nova `POST /flavors`, then `addTenantAccess` for each project it is
+/// given to.
 pub(super) async fn flavor_create(x: &mut Exec<'_>, spec: &FlavorSpec) -> R<()> {
     let id = x.create(flavor_request(spec)?, "flavor").await?;
     flavor_access(x, &id, &spec.projects, &[]).await?;
     Ok(())
 }
 
+/// `FlavorReplace`: Nova flavors are immutable, so *Edit Flavor* (as in Horizon) deletes
+/// it and creates it again with the same ID, then restores its extra specs and access.
+/// Everything is validated before the `DELETE`.
 pub(super) async fn flavor_replace(x: &mut Exec<'_>, spec: &FlavorSpec, extra_specs: &[(String, String)]) -> R<()> {
     use openstack_sdk::api::compute::v2::flavor::{delete as del, extra_spec::create as ex};
     let id = opt(&spec.flavor_id)
@@ -334,12 +346,15 @@ pub(super) async fn flavor_replace(x: &mut Exec<'_>, spec: &FlavorSpec, extra_sp
     Ok(())
 }
 
+/// `FlavorDelete`: Nova `DELETE /flavors/{id}`.
 pub(super) async fn flavor_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::flavor::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `FlavorSetExtraSpecs`: `POST /flavors/{id}/os-extra_specs` with the set keys, then one
+/// `DELETE …/os-extra_specs/{key}` per removed key.
 pub(super) async fn flavor_set_extra_specs(
     x: &mut Exec<'_>,
     id: &str,
@@ -375,6 +390,7 @@ pub(super) async fn flavor_set_extra_specs(
     Ok(())
 }
 
+/// `FlavorSetAccess`: `addTenantAccess` / `removeTenantAccess` per project.
 pub(super) async fn flavor_set_access(x: &mut Exec<'_>, id: &str, add: &[String], remove: &[String]) -> R<()> {
     if add.is_empty() && remove.is_empty() {
         return Err(AppError::invalid("nothing changed"));
@@ -383,6 +399,7 @@ pub(super) async fn flavor_set_access(x: &mut Exec<'_>, id: &str, add: &[String]
     Ok(())
 }
 
+/// `AggregateCreate`: Nova `POST /os-aggregates`, then `add_host` per host.
 pub(super) async fn aggregate_create(x: &mut Exec<'_>, name: &str, zone: &Option<String>, hosts: &[String]) -> R<()> {
     use openstack_sdk::api::compute::v2::aggregate::create_21 as m;
     let mut b = m::AggregateBuilder::default();
@@ -403,6 +420,7 @@ pub(super) async fn aggregate_create(x: &mut Exec<'_>, name: &str, zone: &Option
     Ok(())
 }
 
+/// `AggregateUpdate`: Nova `PUT /os-aggregates/{id}`; no zone sends `null`, which removes it.
 pub(super) async fn aggregate_update(x: &mut Exec<'_>, id: &str, name: &str, zone: &Option<String>) -> R<()> {
     use openstack_sdk::api::compute::v2::aggregate::set_21 as m;
     let mut b = m::AggregateBuilder::default();
@@ -420,6 +438,7 @@ pub(super) async fn aggregate_update(x: &mut Exec<'_>, id: &str, name: &str, zon
     Ok(())
 }
 
+/// `AggregateSetHosts`: `add_host` / `remove_host` actions, one per host.
 pub(super) async fn aggregate_set_hosts(x: &mut Exec<'_>, id: &str, add: &[String], remove: &[String]) -> R<()> {
     if add.is_empty() && remove.is_empty() {
         return Err(AppError::invalid("nothing changed"));
@@ -428,6 +447,7 @@ pub(super) async fn aggregate_set_hosts(x: &mut Exec<'_>, id: &str, add: &[Strin
     Ok(())
 }
 
+/// `AggregateSetMetadata`: one `set_metadata` action; removed keys are sent as `null`.
 pub(super) async fn aggregate_set_metadata(
     x: &mut Exec<'_>,
     id: &str,
@@ -459,12 +479,15 @@ pub(super) async fn aggregate_set_metadata(
     Ok(())
 }
 
+/// `AggregateDelete`: Nova `DELETE /os-aggregates/{id}`.
 pub(super) async fn aggregate_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::aggregate::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `ComputeServiceSet`: Nova `PUT /os-services/{id}` (2.53, services by UUID) to enable or
+/// disable it; the reason is sent only when disabling.
 pub(super) async fn compute_service_set(x: &mut Exec<'_>, id: &str, enabled: &bool, reason: &Option<String>) -> R<()> {
     use openstack_sdk::api::compute::v2::service::set_253 as m;
     let mut b = m::Request::builder();
@@ -480,6 +503,8 @@ pub(super) async fn compute_service_set(x: &mut Exec<'_>, id: &str, enabled: &bo
     Ok(())
 }
 
+/// `ServerMigrate`: cold migration, `POST /servers/{id}/action` with `migrate`; a target
+/// host needs 2.56, no host works from 2.1.
 pub(super) async fn server_migrate(x: &mut Exec<'_>, id: &str, host: &Option<String>) -> R<()> {
     // Raw: the SDK's `migrate_256` always sends 2.56, which older clouds
     // refuse even without a host; `{"migrate": null}` works from 2.1.
@@ -491,6 +516,8 @@ pub(super) async fn server_migrate(x: &mut Exec<'_>, id: &str, host: &Option<Str
     Ok(())
 }
 
+/// `ServerLiveMigrate`: `POST /servers/{id}/action` with `os-migrateLive` at 2.30 (no host
+/// lets the scheduler pick; no `block_migration` choice sends `"auto"`).
 pub(super) async fn server_live_migrate(
     x: &mut Exec<'_>,
     id: &str,
@@ -625,7 +652,7 @@ mod tests {
             calls(&dry(OsAction::FlavorDelete { id: id("f1") }).await),
             [(id("DELETE"), id("/flavors/f1"))]
         );
-        // Edit Flavor (`[admin] flavor_edit`, roadmap 89): Horizon's delete and re-create,
+        // Edit Flavor (`[admin] flavor_edit`): Horizon's delete and re-create,
         // same ID, then the extra specs and the access back.
         let edited = || {
             Box::new(FlavorSpec {
@@ -863,7 +890,7 @@ mod tests {
             ]
         );
         assert_eq!(body(&r[1]), json!({"name": "OS::Nova::Flavor"}));
-        // A new prefix (roadmap 89): the association goes, then comes back with it.
+        // A new prefix: the association goes, then comes back with it.
         let flavor = || vec![id("OS::Nova::Flavor")];
         let r = dry(OsAction::MetadefNamespaceSetTypes {
             id: id("OS::Acme::Gpu"),

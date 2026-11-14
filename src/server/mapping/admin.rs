@@ -1,4 +1,4 @@
-//! Admin (roadmap 85): services, metadata definitions, hypervisors, placement, aggregates, flavors, volume types, RBAC, agents.
+//! Admin: services, metadata definitions, hypervisors, placement, aggregates, flavors, volume types, RBAC, agents.
 
 use super::*;
 
@@ -52,7 +52,7 @@ pub fn metadef_namespaces(raw: &[Value]) -> Vec<MetadefNamespace> {
 }
 
 /// One namespace's definition (`GET metadefs/namespaces/{ns}`, no `resource_type`):
-/// the list's fields, dates, associations, properties and objects (roadmap 89).
+/// the list's fields, dates, associations, properties and objects.
 /// `None` without a `namespace`.
 pub fn metadef_namespace_detail(v: &Value) -> Option<MetadefNamespaceDetail> {
     let namespace = metadef_namespaces(std::slice::from_ref(v)).into_iter().next()?;
@@ -112,7 +112,7 @@ pub fn metadef_namespace_detail(v: &Value) -> Option<MetadefNamespaceDetail> {
     })
 }
 
-/// The properties one metadef namespace offers for a resource type (roadmap 25): the body of
+/// The properties one metadef namespace offers for a resource type: the body of
 /// `GET metadefs/namespaces/{ns}?resource_type=…`. Glance has already put the association's
 /// `prefix` on the names in that response (`hw:cpu_policy`), also on an object's properties;
 /// applying it again gave `CIM_PASD_CIM_PASD_…` on ttcp-dev. The namespace's own `properties`

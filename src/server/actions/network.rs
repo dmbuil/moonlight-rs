@@ -25,6 +25,11 @@ fn port_forwarding_body(s: &PortForwardingSpec) -> R<Value> {
     Ok(json!({ "port_forwarding": pf }))
 }
 
+/// `OsAction::SubnetCreate` (and the subnet of a new network): `POST /v2.0/subnets`.
+///
+/// `gateway_ip`: `None` lets Neutron pick the first address, `Some("")` sends `null` (no
+/// gateway). The IPv6 modes are sent only for IPv6 subnets, and host routes are validated with
+/// `model::validate_route` first.
 pub(super) async fn create_subnet(x: &mut Exec<'_>, network_id: &str, s: &SubnetSpec) -> R<()> {
     use openstack_sdk::api::network::v2::subnet::create as m;
     if s.ip_version != 4 && s.ip_version != 6 {
@@ -98,6 +103,10 @@ pub(super) async fn create_subnet(x: &mut Exec<'_>, network_id: &str, s: &Subnet
     Ok(())
 }
 
+/// `OsAction::RuleCreate`: `POST /v2.0/security-group-rules`.
+///
+/// A lone `port_min` is a single port (sent as both bounds); a remote CIDR and a remote group
+/// are mutually exclusive, so both is an error rather than Neutron's.
 pub(super) async fn create_rule(x: &mut Exec<'_>, s: &RuleSpec) -> R<()> {
     use openstack_sdk::api::network::v2::security_group_rule::create as m;
     let mut b = m::SecurityGroupRuleBuilder::default();
@@ -151,6 +160,8 @@ pub(super) async fn create_rule(x: &mut Exec<'_>, s: &RuleSpec) -> R<()> {
     Ok(())
 }
 
+/// `OsAction::NetworkCreate`: `POST /v2.0/networks`, then the optional subnet on the new
+/// network's ID (a placeholder in dry-run), as Horizon's *Create Network* wizard does.
 pub(super) async fn network_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -175,6 +186,12 @@ pub(super) async fn network_create(
     Ok(())
 }
 
+/// `OsAction::AdminNetworkCreate` (Admin › Networks): `POST /v2.0/networks` with an owner
+/// (`tenant_id`), `shared`, `router:external`, MTU, AZ hints and the `provider:*` attributes,
+/// then the optional subnet.
+///
+/// The provider type is checked against this server's `[network]` settings, not the dialog's
+/// choices.
 pub(super) async fn admin_network_create(x: &mut Exec<'_>, spec: &AdminNetworkSpec) -> R<()> {
     use openstack_sdk::api::network::v2::network::create as m;
     let mut b = m::NetworkBuilder::default();
@@ -220,6 +237,8 @@ pub(super) async fn admin_network_create(x: &mut Exec<'_>, spec: &AdminNetworkSp
     Ok(())
 }
 
+/// `OsAction::AdminNetworkUpdate`: `PUT /v2.0/networks/{id}` with name, admin state, `shared`
+/// and `router:external`.
 pub(super) async fn admin_network_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -241,6 +260,8 @@ pub(super) async fn admin_network_update(
     Ok(())
 }
 
+/// `OsAction::RbacPolicyCreate`: `POST /v2.0/rbac-policies`; `kind` maps to the object type
+/// and action with `model::rbac_kind` (e.g. a network shared, or usable as external).
 pub(super) async fn rbac_policy_create(x: &mut Exec<'_>, kind: &str, object_id: &str, target_project: &str) -> R<()> {
     use openstack_sdk::api::network::v2::rbac_policy::create as m;
     let (object_type, action) = crate::model::rbac_kind(kind).map_err(AppError::invalid)?;
@@ -259,6 +280,8 @@ pub(super) async fn rbac_policy_create(x: &mut Exec<'_>, kind: &str, object_id: 
     Ok(())
 }
 
+/// `OsAction::RbacPolicyUpdate`: `PUT /v2.0/rbac-policies/{id}`; only the target project can
+/// change.
 pub(super) async fn rbac_policy_update(x: &mut Exec<'_>, id: &str, target_project: &str) -> R<()> {
     use openstack_sdk::api::network::v2::rbac_policy::set as m;
     let body = m::RbacPolicyBuilder::default()
@@ -276,12 +299,14 @@ pub(super) async fn rbac_policy_update(x: &mut Exec<'_>, id: &str, target_projec
     Ok(())
 }
 
+/// `OsAction::RbacPolicyDelete`: `DELETE /v2.0/rbac-policies/{id}`.
 pub(super) async fn rbac_policy_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::rbac_policy::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::NetworkUpdate`: `PUT /v2.0/networks/{id}` with name and admin state.
 pub(super) async fn network_update(x: &mut Exec<'_>, id: &str, name: &str, admin_up: &bool) -> R<()> {
     use openstack_sdk::api::network::v2::network::set as m;
     let body = m::NetworkBuilder::default()
@@ -294,12 +319,15 @@ pub(super) async fn network_update(x: &mut Exec<'_>, id: &str, name: &str, admin
     Ok(())
 }
 
+/// `OsAction::NetworkDelete`: `DELETE /v2.0/networks/{id}`.
 pub(super) async fn network_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::network::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::SubnetUpdate`: `PUT /v2.0/subnets/{id}`. The DNS servers are always sent, so an
+/// empty list clears them.
 pub(super) async fn subnet_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -323,12 +351,15 @@ pub(super) async fn subnet_update(
     Ok(())
 }
 
+/// `OsAction::SubnetDelete`: `DELETE /v2.0/subnets/{id}`.
 pub(super) async fn subnet_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::subnet::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::PortCreate`: `POST /v2.0/ports`, with one fixed IP when given (Neutron picks
+/// the subnet).
 pub(super) async fn port_create(
     x: &mut Exec<'_>,
     network_id: &str,
@@ -352,6 +383,10 @@ pub(super) async fn port_create(
     Ok(())
 }
 
+/// `OsAction::PortUpdate`: `PUT /v2.0/ports/{id}` with only the fields that are `Some`.
+///
+/// The VNIC type goes through the SDK enum's serde names, so an unknown one fails here, not
+/// at Neutron.
 pub(super) async fn port_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -387,6 +422,8 @@ pub(super) async fn port_update(
     Ok(())
 }
 
+/// `OsAction::PortSetSecurityGroups`: `PUT /v2.0/ports/{id}` replacing the port's security
+/// groups with exactly `security_group_ids` (empty removes them all).
 pub(super) async fn port_set_security_groups(x: &mut Exec<'_>, id: &str, security_group_ids: &[String]) -> R<()> {
     use openstack_sdk::api::network::v2::port::set as m;
     let groups: Vec<Cow<str>> = security_group_ids.iter().map(|g| Cow::from(g.as_str())).collect();
@@ -399,13 +436,17 @@ pub(super) async fn port_set_security_groups(x: &mut Exec<'_>, id: &str, securit
     Ok(())
 }
 
+/// `OsAction::PortDelete`: `DELETE /v2.0/ports/{id}`.
 pub(super) async fn port_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::port::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
-/// The SDK has no trunk endpoints (only their tags): JSON requests.
+/// `OsAction::TrunkCreate`: `POST /v2.0/trunks` on the parent port, with any sub-ports.
+///
+/// The SDK has no trunk endpoints (only their tags), so this and the other trunk writes are
+/// raw JSON requests.
 pub(super) async fn trunk_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -442,6 +483,8 @@ pub(super) async fn trunk_create(
     Ok(())
 }
 
+/// `OsAction::TrunkUpdate`: `PUT /v2.0/trunks/{id}` (raw JSON: the SDK has no trunk
+/// endpoints).
 pub(super) async fn trunk_update(x: &mut Exec<'_>, id: &str, name: &str, description: &str, admin_up: &bool) -> R<()> {
     let body = json!({"trunk": {"name": name.trim(), "description": description.trim(), "admin_state_up": admin_up}});
     x.send(JsonRequest::new(
@@ -454,6 +497,7 @@ pub(super) async fn trunk_update(x: &mut Exec<'_>, id: &str, name: &str, descrip
     Ok(())
 }
 
+/// `OsAction::TrunkDelete`: `DELETE /v2.0/trunks/{id}` (raw JSON request).
 pub(super) async fn trunk_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::new(
         http::Method::DELETE,
@@ -465,6 +509,8 @@ pub(super) async fn trunk_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `OsAction::TrunkAddSubports`: `PUT /v2.0/trunks/{id}/add_subports` (raw JSON). An empty
+/// list is refused here rather than sent.
 pub(super) async fn trunk_add_subports(x: &mut Exec<'_>, id: &str, subports: &[SubportSpec]) -> R<()> {
     if subports.is_empty() {
         return Err(AppError::invalid("no sub-ports to add"));
@@ -485,6 +531,8 @@ pub(super) async fn trunk_add_subports(x: &mut Exec<'_>, id: &str, subports: &[S
     Ok(())
 }
 
+/// `OsAction::TrunkRemoveSubports`: `PUT /v2.0/trunks/{id}/remove_subports` with
+/// `[{"port_id": …}]` (raw JSON). An empty list is refused.
 pub(super) async fn trunk_remove_subports(x: &mut Exec<'_>, id: &str, port_ids: &[String]) -> R<()> {
     let sub_ports: Vec<Value> = port_ids
         .iter()
@@ -504,6 +552,9 @@ pub(super) async fn trunk_remove_subports(x: &mut Exec<'_>, id: &str, port_ids: 
     Ok(())
 }
 
+/// `OsAction::PortForwardingCreate`: `POST /v2.0/floatingips/{fip}/port_forwardings`, as raw
+/// JSON: the SDK types the `*_range` keys as numbers, Neutron wants `"a:b"` (see
+/// `port_forwarding_body`).
 pub(super) async fn port_forwarding_create(x: &mut Exec<'_>, spec: &PortForwardingSpec) -> R<()> {
     let path = format!(
         "floatingips/{}/port_forwardings",
@@ -523,6 +574,8 @@ pub(super) async fn port_forwarding_create(x: &mut Exec<'_>, spec: &PortForwardi
     Ok(())
 }
 
+/// `OsAction::PortForwardingUpdate`: `PUT /v2.0/floatingips/{fip}/port_forwardings/{id}`
+/// (raw JSON, as for create).
 pub(super) async fn port_forwarding_update(x: &mut Exec<'_>, id: &str, spec: &PortForwardingSpec) -> R<()> {
     let path = format!(
         "floatingips/{}/port_forwardings/{}",
@@ -540,6 +593,8 @@ pub(super) async fn port_forwarding_update(x: &mut Exec<'_>, id: &str, spec: &Po
     Ok(())
 }
 
+/// `OsAction::PortForwardingDelete`: `DELETE
+/// /v2.0/floatingips/{floating_ip_id}/port_forwardings/{id}`.
 pub(super) async fn port_forwarding_delete(x: &mut Exec<'_>, floating_ip_id: &str, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::floatingip::port_forwarding::delete as m;
     x.send(
@@ -553,6 +608,7 @@ pub(super) async fn port_forwarding_delete(x: &mut Exec<'_>, floating_ip_id: &st
     Ok(())
 }
 
+/// `OsAction::SecurityGroupCreate`: `POST /v2.0/security-groups`.
 pub(super) async fn security_group_create(x: &mut Exec<'_>, name: &str, description: &Option<String>) -> R<()> {
     use openstack_sdk::api::network::v2::security_group::create as m;
     let mut b = m::SecurityGroupBuilder::default();
@@ -569,6 +625,8 @@ pub(super) async fn security_group_create(x: &mut Exec<'_>, name: &str, descript
     Ok(())
 }
 
+/// `OsAction::SecurityGroupUpdate`: `PUT /v2.0/security-groups/{id}`. The description is
+/// always sent, so an empty one clears it.
 pub(super) async fn security_group_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -592,18 +650,22 @@ pub(super) async fn security_group_update(
     Ok(())
 }
 
+/// `OsAction::SecurityGroupDelete`: `DELETE /v2.0/security-groups/{id}`.
 pub(super) async fn security_group_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::security_group::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::RuleDelete`: `DELETE /v2.0/security-group-rules/{id}`.
 pub(super) async fn rule_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::security_group_rule::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::FloatingIpAllocate`: `POST /v2.0/floatingips` from the pool `network_id`,
+/// optionally associated with a port and given a QoS policy at once.
 pub(super) async fn floating_ip_allocate(
     x: &mut Exec<'_>,
     network_id: &str,
@@ -632,6 +694,9 @@ pub(super) async fn floating_ip_allocate(
     Ok(())
 }
 
+/// `OsAction::AdminFloatingIpAllocate` (Admin › Floating IPs): `POST /v2.0/floatingips` for
+/// another project, optionally with a specific address (checked to be an IP here so the error
+/// names the field).
 pub(super) async fn admin_floating_ip_allocate(
     x: &mut Exec<'_>,
     network_id: &str,
@@ -661,6 +726,7 @@ pub(super) async fn admin_floating_ip_allocate(
     Ok(())
 }
 
+/// `OsAction::FloatingIpAssociate`: `PUT /v2.0/floatingips/{id}` with `port_id`.
 pub(super) async fn floating_ip_associate(x: &mut Exec<'_>, id: &str, port_id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::floatingip::set as m;
     let body = m::FloatingipBuilder::default()
@@ -678,6 +744,7 @@ pub(super) async fn floating_ip_associate(x: &mut Exec<'_>, id: &str, port_id: &
     Ok(())
 }
 
+/// `OsAction::FloatingIpDisassociate`: `PUT /v2.0/floatingips/{id}` with `"port_id": null`.
 pub(super) async fn floating_ip_disassociate(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::floatingip::set as m;
     let body = m::FloatingipBuilder::default()
@@ -695,6 +762,7 @@ pub(super) async fn floating_ip_disassociate(x: &mut Exec<'_>, id: &str) -> R<()
     Ok(())
 }
 
+/// `OsAction::FloatingIpRelease`: `DELETE /v2.0/floatingips/{id}`.
 pub(super) async fn floating_ip_release(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::floatingip::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
@@ -901,7 +969,7 @@ mod tests {
         );
     }
 
-    /// Edits and creates no other test dry-ran (found by roadmap 67's
+    /// Edits and creates no other test dry-ran (found by
     /// `every_action_has_a_dry_run_test`). An empty description clears it.
     #[tokio::test]
     async fn renames_subnets_gateways_and_security_groups() {

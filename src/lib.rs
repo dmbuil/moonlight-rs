@@ -1,7 +1,8 @@
 //! Moonlight — leaving Horizon behind.
 //!
-//! A read-only OpenStack dashboard PoC: Leptos (SSR + hydration) on Axum,
-//! talking to OpenStack through gtema's `openstack_sdk`.
+//! An OpenStack dashboard: Leptos (SSR + hydration) on Axum, talking to OpenStack through
+//! gtema's `openstack_sdk`. Reads by default; writes go through `OsAction` and the server's
+//! `[writes] mode` (off, dry-run or on). AGENTS.md describes the layers.
 
 #![recursion_limit = "256"]
 
@@ -16,6 +17,8 @@ pub mod prefs;
 pub mod server;
 pub mod theme;
 
+/// WASM entry point: the browser calls it once the bundle loads, and it hydrates the
+/// server-rendered `<body>` with [`app::App`] (panics go to the console).
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {

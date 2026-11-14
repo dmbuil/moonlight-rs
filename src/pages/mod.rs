@@ -1,3 +1,7 @@
+//! One module per page or family of pages (Horizon's panels and detail pages). Pages load
+//! through `#[server]` fns in `api.rs`, render with `components/`, and act through
+//! `components/ops`; their routes are in `app.rs`.
+
 pub mod admin;
 pub mod alarms;
 pub mod details;

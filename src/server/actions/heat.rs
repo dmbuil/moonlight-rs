@@ -1,10 +1,7 @@
-//! Heat writes (roadmap 62): stacks.
+//! Heat writes: stacks.
 
 use super::*;
 
-/// `POST /v1/secrets`. Barbican refuses a content type without a payload, so
-/// both go together; `application/octet-stream` payloads are base64
-/// (`payload_content_encoding`), checked here so a typo fails before sending.
 /// `stacks/{name}/{id}`: Heat needs both (`stacks/{id}` alone is a redirect).
 fn stack_path(name: &str, id: &str) -> R<String> {
     Ok(format!(
@@ -79,21 +76,25 @@ fn stack_action(name: &str, id: &str, action: &str) -> R<JsonRequest> {
     ))
 }
 
+/// `StackCheck`: `POST stacks/{name}/{id}/actions` with `check`.
 pub(super) async fn stack_check(x: &mut Exec<'_>, name: &str, id: &str) -> R<()> {
     x.send(stack_action(name, id, "check")?).await?;
     Ok(())
 }
 
+/// `StackSuspend`: `POST stacks/{name}/{id}/actions` with `suspend`.
 pub(super) async fn stack_suspend(x: &mut Exec<'_>, name: &str, id: &str) -> R<()> {
     x.send(stack_action(name, id, "suspend")?).await?;
     Ok(())
 }
 
+/// `StackResume`: `POST stacks/{name}/{id}/actions` with `resume`.
 pub(super) async fn stack_resume(x: &mut Exec<'_>, name: &str, id: &str) -> R<()> {
     x.send(stack_action(name, id, "resume")?).await?;
     Ok(())
 }
 
+/// `StackDelete`: `DELETE stacks/{name}/{id}`.
 pub(super) async fn stack_delete(x: &mut Exec<'_>, name: &str, id: &str) -> R<()> {
     x.send(JsonRequest::orchestration(
         http::Method::DELETE,
@@ -104,6 +105,7 @@ pub(super) async fn stack_delete(x: &mut Exec<'_>, name: &str, id: &str) -> R<()
     Ok(())
 }
 
+/// `StackCreate`: `POST stacks`; hidden (`NoEcho`) parameters are masked in the preview.
 pub(super) async fn stack_create(x: &mut Exec<'_>, spec: &StackSpec) -> R<()> {
     x.create(
         JsonRequest::orchestration(http::Method::POST, "stacks", Some(stack_body(spec, true)?)),
@@ -114,6 +116,8 @@ pub(super) async fn stack_create(x: &mut Exec<'_>, spec: &StackSpec) -> R<()> {
     Ok(())
 }
 
+/// `StackUpdate`: `PATCH stacks/{name}/{id}` (Heat's update that keeps unchanged
+/// parameters); hidden parameters are masked in the preview.
 pub(super) async fn stack_update(x: &mut Exec<'_>, id: &str, spec: &StackSpec) -> R<()> {
     x.send(JsonRequest::orchestration(
         http::Method::PATCH,

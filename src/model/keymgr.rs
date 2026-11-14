@@ -1,4 +1,4 @@
-//! Barbican secrets, containers and ACLs (roadmap 55), and orders (roadmap 58).
+//! Barbican secrets, containers and ACLs, and orders.
 
 use super::*;
 
@@ -66,7 +66,7 @@ pub struct SecretConsumer {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SecretDetail {
     pub secret: SecretRow,
-    /// The `read` ACL, shown and edited on the detail page (roadmap 75).
+    /// The `read` ACL, shown and edited on the detail page.
     pub acl: KmAcl,
     /// `None` when this Barbican has no consumers API for secrets.
     pub consumers: Option<Vec<SecretConsumer>>,
@@ -75,7 +75,7 @@ pub struct SecretDetail {
 }
 
 /// A secret's or container's `read` ACL as the detail pages show and edit it
-/// (roadmap 75).
+///.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct KmAcl {
     /// Users granted read access besides the project.
@@ -100,7 +100,7 @@ pub struct KmAcl {
     pub octavia: Vec<OctaviaUse>,
 }
 
-/// An Octavia listener or pool using a Barbican secret or container (roadmap 75).
+/// An Octavia listener or pool using a Barbican secret or container.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OctaviaUse {
     /// The load balancer's ID, for the link; `None` when Octavia didn't say.
@@ -143,7 +143,7 @@ pub struct ContainerDetail {
 
 /// Barbican's default policy (`secret_acls:put_patch` / `delete`, and the same
 /// for `container_acls`): the creator or a project admin. *Edit Access* and *Reset Access* are hidden for
-/// everyone else rather than failing with 403 (roadmap 75).
+/// everyone else rather than failing with 403.
 pub fn can_edit_secret_acl(creator_id: Option<&str>, user_id: &str, roles: &[String]) -> bool {
     creator_id == Some(user_id) || roles.iter().any(|r| r == "admin")
 }
@@ -209,7 +209,7 @@ impl std::fmt::Debug for Hidden {
     }
 }
 
-/// *Show Payload*'s answer (roadmap 55).
+/// *Show Payload*'s answer.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SecretPayload {
     pub payload: Hidden,
@@ -235,7 +235,7 @@ pub struct SecretSpec {
     pub expiration: Option<String>,
 }
 
-/// A Barbican order (roadmap 58): Barbican generating a symmetric key
+/// A Barbican order: Barbican generating a symmetric key
 /// (`key`, stored as a secret) or an RSA key pair (`asymmetric`, stored as an
 /// `rsa` container). Orders run asynchronously: `PENDING`, then `ACTIVE` with
 /// the result's ref, or `ERROR` with a reason.
@@ -267,7 +267,7 @@ pub struct OrderRow {
 }
 
 impl OrderRow {
-    /// Still being processed: the list polls while any order is (roadmap 46).
+    /// Still being processed: the list polls while any order is.
     pub fn busy(&self) -> bool {
         self.status.eq_ignore_ascii_case("PENDING")
     }
@@ -281,7 +281,7 @@ pub const ORDER_TYPES: [(&str, &str, &[i64]); 2] = [
     ("asymmetric", "rsa", &[2048, 3072, 4096]),
 ];
 
-/// *Order Key*, as Barbican's `POST /v1/orders` takes it (roadmap 58).
+/// *Order Key*, as Barbican's `POST /v1/orders` takes it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderSpec {
     /// `key` or `asymmetric` ([`ORDER_TYPES`]).

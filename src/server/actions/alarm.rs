@@ -1,8 +1,9 @@
-//! Aodh writes (roadmap 79): alarms.
+//! Aodh writes: alarms.
 
 use super::*;
 
-/// The body is built and checked by `AlarmSpec::body`, as in the dialog.
+/// `AlarmCreate`: `POST /v2/alarms`. The body is built and checked by `AlarmSpec::body`,
+/// as in the dialog.
 pub(super) async fn alarm_create(x: &mut Exec<'_>, spec: &AlarmSpec) -> R<()> {
     let body = spec.body().map_err(AppError::invalid)?;
     x.create(JsonRequest::alarming(http::Method::POST, "alarms", Some(body)), "alarm")
@@ -10,6 +11,7 @@ pub(super) async fn alarm_create(x: &mut Exec<'_>, spec: &AlarmSpec) -> R<()> {
     Ok(())
 }
 
+/// `AlarmUpdate`: `PUT /v2/alarms/{id}` with the whole alarm (Aodh replaces it).
 pub(super) async fn alarm_update(x: &mut Exec<'_>, id: &str, spec: &AlarmSpec) -> R<()> {
     let body = spec.body().map_err(AppError::invalid)?;
     x.send(JsonRequest::alarming(

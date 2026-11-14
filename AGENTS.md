@@ -57,6 +57,7 @@ cargo check --features ssr                           # server type-check (fast)
 cargo check --lib --features hydrate --target wasm32-unknown-unknown   # client type-check
 cargo clippy --features ssr --all-targets -- -D warnings              # server lints (incl. tests)
 cargo clippy --lib --features hydrate --target wasm32-unknown-unknown -- -D warnings  # client lints
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --features ssr   # rustdoc (also hydrate)
 cargo leptos build --release                         # ONLY with `watch` stopped (see §6)
 rumdl check .                                        # Markdown lint (config: .rumdl.toml)
 rumdl fmt .                                          # Markdown auto-fix
@@ -72,19 +73,22 @@ Always run **both** `cargo check` variants: code that compiles for `ssr` can fai
 2. Run **both** `cargo clippy` variants (they also type-check, so they replace `cargo check`)
    and keep them at **zero warnings** (the tree is clean; `-D warnings` fails on any). Don't
    silence a lint with `#[allow(…)]` unless it is a false positive, and then say why in a comment.
-3. Run the tests with `cargo nextest run --features ssr` (faster, parallel per test, clearer
+3. Run `cargo doc` (both variants, with `RUSTDOCFLAGS="-D warnings"`, as CI does) when you
+   touched doc comments: it catches broken intra-doc links (`` [`gone_fn`] ``), bare URLs and
+   bad code blocks. Doc comments may link to private items (`--document-private-items`).
+4. Run the tests with `cargo nextest run --features ssr` (faster, parallel per test, clearer
    failure output). New logic gets a test next to it (§7). Fall back to `cargo test` only if
    doctests are added: nextest does not run them (`cargo test --doc --features ssr`).
-4. Report the actual result (passed/failed counts, remaining warnings), not "should pass".
-5. When a dependency is added or bumped, run `cargo deny check`: a RustSec advisory, a yanked
+5. Report the actual result (passed/failed counts, remaining warnings), not "should pass".
+6. When a dependency is added or bumped, run `cargo deny check`: a RustSec advisory, a yanked
    version, a licence outside `deny.toml`'s allow list or a source other than crates.io fails
    it. Duplicate versions only warn; don't widen the policy to make it pass, fix the
    dependency or record an `ignore` with its reason.
 
 **CI** (`.github/workflows/ci.yml`) runs these on every push to `main` and every pull request:
-`cargo fmt --check`, both clippy variants, `cargo nextest run --features ssr`, `rumdl check .`
-and `cargo deny check`, each as its own job. A red job is a real failure; fix the cause, never
-skip the job or loosen its flags.
+`cargo fmt --check`, both clippy variants, both `cargo doc` variants,
+`cargo nextest run --features ssr`, `rumdl check .` and `cargo deny check`, each as its own job.
+A red job is a real failure; fix the cause, never skip the job or loosen its flags.
 
 **Whenever you add or change Markdown** (`AGENTS.md`, `README.md`, `ROADMAP.md`, …), run
 `rumdl fmt .` and then `rumdl check .`, which must report no issues. `.rumdl.toml` sets
@@ -384,9 +388,13 @@ until it is. In English, short, and kept true when the code changes.
   `#[component]`s, `pub const`) get a `///` saying what it is for and anything the signature
   doesn't: units, `None`/empty meaning, which microversion or extension it needs, what it
   returns on failure. Private helpers get one when the name alone doesn't say it.
+  No lint enforces this (`missing_docs` would also demand ~1,850 self-explanatory fields and
+  variants), so review it: every function, type and constant has a `///` today.
 - **Comments say why, not what.** Write them where the code follows an OpenStack quirk, a
   microversion, a Horizon behaviour, a safety rule (§1) or a gotcha (§6); name the API, version
-  or roadmap item (`roadmap 46`) so the next reader can check it.
+  or extension so the next reader can check it. Don't cite roadmap items or issue numbers in
+  code, comments, rustdoc or test messages: say the reason itself (the commit message links the
+  item).
 - **Fixes** leave a comment at the fix naming the cause when it isn't obvious from the code
   (e.g. "Nova only returns `type` from 2.2"), and the test that guards it says the same in its
   name or assertion message.

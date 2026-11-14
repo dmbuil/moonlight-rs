@@ -26,7 +26,9 @@ use crate::model::{
 /// Where a select's (or picker's) options come from.
 #[derive(Clone, Debug)]
 pub enum Source {
+    /// Fixed `(value, label)` pairs written in the dialog (no fetch).
     Static(Vec<(String, String)>),
+    /// Every choice of a set, loaded from the server when the dialog opens.
     Set(ChoiceSet),
     /// The choices of a set that belong to one resource: those whose first
     /// cell is this ID (e.g. the ports of one instance).
@@ -38,7 +40,7 @@ pub enum Source {
     /// (Horizon leaves it out too).
     Except(ChoiceSet, String),
     /// A set without these values: a firewall policy's *Insert Rule* leaves out
-    /// the rules it already has (roadmap 93).
+    /// the rules it already has.
     Without(ChoiceSet, Vec<String>),
 }
 
@@ -62,6 +64,7 @@ pub enum Kind {
     /// Masked text (an admin password); never prefilled.
     Password,
     TextArea,
+    /// A whole number of at least `min`.
     Number {
         min: i64,
     },
@@ -74,12 +77,14 @@ pub enum Kind {
     /// Horizon's *Allocated / Available* tables; the value is a
     /// comma-separated list, in allocation order.
     Pick {
+        /// Where the rows of both tables come from.
         src: Source,
+        /// False for a single allocation: picking another replaces it (the wizard's *Source*).
         multi: bool,
     },
     /// Key/value rows (metadata); the value is a JSON list of `[key, value]`.
     KeyValue,
-    /// Load balancer members, one row each (roadmap 54); the value is a JSON
+    /// Load balancer members, one row each; the value is a JSON
     /// list of `model::MemberRow`. New rows take their port from the field
     /// `port_from` when set; `existing` are the pool's members when editing
     /// them, to show which ones the save deletes.
@@ -94,7 +99,7 @@ pub enum Kind {
     },
     /// `HH:MM` with hour/minute columns (`datetime::TimePicker`).
     Time,
-    /// A local file to upload (roadmap 45). The value is a [`Picked`] (name and size); the
+    /// A local file to upload. The value is a [`Picked`] (name and size); the
     /// `File` itself waits in `components::upload` until the action has run.
     File,
     /// Read-only: the first choice of `src`, its label with its value under it
@@ -108,7 +113,7 @@ pub enum Kind {
     },
 }
 
-/// Current form values, and the loaded choice lists.
+/// Current form values, by field name (the form's working copy, see [`Values`]).
 pub type Vals = HashMap<String, String>;
 /// Choice lists loaded so far, by set (for `on_change`, `check` and `block`).
 pub type Sets = HashMap<ChoiceSet, Vec<Choice>>;
@@ -120,7 +125,10 @@ pub struct Field {
     pub name: &'static str,
     pub label: String,
     pub kind: Kind,
+    /// Marked with `*`; an empty value blocks the submit (and a required select preselects its
+    /// first choice, see `preselects`).
     pub required: bool,
+    /// The starting value, in the same string form the field submits.
     pub default: String,
     pub help: Option<String>,
     /// Only shown (and submitted) when another field has this value.
@@ -131,12 +139,12 @@ pub struct Field {
     /// required select it is a placeholder, and the first choice is not preselected.
     pub empty_label: Option<String>,
     /// A text area that can be filled from a local file of at most this many
-    /// bytes, with a size counter (the customization script, roadmap 41).
+    /// bytes, with a size counter (the customization script).
     pub from_file: Option<usize>,
     /// A monospace example shown under the help (e.g. Access Rules' JSON/YAML).
     pub help_code: Option<String>,
     /// A longer explanation behind an (i) beside the label ([`InfoTip`] text:
-    /// lines, `- ` for list items), for fields that need examples (roadmap 79).
+    /// lines, `- ` for list items), for fields that need examples.
     pub tip: Option<String>,
     /// A risky option: its label is red (e.g. *Unrestricted (dangerous)*).
     pub danger: bool,
@@ -155,10 +163,10 @@ pub struct Field {
     /// Hints* when Neutron reports no zones of that kind).
     pub hide_empty: bool,
     /// A [`Field::select`] whose dropdown always has a search box, however few
-    /// choices it has (the floating IP port pickers, roadmap 110).
+    /// choices it has (the floating IP port pickers).
     pub searchable: bool,
     /// A [`Field::key_values`] only: the Glance metadata catalog resource type
-    /// (`OS::Nova::Server`…) whose properties it suggests (roadmap 25).
+    /// (`OS::Nova::Server`…) whose properties it suggests.
     pub catalog: Option<&'static str>,
     /// Keys the catalog picker leaves out because another field of the dialog sets them
     /// (Create Image's `architecture`…); a repeated key is refused.
@@ -166,6 +174,8 @@ pub struct Field {
 }
 
 impl Field {
+    /// The common constructor behind the public ones (`text`, `select`…): optional, empty default,
+    /// no rule.
     fn new(name: &'static str, label: impl Into<String>, kind: Kind) -> Self {
         Field {
             name,
@@ -483,6 +493,7 @@ impl Step {
         self.enabled = Some(f);
         self
     }
+    /// Whether the step is on for these values (steps without `enabled_if` always are).
     fn is_enabled(&self, v: &Vals) -> bool {
         self.enabled.is_none_or(|f| f(v))
     }
@@ -497,6 +508,7 @@ pub enum DialogSize {
 }
 
 impl DialogSize {
+    /// The CSS class of the modal box (`modal s` / `m` / `l` in `style/`).
     fn class(self) -> &'static str {
         match self {
             DialogSize::Small => "modal s",
@@ -518,13 +530,20 @@ pub struct Dialog {
     /// first intro line ("You have selected:").
     pub selection: Vec<String>,
     pub fields: Vec<Field>,
+    /// The label of the primary button (*Create Network*, *Delete Instances*…).
     pub submit: String,
+    /// A destructive action: red submit button, enabled only once *Yes, I understand* is ticked.
     pub danger: bool,
+    /// Turns the values of the visible fields into the `OsAction` to run; its `Err` is shown above
+    /// the buttons and nothing is sent.
     pub build: BuildFn,
     /// Empty for single-page dialogs.
     pub steps: Vec<Step>,
+    /// Runs after every edit and may change other values (fill a name from an image, etc.).
     pub on_change: Option<ChangeFn>,
+    /// Field-level problems shown under each field; any problem blocks the submit.
     pub check: Option<CheckFn>,
+    /// Greys out single choices of a picker with the reason as their tooltip.
     pub block: Option<BlockFn>,
     /// Overrides the width picked by `Dialog::size`.
     pub fixed_size: Option<DialogSize>,
@@ -534,8 +553,7 @@ pub struct Dialog {
     /// after deleting from a detail page, which would otherwise show "not found".
     pub then_go: Option<String>,
     /// Shown instead of the service's error when it refuses with 403: for
-    /// actions whose permission can't be known beforehand (roadmap 82; item 35
-    /// would hide them instead).
+    /// actions whose permission can't be known beforehand.
     pub forbidden: Option<String>,
 }
 
@@ -663,7 +681,11 @@ impl Dialog {
 #[derive(Clone, Copy)]
 pub struct Dialogs {
     current: RwSignal<Option<Arc<Dialog>>>,
+    /// Bumped after every action that really ran (and each bulk chunk sent): pages read it through
+    /// [`data_version`] to refetch.
     pub version: RwSignal<u64>,
+    /// `[writes] mode` from the session info; dialogs start as `DryRun` until it arrives, so
+    /// nothing is sent by accident.
     pub mode: RwSignal<WriteMode>,
     /// What the project + region offers (from the session info).
     pub caps: RwSignal<Capabilities>,
@@ -723,13 +745,16 @@ pub fn data_version() -> u64 {
 // Rendering
 // ---------------------------------------------------------------------------
 
+/// Where the open dialog is: editing the form, waiting on the server, or showing the result.
 #[derive(Clone, Debug, PartialEq)]
 enum Phase {
     Editing,
     Running,
+    /// The action ran (or was previewed in dry-run): the outcome to show.
     Done(ActionOutcome),
+    /// The action failed: the message to show; the form can be edited and resent.
     Failed(String),
-    /// The record exists and its data is on the way (roadmap 45): progress is in a signal.
+    /// The record exists and its data is on the way: progress is in a signal.
     Uploading,
     /// The upload did not finish: the image `.0` stays `queued`, and the user may delete it.
     UploadFailed(String, String),
@@ -755,6 +780,8 @@ fn visible(f: &Field, values: &HashMap<String, String>, all: &[Field]) -> bool {
     }
 }
 
+/// The set `src` draws from with the current values (`Switch` picks by another field), or `None`
+/// for `Static` lists and a `Switch` value with no set.
 fn choice_set_for(src: &Source, values: &HashMap<String, String>) -> Option<ChoiceSet> {
     match src {
         Source::Static(_) => None,
@@ -766,6 +793,8 @@ fn choice_set_for(src: &Source, values: &HashMap<String, String>) -> Option<Choi
     }
 }
 
+/// Every set the fields may need (all branches of a `Switch`, the sets behind member rows,
+/// `Info` and assignments), sorted and without repeats: what the dialog loads when it opens.
 fn all_sets(fields: &[Field]) -> Vec<ChoiceSet> {
     let mut out = Vec::new();
     for f in fields {
@@ -840,6 +869,10 @@ pub fn DialogHost() -> impl IntoView {
     move || dialogs.current.get().map(|d| view! { <DialogView dialog=d/> })
 }
 
+/// The open modal: loads the sets its fields need, keeps the values and problems, runs
+/// `on_change` after each edit, and on submit sends the built `OsAction` through `run_action`
+/// (or hands a bulk one to [`Jobs`](crate::components::jobs::Jobs); an image file is then
+/// uploaded), and shows the [`Outcome`].
 #[component]
 fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
     let i18n = use_i18n();
@@ -878,7 +911,7 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
             // empty (of the owner's choices for `Source::Of`), unless the field
             // has a placeholder (`empty_label`): there the user must choose, as
             // Horizon's admin *Select a project* (an admin creating a network
-            // in the first project by accident, roadmap 85). Either way, a
+            // in the first project by accident). Either way, a
             // field that now has a value from this set (preselected, or preset
             // by the caller, e.g. *Launch* from an image row) runs the hook as
             // if the user had picked it, so dependent fields follow.
@@ -955,7 +988,7 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
         })
     };
 
-    // Upload progress `(sent, total)` and the transfer, to cancel it (roadmap 45).
+    // Upload progress `(sent, total)` and the transfer, to cancel it.
     let progress = RwSignal::new((0.0_f64, 0.0_f64));
     let uploading = StoredValue::new_local(Upload::default());
     let close = move || dialogs.current.set(None);
@@ -993,7 +1026,7 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
             Err(e) => errors.set(Some(e)),
             Ok(action) => {
                 errors.set(None);
-                // Long batches run in the background with a progress card (roadmap 87).
+                // Long batches run in the background with a progress card.
                 let from = dialogs.prefs.get_untracked().background_batch_from;
                 let action = match (
                     jobs.filter(|_| crate::components::jobs::in_background(&action, from)),
@@ -1227,7 +1260,7 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
 }
 
 /// The requests an action built (method, path, service, body), unnumbered
-/// (roadmap 78); nothing when the server left them out (`[ui] show_requests`).
+///; nothing when the server left them out (`[ui] show_requests`).
 #[component]
 pub fn RequestList(requests: Vec<crate::model::RequestPreview>) -> impl IntoView {
     (!requests.is_empty()).then(|| {
@@ -1248,6 +1281,8 @@ pub fn RequestList(requests: Vec<crate::model::RequestPreview>) -> impl IntoView
     })
 }
 
+/// The result page of a dialog: *Dry-run* with the requests that would be sent, *Done*, or the
+/// items that failed with OpenStack's message; *Close* dismisses it.
 #[component]
 fn Outcome(out: ActionOutcome) -> impl IntoView {
     let i18n = use_i18n();
@@ -1319,6 +1354,8 @@ fn Outcome(out: ActionOutcome) -> impl IntoView {
     }
 }
 
+/// One form field: its label (with `*`, help, tip and error) and the input its [`Kind`] calls for.
+/// Stays mounted while hidden (`display: none`) so its value and focus survive a step switch.
 #[component]
 fn FieldView(
     field: Field,
@@ -1520,7 +1557,7 @@ fn FieldView(
             // Values ticked when the dialog opened but missing from the set (a
             // project deleted since it was given flavor access) stay as rows of
             // their own, labelled by ID: otherwise the count says *1 selected*
-            // with nothing ticked, and saving drops them unseen (roadmap 89).
+            // with nothing ticked, and saving drops them unseen.
             let initial = get_untracked_value(values, name);
             let opts = move || resolve(&src2, values, choices).map(|l| with_unknown(l, &initial));
             let src3 = src.clone();
@@ -1693,7 +1730,7 @@ fn percent((sent, total): (f64, f64)) -> f64 {
     }
 }
 
-/// Sends the file picked for *Create Image* to the image `id` that now exists (roadmap 45),
+/// Sends the file picked for *Create Image* to the image `id` that now exists,
 /// showing progress in `phase`. `proxy` goes through Moonlight's route; `direct` asks the
 /// server for a ticket first and goes to Glance itself. `out` is the creation's outcome, shown
 /// when the data arrived; on failure the dialog offers to delete the empty image.
@@ -1734,6 +1771,8 @@ async fn upload_image(
     ));
 }
 
+/// The value of field `name` without tracking it (empty when unset): for event handlers and the
+/// initial value of row editors.
 fn get_untracked_value(values: RwSignal<Vals>, name: &str) -> String {
     values.with_untracked(|v| v.get(name).cloned().unwrap_or_default())
 }
@@ -1768,7 +1807,7 @@ fn KeyValueRows(
         on_change.run(serde_json::to_string(&pairs).unwrap_or_default());
     };
     // Rows are added from the catalog combo's handler, whose owner is disposed when it closes:
-    // their signals must belong to this component (AGENTS.md §6, roadmap 54).
+    // their signals must belong to this component (AGENTS.md §6).
     let owner = StoredValue::new(Owner::current());
     let push = move |k: String, v: String| {
         let i = next.get_value();
@@ -1783,7 +1822,7 @@ fn KeyValueRows(
     };
     let add = move |_| push(String::new(), String::new());
     let id2 = id.clone();
-    // The metadata catalog (roadmap 25): read when the dialog opens. If it fails or is empty the
+    // The metadata catalog: read when the dialog opens. If it fails or is empty the
     // editor stays plain, so a cloud without Glance's metadefs loses nothing.
     let options = LocalResource::new(move || async move {
         match catalog {
@@ -1883,6 +1922,8 @@ fn KeyValueRows(
     }
 }
 
+/// The choices `src` offers now (filtered by `Of`, `Except`, `Without`), or `None` while its set
+/// is still loading.
 fn resolve(
     src: &Source,
     values: RwSignal<HashMap<String, String>>,
@@ -1918,8 +1959,11 @@ pub struct MenuItem {
 /// Project*), so it stays enabled with `[writes] mode = off`.
 #[derive(Clone)]
 pub enum ItemKind {
+    /// Builds the dialog on click (so it reads the row as it is then) and opens it.
     Dialog(Arc<dyn Fn() -> Dialog + Send + Sync>),
+    /// Navigates to this path.
     Link(String),
+    /// Runs the closure; it must not write to OpenStack (it stays enabled with writes off).
     Run(Arc<dyn Fn() + Send + Sync>),
 }
 
@@ -1958,13 +2002,15 @@ impl MenuItem {
     }
 }
 
+/// The tooltip of a create, bulk or row-menu button when it is disabled: only with
+/// `[writes] mode = off` (dry-run still opens dialogs, to preview the request).
 fn disabled_reason(mode: WriteMode, lang: Lang) -> Option<&'static str> {
     (mode == WriteMode::Off).then(|| t(lang, K::WritesOff))
 }
 
 /// Whether an empty field takes its set's first choice once loaded: required
 /// selects do, except those with a placeholder (`empty_label`), where the user
-/// must choose (roadmap 85).
+/// must choose.
 fn preselects(f: &Field) -> bool {
     f.required && f.empty_label.is_none() && matches!(f.kind, Kind::Select(_))
 }
@@ -2004,7 +2050,7 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
             .into_any()
         }
     };
-    // The menu's items are built the first time it opens (roadmap 103): a table builds one
+    // The menu's items are built the first time it opens: a table builds one
     // `RowActions` per row, and most menus are never opened.
     let menu = (!rest.is_empty()).then(|| {
         let details = NodeRef::<leptos::html::Details>::new();
@@ -2083,9 +2129,8 @@ pub fn RowActions(items: Vec<MenuItem>) -> impl IntoView {
 /// max_height)`. `trigger` is the button's `(top, bottom, right)`, `menu` the
 /// list's natural `(width, height)`, `viewport` its `(width, height)`. Below the
 /// button when the list fits there, above when only that fits, else on the side
-/// with more room with its height capped to it (the list scrolls inside; roadmap
-/// 47: the instance menu, ~17 items, ran off the bottom of the window and its
-/// last items couldn't be reached). Right-aligned with the button, kept inside
+/// with more room with its height capped to it (the list scrolls inside: the instance menu, ~17 items, ran
+/// off the bottom of the window and its last items couldn't be reached). Right-aligned with the button, kept inside
 /// the viewport horizontally.
 pub fn menu_box(trigger: (f64, f64, f64), menu: (f64, f64), viewport: (f64, f64)) -> (f64, f64, f64) {
     const GAP: f64 = 4.0;

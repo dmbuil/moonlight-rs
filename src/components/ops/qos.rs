@@ -66,6 +66,7 @@ pub fn qos_policy_items(lang: Lang, p: &QosPolicyRow) -> Vec<MenuItem> {
     ]
 }
 
+/// A QoS rule type (`bandwidth_limit`…) as the user reads it.
 fn qos_kind_label(lang: Lang, kind: &str) -> String {
     t(
         lang,

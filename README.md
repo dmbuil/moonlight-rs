@@ -32,7 +32,7 @@ Moonlight is a *fast* OpenStack dashboard written in Rust:
 OpenStack through [`openstack_sdk`](https://github.com/gtema/openstack).
 
 It is a **proof of concept** that replicates Horizon's *Project* dashboard: same structure,
-same look and feel as the corporate Horizon theme,  with modern controls, English/Spanish UI
+same look and feel as the corporate Horizon theme but with modern controls, English/Spanish UI
 and a server-enforced safety switch for every write.
 
 - [Quick start](#quick-start)
@@ -89,7 +89,7 @@ cargo leptos watch -- --config-file moonlight.conf
 
 To build once without watching: `cargo leptos build` then `cargo leptos serve`.
 
-### 2. Release build (closer to production)
+### 2. Release build
 
 > [!WARNING]
 > **Stop `cargo leptos watch` first**  
@@ -120,16 +120,17 @@ export LEPTOS_ENV=PROD
 ./moonlight
 ```
 
-…plus `--config-file /etc/moonlight/moonlight.conf` (or any default path, see
+...plus `--config-file /etc/moonlight/moonlight.conf` (or any default path, see
 [CONFIGURATION.md](CONFIGURATION.md)). Session cookies are `Secure` by default; for plain-HTTP
 development (`http://127.0.0.1:3000`) set `[session] secure_cookies = false`.
 
-### 3. Against a test cloud (to exercise real writes)
+### 3. Against a test cloud (Devstack)
 
 Real writes (`[writes] mode = "on"`) must only target a non-production cloud. Options:
 
 - **A lab project/region** of your own cloud with a dedicated test user.
-- **DevStack** on a VM (≥ 8 GB RAM, 4 vCPU, Ubuntu 22.04/24.04):
+- **[DevStack](https://docs.openstack.org/devstack/latest/)** on a VM (≥ 8 GB RAM,
+4 vCPU, Ubuntu 22.04/24.04):
 
   ```bash
   sudo useradd -s /bin/bash -d /opt/stack -m stack && echo "stack ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/stack
@@ -327,16 +328,9 @@ check list (both clippy targets, Markdown lint) is in [AGENTS.md](AGENTS.md#2-co
 
 ## Status and roadmap
 
-Verified against a production RHOSO cloud in read mode and in dry-run for writes;
-real writes have only been validated by tests, not against a live cloud.
-
-Next steps:
-
-- Validate `MOONLIGHT_WRITES=on` end to end on DevStack or a lab project.
-- OIDC login (Keystone WebSSO) instead of user/password.
-- Identity and Admin dashboards; Orchestration (Heat).
-- Instance resize, rebuild, migrate.
-- Container image and OpenShift deployment; optional shared cache.
+Verified against a dev/prod OpenStack cloud in read mode and in dry-run for writes;
+real writes have only been validated by tests, not against a live production-grade
+cloud.
 
 ## License
 

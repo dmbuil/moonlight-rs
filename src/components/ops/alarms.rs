@@ -1,4 +1,4 @@
-//! Alarming (Aodh, roadmap 79).
+//! Alarming (Aodh).
 
 use super::*;
 
@@ -7,11 +7,14 @@ fn alarm_type(v: &Vals) -> &str {
     v.get("type").map(String::as_str).unwrap_or("")
 }
 
+/// Types with a threshold and a comparison (`prometheus` and the Gnocchi ones; `event` and
+/// `composite` have none).
 fn alarm_compares(v: &Vals) -> bool {
     let t = alarm_type(v);
     t == "prometheus" || t.starts_with("gnocchi_")
 }
 
+/// Gnocchi types: they take an aggregation method, a granularity and evaluation periods.
 fn alarm_gnocchi(v: &Vals) -> bool {
     alarm_type(v).starts_with("gnocchi_")
 }
@@ -27,6 +30,7 @@ fn alarm_metric(v: &Vals) -> bool {
 /// The fields' types: `(field, types it belongs to, visibility while creating)`.
 type AlarmFieldTypes = (&'static [&'static str], fn(&Vals) -> bool);
 
+/// The threshold and comparison fields: see `alarm_compares`.
 const COMPARES: AlarmFieldTypes = (
     &[
         "prometheus",
@@ -37,6 +41,7 @@ const COMPARES: AlarmFieldTypes = (
     alarm_compares,
 );
 
+/// The aggregation, granularity and evaluation period fields: see `alarm_gnocchi`.
 const GNOCCHI: AlarmFieldTypes = (
     &[
         "gnocchi_resources_threshold",
@@ -46,6 +51,7 @@ const GNOCCHI: AlarmFieldTypes = (
     alarm_gnocchi,
 );
 
+/// The metric and resource type fields: see `alarm_metric`.
 const METRIC: AlarmFieldTypes = (
     &[
         "gnocchi_resources_threshold",

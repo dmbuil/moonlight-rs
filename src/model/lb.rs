@@ -18,7 +18,7 @@ pub struct LoadBalancerRow {
 
 /// Listener and pool protocols offered. `HTTPS` passes TLS through to the members.
 pub const LB_PROTOCOLS: [&str; 4] = ["HTTP", "HTTPS", "TCP", "UDP"];
-/// HTTPS ended at the load balancer with a Barbican certificate (roadmap 54):
+/// HTTPS ended at the load balancer with a Barbican certificate:
 /// listeners only (the pool is `HTTP`), offered with `needs::LB_TLS_TERMINATION`.
 pub const LB_TLS_PROTOCOL: &str = "TERMINATED_HTTPS";
 /// Octavia `lb_algorithm` values offered in the dialogs.
@@ -40,6 +40,9 @@ pub fn pool_protocol_for(listener: &str) -> &'static str {
     }
 }
 
+/// Rejects a value outside a fixed set (an Octavia protocol, an Aodh severity, a key type, …),
+/// naming `what` and the allowed values: the server re-checks what the dialog's select offered.
+/// Shared by the other `model` specs.
 pub(super) fn one_of(v: &str, allowed: &[&str], what: &str) -> Result<(), String> {
     if allowed.contains(&v) {
         Ok(())
@@ -57,18 +60,18 @@ pub struct LbListenerSpec {
     pub port: u16,
     /// `None` = unlimited.
     pub connection_limit: Option<u32>,
-    /// The *Advanced* fields (roadmap 54).
+    /// The *Advanced* fields.
     #[serde(default)]
     pub options: LbListenerOptions,
     /// `TERMINATED_HTTPS` only: the Barbican container or secret URL of the
-    /// certificate, required (roadmap 54).
+    /// certificate, required.
     #[serde(default)]
     pub default_tls_container_ref: Option<String>,
     /// `TERMINATED_HTTPS` only: more certificates, chosen by the name the client
     /// asks for (SNI).
     #[serde(default)]
     pub sni_container_refs: Vec<String>,
-    /// *Admin State Up* (roadmap 54); only `false` is sent.
+    /// *Admin State Up*; only `false` is sent.
     #[serde(default = "yes")]
     pub admin_up: bool,
 }
@@ -80,7 +83,7 @@ pub const LB_INSERT_HEADERS: [&str; 3] = ["X-Forwarded-For", "X-Forwarded-Port",
 /// take an `i32` (about 24.8 days).
 pub const LB_TIMEOUT_MAX: u32 = i32::MAX as u32;
 
-/// A listener's *Advanced* options, as octavia-dashboard has them (roadmap 54).
+/// A listener's *Advanced* options, as octavia-dashboard has them.
 /// `None` / empty = Octavia's default: not sent on create, and on edit sent as
 /// `null` / `[]` / `{}`, which Octavia takes as "back to the default".
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -144,7 +147,7 @@ impl LbListenerOptions {
 }
 
 /// A pool to create; in the wizard the listener's default pool, which must be named
-/// (roadmap 53).
+///.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LbPoolSpec {
     pub name: Option<String>,
@@ -154,14 +157,14 @@ pub struct LbPoolSpec {
     /// `SOURCE_IP`, `HTTP_COOKIE` or `APP_COOKIE` (with `cookie_name`).
     pub session_persistence: Option<String>,
     pub cookie_name: Option<String>,
-    /// Re-encrypt to the members (Octavia 2.8, roadmap 54).
+    /// Re-encrypt to the members (Octavia 2.8).
     #[serde(default)]
     pub tls_enabled: bool,
     /// OpenSSL cipher string for `tls_enabled` pools (Octavia 2.15); `None` = the
     /// cloud's default.
     #[serde(default)]
     pub tls_ciphers: Option<String>,
-    /// *Admin State Up* (roadmap 54); only `false` is sent.
+    /// *Admin State Up*; only `false` is sent.
     #[serde(default = "yes")]
     pub admin_up: bool,
 }
@@ -176,7 +179,7 @@ pub struct LbMemberSpec {
     /// 0-256; `None` = Octavia's default (1).
     pub weight: Option<u16>,
     pub backup: bool,
-    /// Health-check this address/port instead of the member's own (roadmap 54).
+    /// Health-check this address/port instead of the member's own.
     #[serde(default)]
     pub monitor_address: Option<String>,
     #[serde(default)]
@@ -185,11 +188,12 @@ pub struct LbMemberSpec {
     pub admin_up: bool,
 }
 
+/// Serde default of every spec's `admin_up`: a spec without it is created up, as Octavia does.
 fn yes() -> bool {
     true
 }
 
-/// One row of the members editor (roadmap 54), as typed: numbers stay text
+/// One row of the members editor, as typed: numbers stay text
 /// until submit, so a half-typed port isn't lost. The field's value is a JSON
 /// list of these.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -298,6 +302,8 @@ pub fn member_specs(json: &str) -> Result<Vec<LbMemberSpec>, String> {
     Ok(specs)
 }
 
+/// Octavia rejects two members with the same address and port in one pool; catch it before the
+/// request, naming the duplicate.
 fn unique_members(specs: &[LbMemberSpec]) -> Result<(), String> {
     let mut seen = std::collections::HashSet::new();
     match specs.iter().find(|m| !seen.insert((m.address.as_str(), m.port))) {
@@ -323,16 +329,21 @@ pub fn removed_members<'a>(existing: &'a [LbMember], keep: &[LbMemberSpec]) -> V
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LbMonitorSpec {
     pub name: Option<String>,
+    /// One of [`LB_MONITOR_TYPES`]; can't change after create.
     pub kind: String,
+    /// Seconds between checks.
     pub delay: u32,
+    /// Seconds a check may take, at most `delay`.
     pub timeout: u32,
+    /// Successful checks before a member is `ONLINE` again (1-10).
     pub max_retries: u8,
+    /// Failed checks before it is `ERROR` (1-10); `None` = Octavia's default (3).
     pub max_retries_down: Option<u8>,
     /// HTTP(S) monitors only.
     pub http_method: Option<String>,
     pub url_path: Option<String>,
     pub expected_codes: Option<String>,
-    /// *Admin State Up* (roadmap 54); only `false` is sent on create.
+    /// *Admin State Up*; only `false` is sent on create.
     #[serde(default = "yes")]
     pub admin_up: bool,
 }
@@ -347,7 +358,7 @@ pub struct LbCreateSpec {
     pub flavor_id: Option<String>,
     /// An Octavia availability zone (`ChoiceSet::LbAvailabilityZones`); `None` = any.
     pub availability_zone: Option<String>,
-    /// *Admin State Up* of the load balancer (roadmap 54); only `false` is sent.
+    /// *Admin State Up* of the load balancer; only `false` is sent.
     #[serde(default = "yes")]
     pub admin_up: bool,
     pub listener: Option<LbListenerSpec>,
@@ -398,7 +409,7 @@ pub fn lb_inserts_headers(protocol: &str) -> bool {
     protocol == "HTTP" || protocol == LB_TLS_PROTOCOL
 }
 
-/// A listener's certificates (roadmap 54): `TERMINATED_HTTPS` needs one, other
+/// A listener's certificates: `TERMINATED_HTTPS` needs one, other
 /// protocols take none, and each is a Barbican URL.
 pub fn check_listener_tls(protocol: &str, default_ref: Option<&str>, sni: &[String]) -> Result<(), String> {
     let default_ref = default_ref.map(str::trim).filter(|r| !r.is_empty());
@@ -489,7 +500,7 @@ impl LbMonitorSpec {
 impl LbCreateSpec {
     /// The whole wizard: subnet given, VIP address valid, every part checked, and
     /// nothing that needs a missing parent (a pool without a listener, members
-    /// without a pool). The default pool must be named (roadmap 53).
+    /// without a pool). The default pool must be named.
     pub fn check(&self) -> Result<(), String> {
         if self.vip_subnet_id.trim().is_empty() {
             return Err("a subnet is required".into());
@@ -606,7 +617,7 @@ pub struct LbMember {
 }
 
 /// An L7 policy of one of the load balancer's listeners (detail page, *L7
-/// Policies* tab, roadmap 54), with its rules.
+/// Policies* tab), with its rules.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LbL7Policy {
     pub id: String,
@@ -649,7 +660,7 @@ pub const LB_L7_RULE_TYPES: [&str; 5] = ["HOST_NAME", "PATH", "FILE_TYPE", "HEAD
 /// How an L7 rule compares its value; `FILE_TYPE` takes `EQUAL_TO` or `REGEX` only.
 pub const LB_L7_COMPARE_TYPES: [&str; 5] = ["REGEX", "STARTS_WITH", "ENDS_WITH", "CONTAINS", "EQUAL_TO"];
 
-/// An L7 policy to create or save (roadmap 54).
+/// An L7 policy to create or save.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LbL7PolicySpec {
     pub name: Option<String>,
@@ -702,7 +713,7 @@ impl LbL7PolicySpec {
     }
 }
 
-/// An L7 rule to create or save (roadmap 54).
+/// An L7 rule to create or save.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LbL7RuleSpec {
     pub rule_type: String,
@@ -786,13 +797,13 @@ pub struct LoadBalancerDetail {
     pub pools: Vec<LbPool>,
     pub members: Vec<LbMember>,
     pub monitors: Vec<LbMonitor>,
-    /// Of every listener, by listener then position (roadmap 54).
+    /// Of every listener, by listener then position.
     #[serde(default)]
     pub l7policies: Vec<LbL7Policy>,
 }
 
 /// Octavia's transitional states (`PENDING_CREATE`, `PENDING_UPDATE`,
-/// `PENDING_DELETE`): the pages refetch until they end (roadmap 54).
+/// `PENDING_DELETE`): the pages refetch until they end.
 pub fn lb_pending(provisioning_status: &str) -> bool {
     provisioning_status.starts_with("PENDING")
 }
@@ -947,7 +958,7 @@ mod member_rows_tests {
 mod lb_option_tests {
     use super::*;
 
-    /// Roadmap 54: what Octavia would refuse, refused before sending.
+    /// What Octavia would refuse, refused before sending.
     #[test]
     fn listener_options_and_pool_tls_follow_octavia_rules() {
         let ok = LbListenerOptions {
@@ -1049,7 +1060,7 @@ mod lb_option_tests {
 mod lb_busy_tests {
     use super::*;
 
-    /// Roadmap 54: the detail page polls while any part is PENDING_*.
+    /// The detail page polls while any part is PENDING_*.
     #[test]
     fn a_pending_part_makes_the_load_balancer_busy() {
         let d: LoadBalancerDetail = serde_json::from_value(serde_json::json!({

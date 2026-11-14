@@ -89,6 +89,8 @@ pub fn create_volume_dialog(lang: Lang, preset: Option<(VolumeSource, String, Op
     })
 }
 
+/// *Create Volume* from an image or a volume snapshot (row `id`, kind `src`), the size prefilled
+/// with `size` (GB) when known.
 pub(super) fn create_volume_item(lang: Lang, src: VolumeSource, id: &str, size: Option<u32>) -> MenuItem {
     let id = id.to_string();
     MenuItem::dialog(t(lang, K::CreateVolume), move || {
@@ -330,7 +332,7 @@ pub fn accept_transfer_dialog(lang: Lang) -> Dialog {
     )
 }
 
-/// *Create Volume Backup* (roadmap 5, `backup` plugin). From a volume's menu `volume_id`
+/// *Create Volume Backup* (`backup` plugin). From a volume's menu `volume_id`
 /// is fixed; from the Backups list the volume is picked (available ones: an attached
 /// volume is backed up from its own menu, which preselects *Force*).
 pub fn backup_form(lang: Lang, volume_id: Option<String>, name: String, attached: bool) -> Dialog {
@@ -533,7 +535,7 @@ fn create_group_from(
     })
 }
 
-/// A volume group's menu (roadmap 5), in Horizon's order: *Create Snapshot*,
+/// A volume group's menu, in Horizon's order: *Create Snapshot*,
 /// *Edit Group*, *Clone Group*, *Delete Group* (with Horizon's *Delete Volumes*
 /// option). *Manage Volumes* needs the group's volumes: see
 /// [`volume_group_detail_items`].

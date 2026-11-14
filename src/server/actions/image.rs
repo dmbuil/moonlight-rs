@@ -73,6 +73,7 @@ fn image_source_url(url: &str) -> R<&str> {
     Ok(u)
 }
 
+/// `ImageUpdate`: Glance `PATCH /images/{id}`, a JSON-Patch built by `image_patch`.
 pub(super) async fn image_update(x: &mut Exec<'_>, id: &str, changes: &ImageChanges) -> R<()> {
     use openstack_sdk::api::image::v2::image::patch as m;
     let patch: json_patch::Patch = serde_json::from_value(Value::Array(image_patch(changes)?)).map_err(build_err)?;
@@ -81,6 +82,7 @@ pub(super) async fn image_update(x: &mut Exec<'_>, id: &str, changes: &ImageChan
     Ok(())
 }
 
+/// `ImageSetProperties`: the same JSON-Patch `PATCH`, with only custom properties.
 pub(super) async fn image_set_properties(
     x: &mut Exec<'_>,
     id: &str,
@@ -99,12 +101,16 @@ pub(super) async fn image_set_properties(
     Ok(())
 }
 
+/// `ImageDelete`: Glance `DELETE /images/{id}`.
 pub(super) async fn image_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::image::v2::image::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `ImageCreate`: `POST /images`, then either the file upload (`PUT …/file`, previewed
+/// only: it is streamed outside the SDK) or a `web-download`
+/// `POST /images/{id}/import` for a URL.
 pub(super) async fn image_create(x: &mut Exec<'_>, spec: &ImageSpec) -> R<()> {
     use openstack_sdk::api::image::v2::image::{create as m, import::create as imp};
     let url = spec.url.as_deref().map(image_source_url).transpose()?;
@@ -256,7 +262,7 @@ mod tests {
             ..spec.clone()
         }))
         .await;
-        assert_eq!(body(&owned[0])["owner"], "p9", "admin Create Image (roadmap 89)");
+        assert_eq!(body(&owned[0])["owner"], "p9", "admin Create Image");
         for bad in [
             ImageSpec {
                 url: Some(id("ftp://x/y")),

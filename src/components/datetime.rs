@@ -1,5 +1,5 @@
 //! Themed date and time pickers for dialog fields (`Kind::Date`, `Kind::Time`),
-//! used by *Create Application Credential* (roadmap 57). Each is a text input
+//! used by *Create Application Credential*. Each is a text input
 //! (typing still works: `YYYY-MM-DD`, `HH:MM`) with a button that opens a popup
 //! placed like `Combo`'s (`position: fixed`, flipping up near the bottom), not
 //! the browser's own picker. Esc or a click outside closes it.
@@ -44,6 +44,8 @@ pub fn set_time_part(current: &str, hour: Option<u32>, minute: Option<u32>) -> S
     format!("{h:02}:{m:02}")
 }
 
+/// Today's date in UTC: the first day [`DatePicker`] allows with `future_only`, and the month it
+/// opens on when the field is empty.
 fn today() -> NaiveDate {
     chrono::Utc::now().date_naive()
 }
@@ -71,6 +73,7 @@ fn place(anchor: NodeRef<leptos::html::Div>, height: f64) -> String {
     }
 }
 
+/// The calendar glyph on the [`DatePicker`] button (decorative, `aria-hidden`).
 fn calendar_icon() -> impl IntoView {
     view! {
         <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -80,6 +83,7 @@ fn calendar_icon() -> impl IntoView {
     }
 }
 
+/// The clock glyph on the [`TimePicker`] button (decorative, `aria-hidden`).
 fn clock_icon() -> impl IntoView {
     view! {
         <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">

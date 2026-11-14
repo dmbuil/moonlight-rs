@@ -1,4 +1,5 @@
-//! Admin › Volume writes (roadmap 85): volume and snapshot status, migration, manage, volume types and encryption, QoS specs, group types.
+//! Admin › Volume writes: volume and snapshot status, migration, manage, volume
+//! types and encryption, QoS specs, group types.
 
 use super::*;
 
@@ -13,6 +14,7 @@ fn spec_changes(set: &[(String, String)], unset: &[String]) -> R<Vec<(String, St
 
 /// `status` if it is one of `allowed` (Horizon's choices): Cinder stores any
 /// string `os-reset_status` is given, so a typo would strand the resource.
+/// Also vets a QoS spec's `consumer` against `model::QOS_CONSUMERS`.
 fn known_status<'s>(status: &'s str, allowed: &[&str]) -> R<&'s str> {
     let s = status.trim();
     if allowed.contains(&s) {
@@ -22,6 +24,8 @@ fn known_status<'s>(status: &'s str, allowed: &[&str]) -> R<&'s str> {
     }
 }
 
+/// `VolumeResetStatus`: `POST /volumes/{id}/action` with `os-reset_status`, to one of
+/// `model::VOLUME_STATUSES`. Changes only Cinder's record, not the back end.
 pub(super) async fn volume_reset_status(x: &mut Exec<'_>, id: &str, status: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::os_reset_status as m;
     let status = known_status(status, crate::model::VOLUME_STATUSES)?;
@@ -40,6 +44,8 @@ pub(super) async fn volume_reset_status(x: &mut Exec<'_>, id: &str, status: &str
     Ok(())
 }
 
+/// `VolumeMigrate`: `POST /volumes/{id}/action` with `os-migrate_volume` to the back-end `host`
+/// (`host@backend#pool`); `force_host_copy` skips the driver's own migration.
 pub(super) async fn volume_migrate(x: &mut Exec<'_>, id: &str, host: &str, force_host_copy: &bool) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::os_migrate_volume_30 as m;
     let body = m::OsMigrateVolumeBuilder::default()
@@ -58,6 +64,8 @@ pub(super) async fn volume_migrate(x: &mut Exec<'_>, id: &str, host: &str, force
     Ok(())
 }
 
+/// `VolumeManage`: `POST /manageable_volumes` (3.0), adopts a back-end volume, found by ID
+/// (`source-id`) or by name (`source-name`), into Cinder.
 pub(super) async fn volume_manage(x: &mut Exec<'_>, spec: &ManageVolumeSpec) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume_manage::create_30 as m;
     let key = if spec.by_id { "source-id" } else { "source-name" };
@@ -95,6 +103,8 @@ pub(super) async fn volume_manage(x: &mut Exec<'_>, spec: &ManageVolumeSpec) -> 
     Ok(())
 }
 
+/// `VolumeUnmanage`: `POST /volumes/{id}/action` with `os-unmanage`; Cinder forgets the volume
+/// but leaves its data on the back end.
 pub(super) async fn volume_unmanage(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::os_unmanage as m;
     x.send(
@@ -108,6 +118,8 @@ pub(super) async fn volume_unmanage(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `VolumeTypeCreate`: `POST /types` as a raw JSON request, because the SDK's create posts to
+/// `types/{id}/action` (the dry-run test guards it).
 pub(super) async fn volume_type_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -131,6 +143,8 @@ pub(super) async fn volume_type_create(
     Ok(())
 }
 
+/// `VolumeTypeUpdate`: `PUT /types/{id}` with the name, description (`""` clears it) and
+/// `is_public`.
 pub(super) async fn volume_type_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -156,12 +170,15 @@ pub(super) async fn volume_type_update(
     Ok(())
 }
 
+/// `VolumeTypeDelete`: `DELETE /types/{id}`.
 pub(super) async fn volume_type_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::r#type::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `VolumeTypeSetExtraSpecs`: one `POST /types/{id}/extra_specs` for every `set` pair, then a
+/// `DELETE /types/{id}/extra_specs/{key}` per `unset` key.
 pub(super) async fn volume_type_set_extra_specs(
     x: &mut Exec<'_>,
     id: &str,
@@ -193,6 +210,9 @@ pub(super) async fn volume_type_set_extra_specs(
     Ok(())
 }
 
+/// `VolumeTypeSetQos`: moves the type from `current_qos_id` to `qos_id` (either may be `None`):
+/// `GET /qos-specs/{old}/disassociate`, then `GET /qos-specs/{new}/associate`, each with
+/// `vol_type_id`. Fails when nothing changes.
 pub(super) async fn volume_type_set_qos(
     x: &mut Exec<'_>,
     id: &str,
@@ -225,6 +245,9 @@ pub(super) async fn volume_type_set_qos(
     Ok(())
 }
 
+/// `VolumeTypeEncryptionSet`: `POST /types/{id}/encryption`, or with `update`
+/// `PUT /types/{id}/encryption/provider`, as raw JSON (see the comment inside). Fails on a
+/// control location outside `model::CONTROL_LOCATIONS`.
 pub(super) async fn volume_type_encryption_set(
     x: &mut Exec<'_>,
     id: &str,
@@ -262,6 +285,8 @@ pub(super) async fn volume_type_encryption_set(
     Ok(())
 }
 
+/// `VolumeTypeEncryptionDelete`: `DELETE /types/{id}/encryption/provider`, as cinderclient does
+/// (Cinder ignores the encryption ID in that path).
 pub(super) async fn volume_type_encryption_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::new(
         http::Method::DELETE,
@@ -273,6 +298,8 @@ pub(super) async fn volume_type_encryption_delete(x: &mut Exec<'_>, id: &str) ->
     Ok(())
 }
 
+/// `QosSpecCreate`: `POST /qos-specs` with `consumer` (one of `model::QOS_CONSUMERS`) and the
+/// specs as properties.
 pub(super) async fn qos_spec_create(x: &mut Exec<'_>, name: &str, consumer: &str, specs: &[(String, String)]) -> R<()> {
     use openstack_sdk::api::block_storage::v3::qos_spec::create as m;
     let consumer = known_status(consumer, crate::model::QOS_CONSUMERS)?;
@@ -292,6 +319,7 @@ pub(super) async fn qos_spec_create(x: &mut Exec<'_>, name: &str, consumer: &str
     Ok(())
 }
 
+/// `QosSpecSetConsumer`: `PUT /qos-specs/{id}` with only `consumer`.
 pub(super) async fn qos_spec_set_consumer(x: &mut Exec<'_>, id: &str, consumer: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::qos_spec::set as m;
     let consumer = known_status(consumer, crate::model::QOS_CONSUMERS)?;
@@ -306,6 +334,8 @@ pub(super) async fn qos_spec_set_consumer(x: &mut Exec<'_>, id: &str, consumer: 
     Ok(())
 }
 
+/// `QosSpecSetSpecs`: `PUT /qos-specs/{id}` with the `set` pairs, then one
+/// `PUT /qos-specs/{id}/delete_keys` with every `unset` key.
 pub(super) async fn qos_spec_set_specs(
     x: &mut Exec<'_>,
     id: &str,
@@ -337,12 +367,14 @@ pub(super) async fn qos_spec_set_specs(
     Ok(())
 }
 
+/// `QosSpecDelete`: `DELETE /qos-specs/{id}`.
 pub(super) async fn qos_spec_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::qos_spec::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `GroupTypeCreate`: `POST /group_types` (3.11).
 pub(super) async fn group_type_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -366,6 +398,7 @@ pub(super) async fn group_type_create(
     Ok(())
 }
 
+/// `GroupTypeUpdate`: `PUT /group_types/{id}` (3.11) with the name, description and `is_public`.
 pub(super) async fn group_type_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -391,12 +424,15 @@ pub(super) async fn group_type_update(
     Ok(())
 }
 
+/// `GroupTypeDelete`: `DELETE /group_types/{id}` (3.11).
 pub(super) async fn group_type_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::group_type::delete_311 as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `GroupTypeSetSpecs`: one `POST /group_types/{id}/group_specs` (3.11) for the `set` pairs,
+/// then a `DELETE /group_types/{id}/group_specs/{key}` per `unset` key.
 pub(super) async fn group_type_set_specs(
     x: &mut Exec<'_>,
     id: &str,
@@ -428,6 +464,8 @@ pub(super) async fn group_type_set_specs(
     Ok(())
 }
 
+/// `SnapshotResetStatus`: `POST /snapshots/{id}/action` with `os-reset_status`, to one of
+/// `model::SNAPSHOT_STATUSES`.
 pub(super) async fn snapshot_reset_status(x: &mut Exec<'_>, id: &str, status: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::snapshot::os_reset_status as m;
     let status = known_status(status, crate::model::SNAPSHOT_STATUSES)?;

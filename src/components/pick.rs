@@ -17,11 +17,11 @@ pub enum Fmt {
     UpDown,
     /// Localised status word
     State,
-    /// What a port belongs to: `router` / `instance` → Router / Instance (roadmap 93)
+    /// What a port belongs to: `router` / `instance` → Router / Instance
     Device,
-    /// A firewall rule's `allow` / `deny` / `reject` (roadmap 93)
+    /// A firewall rule's `allow` / `deny` / `reject`
     FwAction,
-    /// A firewall rule's protocol, upper case; empty → *Any* (roadmap 93)
+    /// A firewall rule's protocol, upper case; empty → *Any*
     Protocol,
 }
 
@@ -73,7 +73,7 @@ pub fn columns(set: Option<ChoiceSet>) -> Vec<(K, Fmt)> {
             (Status, State),
         ],
         Some(ChoiceSet::FreePorts) => vec![(Name, Text), (IpAddress, Text), (AdminState, UpDown), (Status, State)],
-        // Ports are seldom named: what they belong to comes first (roadmap 93).
+        // Ports are seldom named: what they belong to comes first.
         Some(ChoiceSet::FirewallPorts) => vec![
             (K::Device, Text),
             (Type, Fmt::Device),
@@ -88,6 +88,7 @@ pub fn columns(set: Option<ChoiceSet>) -> Vec<(K, Fmt)> {
     }
 }
 
+/// A raw cell of a choice as the column's [`Fmt`] shows it; unknown values pass through.
 fn cell(lang: Lang, fmt: Fmt, raw: &str) -> String {
     let t = |k| crate::i18n::t(lang, k).to_string();
     match (fmt, raw) {
@@ -141,6 +142,7 @@ pub fn allocate(value: &str, id: &str, multi: bool) -> String {
     v.join(",")
 }
 
+/// Removes `id` from the allocated list, keeping the others in order.
 pub fn deallocate(value: &str, id: &str) -> String {
     selected(value)
         .into_iter()
@@ -158,11 +160,16 @@ pub fn move_up(value: &str, id: &str) -> String {
     v.join(",")
 }
 
+/// Whether every word of `query` is in the choice's label or cells (case-insensitive): the
+/// *Available* table's filter.
 fn matches(c: &Choice, query: &str) -> bool {
     let hay = format!("{} {}", c.label, c.cells.join(" ")).to_lowercase();
     query.split_whitespace().all(|t| hay.contains(&t.to_lowercase()))
 }
 
+/// Horizon's *Allocated* / *Available* pair for a `Kind::Pick` field: allocated rows on top (with
+/// up/down arrows when `multi`), the filterable available rows under them, blocked rows greyed
+/// with their reason. The value is the comma-separated allocated IDs.
 #[component]
 pub fn PickTable(
     #[prop(into)] id: String,

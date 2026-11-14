@@ -1,4 +1,4 @@
-//! Aodh alarms (roadmap 79).
+//! Aodh alarms.
 
 use super::*;
 
@@ -43,12 +43,14 @@ pub enum AlarmRule {
         resource_href: Option<String>,
         /// The Gnocchi search of `…_by_resources_…`, as Aodh stores it (JSON text).
         query: Option<String>,
+        /// Gnocchi's aggregation method (`mean`, `max`, …).
         aggregation: Option<String>,
         /// Aodh's operator (`gt`, `le`…).
         comparison: Option<String>,
         threshold: Option<f64>,
         /// Seconds.
         granularity: Option<i64>,
+        /// Consecutive periods of `granularity` the condition must hold before it fires.
         evaluation_periods: Option<i64>,
     },
     /// `prometheus`: a PromQL query compared with a threshold (RHOSO's telemetry).
@@ -121,7 +123,7 @@ pub fn comparison_symbol(op: &str) -> &str {
     }
 }
 
-/// Alarm types the *Create Alarm* form offers (roadmap 79); the list and detail show every type.
+/// Alarm types the *Create Alarm* form offers; the list and detail show every type.
 pub const ALARM_TYPES: [&str; 5] = [
     "prometheus",
     "gnocchi_resources_threshold",
@@ -195,6 +197,7 @@ pub struct AlarmSpec {
     pub aggregation: String,
     /// Seconds.
     pub granularity: Option<i64>,
+    /// Consecutive periods the condition must hold before the alarm fires.
     pub evaluation_periods: Option<i64>,
     /// `event`: the notification type (`*` = any).
     pub event_type: String,
@@ -358,4 +361,4 @@ fn event_filter(line: &str) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({"field": field, "op": op, "value": value.trim()}))
 }
 
-// --- Key Manager (Barbican, roadmap 55) ----------------------------------------
+// --- Key Manager (Barbican) ----------------------------------------

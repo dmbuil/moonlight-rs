@@ -4,7 +4,7 @@ use super::*;
 
 /// Dry-runs an action and returns the requests it would send.
 pub(super) async fn dry(action: OsAction) -> Vec<RequestPreview> {
-    // Every valid action of every test also passes `run_action`'s ID check (roadmap 48).
+    // Every valid action of every test also passes `run_action`'s ID check.
     action
         .check_ids()
         .unwrap_or_else(|e| panic!("{action:?}: IDs refused: {e}"));
@@ -16,7 +16,7 @@ pub(super) async fn dry(action: OsAction) -> Vec<RequestPreview> {
     x.outcome().requests
 }
 
-/// Roadmap 67: `check_ids` picks the fields to check by name (`id`, `*_id`…),
+/// `check_ids` picks the fields to check by name (`id`, `*_id`…),
 /// so a path parameter named otherwise would skip it. Each string of the
 /// action is set in turn to a value with a `/`; the action must then be
 /// refused (by `check_ids` or by `apply`) or keep that value out of every
@@ -56,7 +56,7 @@ pub(super) async fn assert_paths_checked(action: &OsAction) {
         for r in x.outcome().requests {
             assert!(
                 !r.path.contains(MARKER),
-                "{}: `{field}` reaches the request path `{}` unchecked (roadmap 67)",
+                "{}: `{field}` reaches the request path `{}` unchecked",
                 a.kind(),
                 r.path
             );

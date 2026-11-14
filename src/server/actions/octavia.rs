@@ -31,7 +31,7 @@ macro_rules! member_fields {
 
 /// Fills an SDK listener builder (the load balancer create body and
 /// `listener::create` have their own types) with the *Advanced* options
-/// (roadmap 54): only what differs from Octavia's defaults is sent.
+///: only what differs from Octavia's defaults is sent.
 macro_rules! listener_options {
     ($b:expr, $o:expr) => {{
         let (b, o): (_, &LbListenerOptions) = (&mut $b, $o);
@@ -60,7 +60,7 @@ macro_rules! listener_options {
 }
 
 /// A `TERMINATED_HTTPS` listener's certificates and, when off, its admin state
-/// (roadmap 54), on either SDK listener builder.
+///, on either SDK listener builder.
 macro_rules! listener_certificates {
     ($b:expr, $l:expr) => {{
         let (b, l): (_, &LbListenerSpec) = (&mut $b, $l);
@@ -83,7 +83,7 @@ macro_rules! listener_certificates {
     }};
 }
 
-/// Pool re-encryption (roadmap 54): `tls_enabled` only when on, so older
+/// Pool re-encryption: `tls_enabled` only when on, so older
 /// Octavias (< 2.8) never see the key; ciphers only with it. Also the admin
 /// state, when off.
 macro_rules! pool_tls {
@@ -101,6 +101,9 @@ macro_rules! pool_tls {
     }};
 }
 
+/// `OsAction::LoadBalancerCreate`: one `POST /v2/lbaas/loadbalancers` carrying the wizard's
+/// whole tree (listener, pool, members, health monitor) as Octavia's fully populated create,
+/// so it is built at once or not at all. Checked by `LbCreateSpec::check` first.
 pub(super) async fn load_balancer_create(x: &mut Exec<'_>, spec: &LbCreateSpec) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::loadbalancer::create as m;
     spec.check().map_err(AppError::invalid)?;
@@ -208,6 +211,8 @@ pub(super) async fn load_balancer_create(x: &mut Exec<'_>, spec: &LbCreateSpec) 
     Ok(())
 }
 
+/// `OsAction::LoadBalancerUpdate`: `PUT /v2/lbaas/loadbalancers/{id}` with name, description
+/// and admin state.
 pub(super) async fn load_balancer_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -233,6 +238,8 @@ pub(super) async fn load_balancer_update(
     Ok(())
 }
 
+/// `OsAction::ListenerCreate`: `POST /v2/lbaas/listeners` on a load balancer, with its options,
+/// TLS certificates (Barbican refs) and optional default pool.
 pub(super) async fn listener_create(
     x: &mut Exec<'_>,
     loadbalancer_id: &str,
@@ -268,9 +275,11 @@ pub(super) async fn listener_create(
     Ok(())
 }
 
+/// `OsAction::ListenerUpdate`: `PUT /v2/lbaas/listeners/{id}`.
+///
 /// JSON: a cleared default pool must be sent as `null`, which the SDK cannot express.
 /// Cleared options likewise: `null` timeouts, `{}` headers and `[]` CIDRs are
-/// Octavia's "back to the default" (roadmap 54).
+/// Octavia's "back to the default".
 #[allow(clippy::too_many_arguments)] // one parameter per field of the variant
 pub(super) async fn listener_update(
     x: &mut Exec<'_>,
@@ -324,12 +333,15 @@ pub(super) async fn listener_update(
     Ok(())
 }
 
+/// `OsAction::ListenerDelete`: `DELETE /v2/lbaas/listeners/{id}`.
 pub(super) async fn listener_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::listener::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::PoolCreate`: `POST /v2/lbaas/pools`, under a listener (which implies its load
+/// balancer) or directly under the load balancer.
 pub(super) async fn pool_create(
     x: &mut Exec<'_>,
     loadbalancer_id: &str,
@@ -372,6 +384,8 @@ pub(super) async fn pool_create(
     Ok(())
 }
 
+/// `OsAction::PoolUpdate`: `PUT /v2/lbaas/pools/{id}`, validated through an `LbPoolSpec`.
+///
 /// JSON: removing persistence means `"session_persistence": null`.
 #[allow(clippy::too_many_arguments)] // one parameter per field of the variant
 pub(super) async fn pool_update(
@@ -435,12 +449,14 @@ pub(super) async fn pool_update(
     Ok(())
 }
 
+/// `OsAction::PoolDelete`: `DELETE /v2/lbaas/pools/{id}`.
 pub(super) async fn pool_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::pool::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::MemberCreate`: `POST /v2/lbaas/pools/{pool_id}/members`.
 pub(super) async fn member_create(x: &mut Exec<'_>, pool_id: &str, spec: &LbMemberSpec) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::pool::member::create as m;
     spec.check().map_err(AppError::invalid)?;
@@ -455,6 +471,9 @@ pub(super) async fn member_create(x: &mut Exec<'_>, pool_id: &str, spec: &LbMemb
     Ok(())
 }
 
+/// `OsAction::MemberUpdate`: `PUT /v2/lbaas/pools/{pool_id}/members/{id}`, as JSON so a
+/// cleared monitor address or port goes as `null`. Weight (0-256), monitor address (an IP)
+/// and port are checked here.
 #[allow(clippy::too_many_arguments)] // one parameter per field of the variant
 pub(super) async fn member_update(
     x: &mut Exec<'_>,
@@ -479,7 +498,7 @@ pub(super) async fn member_update(
         return Err(AppError::invalid("the monitor port must be 1-65535"));
     }
     // JSON, not `member::set`: clearing the monitor address/port needs an
-    // explicit `null`, which the SDK builder can't send (roadmap 54).
+    // explicit `null`, which the SDK builder can't send.
     let body = json!({"member": {
         "name": name.trim(),
         "weight": weight,
@@ -497,6 +516,8 @@ pub(super) async fn member_update(
     Ok(())
 }
 
+/// `OsAction::PoolSetMembers`: `PUT /v2/lbaas/pools/{pool_id}/members`, Octavia's batch
+/// update: the list replaces the pool's members, adding, changing and removing in one call.
 pub(super) async fn pool_set_members(x: &mut Exec<'_>, pool_id: &str, members: &[LbMemberSpec]) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::pool::member::replace as m;
     members
@@ -522,6 +543,7 @@ pub(super) async fn pool_set_members(x: &mut Exec<'_>, pool_id: &str, members: &
     Ok(())
 }
 
+/// `OsAction::MemberDelete`: `DELETE /v2/lbaas/pools/{pool_id}/members/{id}`.
 pub(super) async fn member_delete(x: &mut Exec<'_>, pool_id: &str, id: &str) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::pool::member::delete as m;
     x.send(
@@ -535,6 +557,8 @@ pub(super) async fn member_delete(x: &mut Exec<'_>, pool_id: &str, id: &str) -> 
     Ok(())
 }
 
+/// `OsAction::MonitorCreate`: `POST /v2/lbaas/healthmonitors` on a pool (one monitor per
+/// pool). Checked by `LbMonitorSpec::check`.
 pub(super) async fn monitor_create(x: &mut Exec<'_>, pool_id: &str, spec: &LbMonitorSpec) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::healthmonitor::create as m;
     spec.check().map_err(AppError::invalid)?;
@@ -573,6 +597,8 @@ pub(super) async fn monitor_create(x: &mut Exec<'_>, pool_id: &str, spec: &LbMon
     Ok(())
 }
 
+/// `OsAction::MonitorUpdate`: `PUT /v2/lbaas/healthmonitors/{id}`. The type can't change, so
+/// it isn't sent; unset optional fields are left as they are.
 pub(super) async fn monitor_update(x: &mut Exec<'_>, id: &str, spec: &LbMonitorSpec, admin_up: &bool) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::healthmonitor::set as m;
     spec.check().map_err(AppError::invalid)?;
@@ -605,12 +631,15 @@ pub(super) async fn monitor_update(x: &mut Exec<'_>, id: &str, spec: &LbMonitorS
     Ok(())
 }
 
+/// `OsAction::MonitorDelete`: `DELETE /v2/lbaas/healthmonitors/{id}`.
 pub(super) async fn monitor_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::healthmonitor::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `OsAction::LoadBalancerDelete`: `DELETE /v2/lbaas/loadbalancers/{id}`, with `?cascade=true`
+/// when asked: Octavia otherwise refuses a load balancer that still has listeners or pools.
 pub(super) async fn load_balancer_delete(x: &mut Exec<'_>, id: &str, cascade: &bool) -> R<()> {
     use openstack_sdk::api::load_balancer::v2::loadbalancer::delete as m;
     let mut b = m::Request::builder();
@@ -627,7 +656,7 @@ mod tests {
     use super::super::testing::*;
     use super::*;
 
-    /// Roadmap 54, slice 2: listener timeouts, headers and CIDRs, and pool
+    /// Listener timeouts, headers and CIDRs, and pool
     /// re-encryption, in the wizard body, the single creates and the edits.
     #[tokio::test]
     async fn listener_and_pool_options() {
@@ -779,7 +808,7 @@ mod tests {
         );
     }
 
-    /// Roadmap 54, slice 3: `TERMINATED_HTTPS` with a Barbican certificate, SNI
+    /// `TERMINATED_HTTPS` with a Barbican certificate, SNI
     /// certificates and ciphers; the pool behind it is HTTP.
     #[tokio::test]
     async fn tls_terminated_listeners_carry_their_certificates() {
@@ -891,7 +920,7 @@ mod tests {
         );
     }
 
-    /// Roadmap 54, slice 5: the availability zone, and *Admin State Up* off at
+    /// The availability zone, and *Admin State Up* off at
     /// every level, sent only when off (default bodies unchanged).
     #[tokio::test]
     async fn wizard_sends_the_zone_and_admin_state_down() {

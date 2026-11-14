@@ -1,7 +1,7 @@
 //! Octavia load balancer detail: Horizon's (octavia-dashboard) tabs, each with
 //! its create button and row actions; the header menu edits the load balancer,
 //! (dis)associates its VIP's floating IP and deletes it. The list is in `lists.rs`.
-//! *L7 Policies* (roadmap 54) shows the listeners' policies and their rules;
+//! *L7 Policies* shows the listeners' policies and their rules;
 //! octavia-dashboard has them on a listener page, which Moonlight doesn't have.
 
 use std::sync::Arc;
@@ -19,6 +19,7 @@ use crate::components::widgets::{Copyable, Skeleton, dash, poll_while_busy, rend
 use crate::i18n::{K, Lang, use_i18n};
 use crate::model::*;
 
+/// A count or limit Octavia may leave out, or `-`.
 fn num(n: Option<i64>) -> String {
     n.map(|n| n.to_string()).unwrap_or_else(|| "-".into())
 }
@@ -29,6 +30,7 @@ fn tab_link(r: &Ref, tab: RwSignal<usize>, to: usize) -> AnyView {
     view! { <a href="#" on:click=move |ev| { ev.prevent_default(); tab.set(to); }>{name}</a> }.into_any()
 }
 
+/// Several of this load balancer's resources as tab links (`to` is the tab), or `-`.
 fn refs(items: &[Ref], tab: RwSignal<usize>, to: usize) -> AnyView {
     if items.is_empty() {
         return "-".into_any();
@@ -45,12 +47,15 @@ fn statuses(op: &str, prov: &str, l: Lang) -> AnyView {
     view! { {status_pill(op, l)} " " {status_pill(prov, l)} }.into_any()
 }
 
+/// Project › Network › Load Balancers › one (`/project/load_balancers/:id`):
+/// octavia-dashboard's tabs (*Overview*, *Listeners*, *Pools*, *Members*, *Health Monitors*)
+/// and *L7 Policies*, polling while Octavia has the load balancer in `PENDING_*`.
 #[component]
 pub fn LoadBalancerDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_load_balancer(id));
-    // Follows PENDING_* states, e.g. after a change in one of its tabs (roadmap 54).
+    // Follows PENDING_* states, e.g. after a change in one of its tabs.
     let polling = poll_while_busy(data, move || data.with(|r| matches!(r, Some(Ok(td)) if td.data.busy())));
     let tab = RwSignal::new(0usize);
     view! {
@@ -79,6 +84,8 @@ pub fn LoadBalancerDetailPage() -> impl IntoView {
     }
 }
 
+/// *Overview*: *Information* (statuses, provider, flavor, zone) and *VIP* (address,
+/// floating IP, port, network, subnet).
 fn overview(d: LoadBalancerDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (op, prov) = (d.row.operating_status.clone(), d.row.provisioning_status.clone());
@@ -139,6 +146,8 @@ fn create_button(label: K, open: impl Fn() -> Dialog + Send + Sync + 'static) ->
     .into_any()
 }
 
+/// *Listeners*: protocol and port, default pool (a link to *Pools*), connection limit,
+/// status, admin state and each listener's menu; *Create Listener* above.
 fn listeners(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.listeners.clone(), d.clone(), d.clone());
@@ -179,6 +188,8 @@ fn listeners(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     }
 }
 
+/// *Pools*: protocol, algorithm, session persistence, the listeners, members and monitor
+/// using them (links to their tabs), status and each pool's menu; *Create Pool* above.
 fn pools(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.pools.clone(), d.clone(), d.clone());
@@ -219,6 +230,8 @@ fn pools(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     }
 }
 
+/// *Members*: every pool's members (address, port, weight, subnet, backup), each with its
+/// pool and menu; *Add Member* only once the load balancer has a pool.
 fn members(d: LoadBalancerDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.members.clone(), d.clone(), d.clone());
@@ -259,6 +272,8 @@ fn members(d: LoadBalancerDetail) -> impl IntoView {
     }
 }
 
+/// *Health Monitors*: type, delay, timeout, retries, the HTTP check and its pool; *Create
+/// Health Monitor* only while a pool lacks one (Octavia allows one per pool).
 fn monitors(d: LoadBalancerDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.monitors.clone(), d.clone(), d.clone());
@@ -304,7 +319,7 @@ fn l7_target(p: &LbL7Policy, tab: RwSignal<usize>) -> AnyView {
     }
 }
 
-/// *L7 Policies* (roadmap 54): the policies, then their rules, each table with
+/// *L7 Policies*: the policies, then their rules, each table with
 /// its create button and row actions. Policies need an HTTP or
 /// TERMINATED_HTTPS listener; rules need a policy.
 fn l7(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {

@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// A row of Identity › Projects (roadmap 57): every project of the domain for
+/// A row of Identity › Projects: every project of the domain for
 /// admins, the user's own otherwise (like Horizon).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IdentityProject {
@@ -31,7 +31,7 @@ pub struct IdentityUser {
 }
 
 /// Identity › Projects › a project: Horizon's *Overview*, and for admins its
-/// *Users* and *Groups* tabs (roadmap 57).
+/// *Users* and *Groups* tabs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IdentityProjectDetail {
     pub project: IdentityProject,
@@ -66,7 +66,7 @@ pub struct ProjectGroup {
     pub role_ids: Vec<String>,
 }
 
-/// Identity › Users › a user: Horizon's *Overview* (roadmap 57).
+/// Identity › Users › a user: Horizon's *Overview*.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IdentityUserDetail {
     pub user: IdentityUser,
@@ -103,7 +103,7 @@ pub struct RoleAssignmentRow {
     pub inherited: bool,
 }
 
-/// Identity › Groups › a group: its overview and members (roadmap 57).
+/// Identity › Groups › a group: its overview and members.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IdentityGroupDetail {
     pub group: IdentityGroup,
@@ -161,7 +161,7 @@ pub struct AppCredential {
     pub unrestricted: bool,
 }
 
-/// *Create Application Credential* (roadmap 57), as Horizon's form. `user_id`
+/// *Create Application Credential*, as Horizon's form. `user_id`
 /// is set by `run_action` from the session: users create their own.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppCredentialSpec {

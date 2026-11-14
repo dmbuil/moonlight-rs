@@ -1,4 +1,4 @@
-# cargo-deny policy (roadmap 105): `cargo deny check` runs in AGENTS.md §2 and in CI.
+# cargo-deny policy: `cargo deny check` runs in AGENTS.md §2 and in CI.
 # Every dependency comes from crates.io; a vulnerable or yanked crate fails the check;
 # licences must be on the allow list below; duplicate versions only warn (see
 # `bans.multiple-versions`), since the OpenStack SDK and Leptos pin different rand/sha2 lines.

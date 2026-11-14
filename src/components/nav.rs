@@ -3,21 +3,26 @@
 use crate::i18n::K;
 use crate::model::{Capabilities, ErrorKind, Plugin, Requires};
 
+/// One entry of a dashboard menu: a page of Moonlight.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Panel {
     pub label: K,
     pub href: &'static str,
-    /// Shown only when the cloud offers this (roadmap 19).
+    /// Shown only when the cloud offers this.
     pub requires: Requires,
 }
 
+/// A group of panels (Horizon's *Compute*, *Network*…).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Group {
     pub label: K,
     pub panels: &'static [Panel],
+    /// Shown only when the cloud offers this (e.g. *Load Balancers* needs Octavia); its panels are
+    /// then checked one by one.
     pub requires: Requires,
 }
 
+/// A panel every cloud has.
 const fn p(label: K, href: &'static str) -> Panel {
     Panel {
         label,
@@ -26,6 +31,7 @@ const fn p(label: K, href: &'static str) -> Panel {
     }
 }
 
+/// A panel shown only when `requires` holds (a service, an extension, a role).
 const fn needs(label: K, href: &'static str, requires: Requires) -> Panel {
     Panel { label, href, requires }
 }
@@ -62,6 +68,7 @@ pub fn unavailable(path: &str, c: &Capabilities) -> Option<ErrorKind> {
     })
 }
 
+/// The Project dashboard's menu, in Horizon's order.
 pub const PROJECT_NAV: &[Group] = &[
     Group {
         label: K::Project,
@@ -84,7 +91,7 @@ pub const PROJECT_NAV: &[Group] = &[
     },
     Group {
         label: K::VolumesGroup,
-        // Horizon's order and URLs (`volume_groups`, `vg_snapshots`); groups need volume 3.27 (roadmap 5).
+        // Horizon's order and URLs (`volume_groups`, `vg_snapshots`); groups need volume 3.27.
         panels: &[
             p(K::Volumes, "/project/volumes"),
             p(K::Snapshots, "/project/snapshots"),
@@ -124,7 +131,7 @@ pub const PROJECT_NAV: &[Group] = &[
         ],
         requires: Requires::Service("network"),
     },
-    // Barbican (roadmap 55); barbican-ui's own panel group, Horizon's name for the service.
+    // Barbican; barbican-ui's own panel group, Horizon's name for the service.
     Group {
         label: K::KeyManager,
         panels: &[
@@ -134,7 +141,7 @@ pub const PROJECT_NAV: &[Group] = &[
         ],
         requires: crate::model::needs::KEY_MANAGER,
     },
-    // Heat (roadmap 62). Resource Types and Template Versions come next.
+    // Heat. Resource Types and Template Versions come next.
     Group {
         label: K::Orchestration,
         panels: &[
@@ -145,7 +152,7 @@ pub const PROJECT_NAV: &[Group] = &[
         ],
         requires: crate::model::needs::ORCHESTRATION,
     },
-    // Aodh (roadmap 79). Horizon has no maintained Alarming panel; the group
+    // Aodh. Horizon has no maintained Alarming panel; the group
     // leaves room for other telemetry panels.
     Group {
         label: K::Monitoring,
@@ -154,7 +161,7 @@ pub const PROJECT_NAV: &[Group] = &[
     },
 ];
 
-/// Horizon's Identity dashboard (roadmap 57), in its panel order. Like Horizon's
+/// Horizon's Identity dashboard, in its panel order. Like Horizon's
 /// panel policies with a project-scoped token: Projects, Users and Application
 /// Credentials for everyone (their content depends on the role), Groups and
 /// Roles for admins only. Domains (domain-scoped tokens) and federation are not
@@ -172,7 +179,7 @@ pub const IDENTITY_NAV: &[Group] = &[Group {
     requires: Requires::Always,
 }];
 
-/// Horizon's Admin dashboard (roadmap 85), for the `admin` role, in Horizon's
+/// Horizon's Admin dashboard, for the `admin` role, in Horizon's
 /// order and URLs.
 pub const ADMIN_NAV: &[Group] = &[
     // Overview is Nova's usage of every project.
@@ -250,6 +257,7 @@ pub fn dashboard(path: &str) -> (K, &'static [Group]) {
     }
 }
 
+/// Whether `path` is `panel`'s page or one under it (a detail page); a trailing `/` is ignored.
 fn matches(panel: &Panel, path: &str) -> bool {
     let path = path.trim_end_matches('/');
     let path = if path.is_empty() { "/" } else { path };
@@ -399,7 +407,7 @@ mod tests {
             }),
             "enabled, no Octavia"
         );
-        // Aodh (roadmap 79): its own Monitoring group, opt-in like the others.
+        // Aodh: its own Monitoring group, opt-in like the others.
         let alarms = |c: &Capabilities| available("/project/alarms/a1", c);
         assert!(!alarms(&caps(&["alarming"], &[])), "in the catalog but not enabled");
         assert!(alarms(&Capabilities {
@@ -446,7 +454,7 @@ mod tests {
         let (g, p) = active("/project").unwrap();
         assert_eq!((g.label, p.label), (K::Project, K::Overview), "next to API Access");
         let (g, p) = active("/project/quotas").unwrap();
-        assert_eq!((g.label, p.label), (K::Project, K::Quotas), "roadmap 82");
+        assert_eq!((g.label, p.label), (K::Project, K::Quotas), "Quotas sits under Project");
         let (g, p) = active("/project/instances/3f2a/").unwrap();
         assert_eq!((g.label, p.label), (K::Compute, K::Instances));
         let (g, _) = active("/project/floating_ips").unwrap();
@@ -457,7 +465,7 @@ mod tests {
         assert_eq!(
             (g.label, p.label),
             (K::Orchestration, K::TemplateGenerator),
-            "roadmap 92"
+            "the Template Generator sits under Orchestration"
         );
         let (_, p) = active("/project/network_topology").unwrap();
         assert_eq!(p.label, K::NetworkTopology, "not taken by the Networks panel");
@@ -504,7 +512,7 @@ mod tests {
         assert_eq!(
             active("/admin/metadata_defs/OS::Compute::Watchdog").map(|(g, p)| (g.label, p.label)),
             Some((K::System, K::MetadataDefinitions)),
-            "the detail (roadmap 89)"
+            "the detail"
         );
         assert!(
             !available("/admin/metadata_defs/OS::Compute::Watchdog", &no_glance),

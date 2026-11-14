@@ -71,7 +71,7 @@ pub fn security_group_items(
 }
 
 /// *Add Rule* to a security group: Neutron's rule fields, each with a help text
-/// under it (roadmap 61) instead of Horizon's side panel. The ports stay visible
+/// under it instead of Horizon's side panel. The ports stay visible
 /// whatever the protocol; their help says when they don't apply.
 pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
     let tr = |k| t(lang, k).to_string();
@@ -186,7 +186,7 @@ mod tests {
     fn every_rule_field_has_help_and_the_to_port_label_has_no_hint() {
         let d = add_rule_dialog(Lang::EnUs, "sg");
         let missing: Vec<_> = d.fields.iter().filter(|f| f.help.is_none()).map(|f| f.name).collect();
-        assert!(missing.is_empty(), "fields without help (roadmap 61): {missing:?}");
+        assert!(missing.is_empty(), "fields without help: {missing:?}");
         let to = d.fields.iter().find(|f| f.name == "port_max").unwrap();
         assert_eq!(to.label, "To Port", "the \"empty = same\" hint moved to the help text");
     }

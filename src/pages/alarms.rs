@@ -1,4 +1,4 @@
-//! Monitoring › Alarms (Aodh, roadmap 79): the project's alarms and an alarm's
+//! Monitoring › Alarms (Aodh): the project's alarms and an alarm's
 //! page with its rule, actions and history. *Create Alarm* and *Edit Alarm*
 //! ([`ops::alarm_dialog`]); delete, enable/disable and set state are the item's next slice.
 //! Upstream Horizon has no maintained Alarming panel, so the layout follows
@@ -53,6 +53,9 @@ fn change_label(kind: &str, l: Lang) -> String {
     }
 }
 
+/// Monitoring › Alarms' columns: the name links to the alarm's page, then type, state,
+/// severity (sorted by rank, not alphabetically), enabled, condition and the time of the last
+/// state change.
 fn alarm_columns() -> Vec<Col<AlarmRow>> {
     vec![
         col(K::Name, |x: &AlarmRow, _| {
@@ -202,6 +205,8 @@ fn rule_rows(rule: AlarmRule, l: Lang) -> AnyView {
     }
 }
 
+/// *Time constraints* on the Overview: Aodh's cron windows when the alarm is evaluated (start,
+/// duration in seconds, timezone).
 fn constraint_columns() -> Vec<Col<AlarmTimeConstraint>> {
     vec![
         col(K::Name, |c: &AlarmTimeConstraint, _| c.name.clone().into_any()).sort_text(|c| c.name.clone()),
@@ -256,6 +261,8 @@ fn overview_tab(d: AlarmDetail) -> AnyView {
     .into_any()
 }
 
+/// *History*' columns: Aodh's changes to the alarm (creation, rule, state transitions), with
+/// the new state when the change set one.
 fn history_columns() -> Vec<Col<AlarmChange>> {
     vec![
         col(K::EventTime, |h: &AlarmChange, _| short_time(&h.time))
@@ -271,6 +278,8 @@ fn history_columns() -> Vec<Col<AlarmChange>> {
     ]
 }
 
+/// *History* tab: the alarm's changes, newest first (sorted by the mapper), or a note when it
+/// has none.
 fn history_tab(rows: &[AlarmChange]) -> AnyView {
     let i18n = use_i18n();
     if rows.is_empty() {

@@ -2,6 +2,7 @@
 
 use super::*;
 
+/// A quota limit: `-1` (unlimited) becomes `None` (AGENTS.md §6).
 pub(super) fn limit(v: Option<i64>) -> Option<i64> {
     v.filter(|x| *x >= 0)
 }
@@ -95,7 +96,7 @@ const NOT_QUOTAS: &[&str] = &[
     "healthmonitor",
 ];
 
-/// Project › Quotas (roadmap 82): every quota of one service's quota set, with
+/// Project › Quotas: every quota of one service's quota set, with
 /// the response key stripped. Values are either `{limit, in_use|used, reserved}`
 /// (Nova `os-quota-sets/{id}/detail`, Cinder `?usage=true`, Neutron
 /// `quotas/{id}/details`) or a bare limit (Octavia), where `null` means the
@@ -153,7 +154,7 @@ pub fn quota_rows(service: QuotaService, set: &Value, defaults: &Value) -> Vec<Q
     rows
 }
 
-/// Barbican's quotas (roadmap 82): `GET v1/quotas` (`{"quotas": {"secrets": 10…}}`,
+/// Barbican's quotas: `GET v1/quotas` (`{"quotas": {"secrets": 10…}}`,
 /// the token's project, defaults applied, `-1` unlimited) with *Used* read
 /// from the `total` of one-item list pages (`secrets`, `containers`, `orders`),
 /// as Barbican reports no usage. A list that failed (`Null`) leaves `-`.
@@ -169,7 +170,7 @@ pub fn key_manager_quota_rows(quotas: &Value, totals: &[(&str, &Value)]) -> Vec<
     rows
 }
 
-/// Barbican's quotas of **another** project (roadmap 82, Identity › *Modify
+/// Barbican's quotas of **another** project (Identity › *Modify
 /// Quotas*): `GET v1/project-quotas/{p}` (`target`, `{"project_quotas": {…}}`,
 /// `None` on 404: nothing set) holds only the values set for it; the others
 /// follow the deployment's defaults, which Barbican doesn't publish. `v1/quotas`
@@ -398,7 +399,7 @@ mod tests {
 
     #[test]
     fn another_projects_barbican_quotas_use_known_defaults_only() {
-        // Roadmap 82: Barbican has no usage nor defaults per project; `v1/quotas`
+        // Barbican has no usage nor defaults per project; `v1/quotas`
         // of the session's project are the defaults only when it sets nothing.
         let target = json!({"project_quotas": {"secrets": 50, "orders": null}});
         let effective = json!({"quotas": {"secrets": -1, "containers": 20, "orders": 10, "consumers": -1, "cas": 5}});

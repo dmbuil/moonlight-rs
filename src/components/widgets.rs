@@ -1,3 +1,7 @@
+//! Small building blocks shared by every page: status pills, page header and breadcrumbs, error
+//! boxes and pages, skeletons, popovers and the `-` / age / size formatting helpers, plus
+//! `render`, which turns a loaded `Result` into a view or an error box.
+
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_router::hooks::use_location;
@@ -7,6 +11,7 @@ use super::nav;
 use crate::i18n::{K, use_i18n};
 use crate::model::{AppError, ErrorKind};
 
+/// A status colour: the dot and tint of a [`Pill`], and the topology nodes' state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Ok,
@@ -17,6 +22,7 @@ pub enum Tone {
 }
 
 impl Tone {
+    /// The pill's CSS classes; [`Tone::key`] relies on the `pill ` prefix.
     fn class(self) -> &'static str {
         match self {
             Tone::Ok => "pill ok",
@@ -54,6 +60,7 @@ impl Tone {
     }
 }
 
+/// A status pill: a coloured dot and the (translated) status word.
 #[component]
 pub fn Pill(tone: Tone, #[prop(into)] label: String) -> impl IntoView {
     view! {
@@ -104,6 +111,8 @@ pub fn PageHeader(
     }
 }
 
+/// An inline error for a panel that failed to load, with the raw message and, when the session
+/// expired, a link to sign in again.
 #[component]
 pub fn ErrorBox(#[prop(into)] message: String) -> impl IntoView {
     let i18n = use_i18n();
@@ -292,7 +301,7 @@ fn seconds_since(rfc3339: &str) -> Option<i64> {
 
 /// An age for a table cell: each unit in a `nowrap` span, the comma kept with
 /// the first, so a narrow column breaks between `3 semanas,` and `2 días` and
-/// never inside a unit (roadmap 72: the Spanish Instances table overflowed).
+/// never inside a unit (the Spanish Instances table overflowed).
 pub fn age_cell(lang: crate::i18n::Lang, seconds: i64) -> AnyView {
     let parts = crate::i18n::age_parts(lang, seconds);
     let last = parts.len() - 1;
@@ -314,7 +323,7 @@ pub fn age_cell_since(lang: crate::i18n::Lang, rfc3339: &str) -> AnyView {
 
 /// `short_time` plus ` UTC` for values in UTC (Keystone's expiries have no
 /// zone; they are UTC), so a reader in another zone doesn't take them for
-/// local time (roadmap 57).
+/// local time.
 pub fn utc_time(v: &str) -> String {
     let utc = v.ends_with('Z')
         || v.ends_with("+00:00")
@@ -365,6 +374,8 @@ pub fn az_color(name: &str) -> (&'static str, &'static str) {
     AZ_PALETTE[(h % AZ_PALETTE.len() as u32) as usize]
 }
 
+/// An availability zone as an outlined pill whose colour is stable per name (`az_color`), so the
+/// same zone reads the same everywhere; `-` when there is none.
 #[component]
 pub fn AzPill(name: Option<String>) -> impl IntoView {
     match name.filter(|n| !n.is_empty()) {
@@ -410,7 +421,7 @@ pub fn LockIcon(locked: bool) -> impl IntoView {
 /// Widest a [`FlavorPopover`] card gets (`.popover`'s `max-width`), px.
 const POPOVER_W: f64 = 360.0;
 /// Widest a [`SpecsPopover`] card gets (`.popover.specs-card`), px: long spec
-/// keys need more room than the flavor card (roadmap 109).
+/// keys need more room than the flavor card.
 const SPECS_POPOVER_W: f64 = 460.0;
 
 /// The `style` of a hover card (`.popover`, `position: fixed`) at most `card_w`
@@ -441,7 +452,7 @@ fn place_popover(host: NodeRef<leptos::html::Span>, pos: RwSignal<String>, card_
     let _ = (host, pos, card_w);
 }
 
-/// `label` (Admin › Flavors' *Yes* in the *Metadata* column, roadmap 109) that
+/// `label` (Admin › Flavors' *Yes* in the *Metadata* column) that
 /// shows `specs` as `key` / `value` pairs in a card on hover and keyboard
 /// focus, titled *title: name*. `key` makes the card's ID unique on the page.
 /// With no `specs` it is the plain `label`, with no card.
@@ -530,7 +541,7 @@ pub fn is_busy(task_state: Option<&str>, status: &str) -> bool {
     task_state.is_some_and(|t| !t.is_empty()) || TRANSITIONAL.contains(&status.to_ascii_uppercase().as_str())
 }
 
-/// Cinder volume statuses that change on their own (roadmap 46): the page keeps
+/// Cinder volume statuses that change on their own: the page keeps
 /// refetching while a row is in one. Lowercase, as Cinder reports them.
 const VOLUME_TRANSITIONAL: &[&str] = &[
     "creating",
@@ -548,7 +559,7 @@ const VOLUME_TRANSITIONAL: &[&str] = &[
     "maintenance",
 ];
 
-/// Cinder snapshot statuses that change on their own (roadmap 46).
+/// Cinder snapshot statuses that change on their own.
 const SNAPSHOT_TRANSITIONAL: &[&str] = &[
     "creating",
     "deleting",
@@ -559,7 +570,7 @@ const SNAPSHOT_TRANSITIONAL: &[&str] = &[
 ];
 
 /// Whether a Glance image is still being created or imported (`queued` until its data
-/// arrives, then `saving` / `importing`; roadmap 45). `killed`, `deleted` and the like are final.
+/// arrives, then `saving` / `importing`;). `killed`, `deleted` and the like are final.
 pub fn image_busy(status: &str) -> bool {
     matches!(status.to_ascii_lowercase().as_str(), "queued" | "saving" | "importing")
 }
@@ -690,7 +701,7 @@ pub fn Copyable(#[prop(into)] value: String, #[prop(optional)] mono: bool) -> im
 }
 
 // ---------------------------------------------------------------------------
-// Info tips: an (i) beside a form label with a longer explanation (roadmap 79)
+// Info tips: an (i) beside a form label with a longer explanation
 // ---------------------------------------------------------------------------
 
 /// A paragraph or a bullet list of an [`InfoTip`]'s text.
@@ -722,7 +733,8 @@ pub enum TipInline {
     Text(String),
     Bold(Vec<TipInline>),
     Italic(Vec<TipInline>),
-    /// Monospace, never formatted inside: PromQL, JSON and wildcards (`compute.instance.*`) go here.
+    /// Monospace, never formatted inside: PromQL, JSON and wildcards
+    /// (`compute.instance.*`) go here.
     Code(String),
 }
 
@@ -766,6 +778,7 @@ pub fn tip_inline(text: &str) -> Vec<TipInline> {
     out
 }
 
+/// Renders [`tip_inline`] parts as `<strong>`, `<em>` and `<code>`.
 fn tip_inline_view(parts: Vec<TipInline>) -> AnyView {
     parts
         .into_iter()

@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// A listener's *Advanced* options (roadmap 54). `insert_headers` values are
+/// A listener's *Advanced* options. `insert_headers` values are
 /// strings (`"true"`/`"false"`); only the true ones count. Missing keys (older
 /// Octavia) read as defaults.
 fn listener_options(v: &Value) -> LbListenerOptions {
@@ -26,10 +26,13 @@ fn listener_options(v: &Value) -> LbListenerOptions {
     }
 }
 
+/// The IDs in `v[k]`, a list of `{"id": …}` references (Octavia links listeners, pools and
+/// members that way).
 pub(super) fn ids(v: &Value, k: &str) -> Vec<String> {
     arr(v, k).iter().filter_map(|x| s(x, "id")).collect()
 }
 
+/// A reference with its name from `names`, else the ID.
 pub(super) fn named(id: String, names: &HashMap<String, String>) -> Ref {
     Ref {
         name: names.get(&id).cloned().unwrap_or_else(|| id.clone()),
@@ -37,6 +40,7 @@ pub(super) fn named(id: String, names: &HashMap<String, String>) -> Ref {
     }
 }
 
+/// An Octavia status field; `UNKNOWN` when missing.
 pub(super) fn status(v: &Value, k: &str) -> String {
     s(v, k).unwrap_or_else(|| "UNKNOWN".into())
 }
@@ -48,6 +52,7 @@ pub fn load_balancers(raw: &[Value]) -> Vec<LoadBalancerRow> {
     out
 }
 
+/// One row of [`load_balancers`].
 fn load_balancer_row(l: &Value) -> LoadBalancerRow {
     LoadBalancerRow {
         id: s(l, "id").unwrap_or_default(),
@@ -287,7 +292,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    // --- Orchestration (roadmap 62) ---
+    // --- Orchestration ---
 
     #[test]
     fn stacks_newest_first_with_name_fallback() {
@@ -309,7 +314,7 @@ mod tests {
         assert!(stack_busy(&out[0].status) && !stack_busy(&out[1].status));
     }
 
-    /// Roadmap 54: Octavia sends `insert_headers` values as strings; only the
+    /// Octavia sends `insert_headers` values as strings; only the
     /// `"true"` ones are set. `allowed_cidrs` is absent before Octavia 2.12.
     #[test]
     fn listener_options_read_headers_timeouts_and_cidrs() {

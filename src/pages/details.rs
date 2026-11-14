@@ -23,6 +23,8 @@ use crate::model::*;
 // Shared building blocks
 // ---------------------------------------------------------------------------
 
+/// A getter for the route parameter `name` (`:id` in `app.rs`), `""` when it is missing; `Copy`
+/// so a page can move it into several closures.
 pub(crate) fn param(name: &'static str) -> impl Fn() -> String + Copy + Send + Sync + 'static {
     let params = use_params_map();
     move || params.read().get(name).unwrap_or_default()
@@ -31,13 +33,24 @@ pub(crate) fn param(name: &'static str) -> impl Fn() -> String + Copy + Send + S
 /// Breadcrumb, title, timing and the action menu of a detail page.
 #[component]
 pub(crate) fn DetailHeader(
+    /// The breadcrumb's group (*Network*, *Compute*…), left out when it is named like the
+    /// dashboard (Identity).
     group: K,
+    /// The list panel the page belongs to, linked from the breadcrumb.
     panel: K,
+    /// That panel's URL.
     href: &'static str,
-    #[prop(into)] name: String,
+    /// The resource's name: the page title, the `<title>` and the breadcrumb's last part.
+    #[prop(into)]
+    name: String,
+    /// Milliseconds and API calls of the fetch, for the timing chip.
     timing: (u64, u32),
-    #[prop(into)] items: Signal<Vec<MenuItem>>,
-    #[prop(optional, into)] title_prefix: Option<K>,
+    /// The page's action menu, the same items as the resource's row menu.
+    #[prop(into)]
+    items: Signal<Vec<MenuItem>>,
+    /// A muted prefix before the title (*Firewall Rule:* name).
+    #[prop(optional, into)]
+    title_prefix: Option<K>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let title = name.clone();
@@ -70,6 +83,8 @@ pub(crate) fn DetailHeader(
     }
 }
 
+/// A detail page's tab bar: one button per label in `labels`; the page renders the tab whose
+/// index `active` holds.
 #[component]
 pub(crate) fn Tabs(labels: Vec<K>, active: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
@@ -87,6 +102,7 @@ pub(crate) fn Tabs(labels: Vec<K>, active: RwSignal<usize>) -> impl IntoView {
     }
 }
 
+/// A titled card holding a `<dl>` of [`Kv`] rows, Horizon's overview blocks.
 #[component]
 pub(crate) fn Card(title: K, children: Children) -> impl IntoView {
     let i18n = use_i18n();
@@ -98,6 +114,7 @@ pub(crate) fn Card(title: K, children: Children) -> impl IntoView {
     }
 }
 
+/// One `<dt>`/`<dd>` row of a [`Card`]: the translated `label` and the value in `children`.
 #[component]
 pub(crate) fn Kv(label: K, children: Children) -> impl IntoView {
     let i18n = use_i18n();
@@ -107,10 +124,12 @@ pub(crate) fn Kv(label: K, children: Children) -> impl IntoView {
     }
 }
 
+/// *Yes* / *No* in the user's language.
 pub(crate) fn yes_no(l: Lang, b: bool) -> &'static str {
     t(l, if b { K::Yes } else { K::No })
 }
 
+/// `s` in a monospace span (IDs, CIDRs, addresses).
 pub(crate) fn mono(s: impl Into<String>) -> AnyView {
     view! { <span class="mono">{s.into()}</span> }.into_any()
 }
@@ -124,6 +143,7 @@ pub(crate) fn lines(items: Vec<String>) -> AnyView {
         .into_any()
 }
 
+/// Key/value pairs as monospace `<dt>`/`<dd>` rows (metadata, properties), or a single `-`.
 fn pairs(items: Vec<(String, String)>) -> AnyView {
     if items.is_empty() {
         return view! { <dt>"-"</dt><dd></dd> }.into_any();
@@ -135,6 +155,8 @@ fn pairs(items: Vec<(String, String)>) -> AnyView {
         .into_any()
 }
 
+/// A port's name, or the start of its ID in parentheses when it has none (Horizon's
+/// `(1a2b3c4d)`).
 fn port_label(p: &PortRow) -> String {
     if p.name.is_empty() {
         format!("({})", &p.id[..p.id.len().min(8)])
@@ -143,6 +165,9 @@ fn port_label(p: &PortRow) -> String {
     }
 }
 
+/// *Attached Device*: a link to the instance when the device is one we could name, the
+/// `device_owner` (`network:router_interface`, `network:dhcp`…) for other devices, else *Not
+/// attached*.
 fn device_cell(p: &PortRow, lang: Lang) -> AnyView {
     match (p.device_id.clone(), p.device_name.clone()) {
         (Some(id), Some(name)) => view! { <A href=format!("/project/instances/{id}")>{name}</A> }.into_any(),
@@ -184,6 +209,7 @@ pub fn NetworkDetailPage() -> impl IntoView {
     }
 }
 
+/// Network detail › *Overview*: Horizon's *Information* card.
 fn network_overview(d: NetworkDetail) -> impl IntoView {
     let i18n = use_i18n();
     let status = d.row.status.clone();
@@ -231,6 +257,8 @@ fn subnet_columns(owned: bool) -> Vec<crate::components::table::Col<SubnetRow>> 
     cols
 }
 
+/// Network detail › *Subnets*: the network's subnets, with *Create Subnet* when the project
+/// owns the network.
 fn network_subnets(d: NetworkDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (id, owned) = (d.row.id.clone(), d.row.owned);
@@ -245,6 +273,8 @@ fn network_subnets(d: NetworkDetail) -> impl IntoView {
     }
 }
 
+/// Network detail › *Ports*' columns: name (linked), fixed IPs, MAC, attached device, status,
+/// admin state and each port's menu.
 fn port_columns() -> Vec<crate::components::table::Col<PortRow>> {
     vec![
         col(K::Name, |p: &PortRow, _| {
@@ -264,6 +294,7 @@ fn port_columns() -> Vec<crate::components::table::Col<PortRow>> {
     ]
 }
 
+/// Search text for a port table: name, ID, fixed IPs, MAC and device name.
 fn port_search(p: &PortRow) -> String {
     format!(
         "{} {} {} {} {}",
@@ -275,6 +306,7 @@ fn port_search(p: &PortRow) -> String {
     )
 }
 
+/// Network detail › *Ports*: the network's ports and *Create Port*.
 fn network_ports(d: NetworkDetail) -> impl IntoView {
     let i18n = use_i18n();
     let id = d.row.id.clone();
@@ -406,6 +438,8 @@ pub fn RouterDetailPage() -> impl IntoView {
     }
 }
 
+/// Router detail › *Overview*: *Information* and *External Network* (gateway network, its
+/// fixed IPs with their subnet, SNAT).
 fn router_overview(d: RouterDetail) -> impl IntoView {
     let i18n = use_i18n();
     let status = d.row.status.clone();
@@ -436,6 +470,8 @@ fn router_overview(d: RouterDetail) -> impl IntoView {
     }
 }
 
+/// Router detail › *Interfaces*: the router's ports with *Add Interface* and each interface's
+/// menu.
 fn router_interfaces(d: RouterDetail) -> impl IntoView {
     let i18n = use_i18n();
     let rid = d.row.id.clone();
@@ -467,12 +503,15 @@ fn router_interfaces(d: RouterDetail) -> impl IntoView {
     }
 }
 
+/// Router detail › *Static Routes*. With `extraroute-atomic` each route is added or removed
+/// alone; with only `extraroute` the whole list is replaced, so the dialogs get the current
+/// routes; with neither the table is read-only.
 fn router_routes(d: RouterDetail) -> impl IntoView {
     let i18n = use_i18n();
     let rid = d.row.id.clone();
     let rid2 = rid.clone();
     // Atomic add/remove needs `extraroute-atomic`; with plain `extraroute` the
-    // whole list is replaced; with neither, routes are read-only (roadmap 19).
+    // whole list is replaced; with neither, routes are read-only.
     let c = caps();
     let atomic = needs::STATIC_ROUTES.met(&c);
     let editable = atomic || needs::STATIC_ROUTES_LIST.met(&c);
@@ -546,13 +585,13 @@ pub fn SecurityGroupDetailPage() -> impl IntoView {
 // ---------------------------------------------------------------------------
 
 /// Volume detail: overview, snapshots and Cinder's messages; refreshes while the
-/// volume changes state (roadmap 46).
+/// volume changes state.
 #[component]
 pub fn VolumeDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_volume(id));
-    // Follows a volume that is changing state (roadmap 46). A volume deleted
+    // Follows a volume that is changing state. A volume deleted
     // meanwhile turns the next fetch into a 404: polling stops and the
     // friendly not-found page shows.
     let polling = poll_while_busy(data, move || {
@@ -624,13 +663,13 @@ pub fn VolumeDetailPage() -> impl IntoView {
     }
 }
 
-/// Volume snapshot detail; refreshes while the snapshot changes state (roadmap 46).
+/// Volume snapshot detail; refreshes while the snapshot changes state.
 #[component]
 pub fn SnapshotDetailPage() -> impl IntoView {
     let i18n = use_i18n();
     let id = param("id");
     let data = Resource::new(move || (id(), data_version()), |(id, _)| get_snapshot(id));
-    // As for volumes (roadmap 46).
+    // As for volumes.
     let polling = poll_while_busy(data, move || {
         data.with(|r| matches!(r, Some(Ok(td)) if snapshot_busy(&td.data.status)))
     });
@@ -662,7 +701,7 @@ pub fn SnapshotDetailPage() -> impl IntoView {
     }
 }
 
-/// Volume backup detail (roadmap 5, `backup` plugin); refreshes while it is `creating`,
+/// Volume backup detail (`backup` plugin); refreshes while it is `creating`,
 /// `restoring` or `deleting`, which `snapshot_busy` covers.
 #[component]
 pub fn BackupDetailPage() -> impl IntoView {
@@ -757,7 +796,7 @@ pub fn ImageDetailPage() -> impl IntoView {
     }
 }
 
-/// Server group detail: policy, rules and the member instances (roadmap 52).
+/// Server group detail: policy, rules and the member instances.
 #[component]
 pub fn ServerGroupDetailPage() -> impl IntoView {
     let i18n = use_i18n();

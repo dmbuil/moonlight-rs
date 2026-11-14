@@ -22,15 +22,20 @@ use super::session::Session;
 use super::sfe;
 use crate::model::{AppError, Capabilities, ErrorKind, ProjectRef, parse_microversion};
 
+/// What a sign-in (password or WebSSO) learns from Keystone, before a project is picked.
 pub struct LoginResult {
+    /// The **unscoped** token: it goes into the session cookie, never into a log (AGENTS.md §1.5).
     pub token: String,
+    /// When the token expires (Keystone's `expires_at`).
     pub expires_at: DateTime<Utc>,
     pub user_id: String,
     pub user: String,
     /// The user's domain name (else ID) from the token; federated users get
     /// their identity provider's domain (Keystone ≥ Ocata).
     pub user_domain: Option<String>,
+    /// The projects the token can be scoped to; the session starts in the first.
     pub projects: Vec<ProjectRef>,
+    /// The user's password expiry, when Keystone sets one (`[security_compliance]`).
     pub password_expires_at: Option<DateTime<Utc>>,
 }
 
@@ -46,6 +51,7 @@ pub fn keystone_time(s: &str) -> Option<DateTime<Utc>> {
         })
 }
 
+/// [`config_for`] with the running server's settings.
 fn base_config(auth_type: &str, auth: Auth, region: Option<String>) -> CloudConfig {
     config_for(&state().config, auth_type, auth, region)
 }
@@ -65,6 +71,9 @@ fn config_for(cfg: &super::config::Config, auth_type: &str, auth: Auth, region: 
     }
 }
 
+/// Authenticates one SDK connection. Never writes a token to disk (`disable_auth_cache`, with
+/// `auth_cache: Some(false)` in [`config_for`]; AGENTS.md §1.6) and never renews it: an expired
+/// token ends the session.
 async fn connect(cfg: &CloudConfig) -> Result<AsyncOpenStack, Box<openstack_sdk::OpenStackError>> {
     AsyncOpenStack::builder(cfg)
         .disable_auth_cache(true)
@@ -86,7 +95,7 @@ pub fn scoped_key(token: &str, project_id: &str, region: Option<&str>) -> String
     hash_key(&[token, project_id, region.unwrap_or("")])
 }
 
-/// After logout (roadmap 49): refuse the session's token from now on (see
+/// After logout: refuse the session's token from now on (see
 /// `session::current`) and drop what the caches hold for it. Connections for
 /// other projects/regions can't be found by token (their keys are hashes);
 /// they become unreachable because `revoked` stops every request first.
@@ -133,7 +142,7 @@ pub async fn login(username: &str, password: &str, domain: &str) -> Result<Login
     login_result(&os).await
 }
 
-/// WebSSO (roadmap 80): signs in with the unscoped token Keystone posted back
+/// WebSSO: signs in with the unscoped token Keystone posted back
 /// after federation, as Horizon does. Authenticating with it (`v3token`,
 /// unscoped) is what validates it; Keystone answers with a new unscoped token
 /// for the same user, which the session keeps.
@@ -215,6 +224,7 @@ pub async fn new_session(res: LoginResult, domain: String) -> Result<Session, Ap
     Ok(sess)
 }
 
+/// `GET /v3/auth/projects`: the projects the connection's token may be scoped to.
 async fn list_projects_with(os: &AsyncOpenStack) -> Result<Vec<ProjectRef>, AppError> {
     use openstack_sdk::api::identity::v3::auth::project::list;
     let ep = list::Request::builder().build().map_err(sfe("build auth/projects"))?;
@@ -251,6 +261,10 @@ pub async fn scoped(session: &Session) -> Result<AsyncOpenStack, AppError> {
     scoped_to(session, &session.project_id, session.region.as_deref()).await
 }
 
+/// A connection scoped to `project_id` and `region`: the unscoped token rescoped with `v3token`,
+/// then version discovery. Cached in `AppState::connections` (by hash) only once discovery
+/// succeeded, so a region that was down is retried. `switch_project` calls it to check a project
+/// can be scoped before switching.
 pub async fn scoped_to(session: &Session, project_id: &str, region: Option<&str>) -> Result<AsyncOpenStack, AppError> {
     let st = state();
     let key = scoped_key(&session.token, project_id, region);
@@ -258,7 +272,7 @@ pub async fn scoped_to(session: &Session, project_id: &str, region: Option<&str>
         tracing::debug!(user = %session.user, websso = session.websso.is_some(), "scoped connection: cached");
         return Ok(c);
     }
-    // Debug timing of a cache miss (roadmap 83): rescope and discovery are the
+    // Debug timing of a cache miss: rescope and discovery are the
     // expensive part of a request that has to build its connection.
     let started = std::time::Instant::now();
     let auth = Auth {
@@ -341,7 +355,7 @@ async fn discover(os: &AsyncOpenStack) -> bool {
     c && n && b && i
 }
 
-/// What the session's project and region offer (roadmap 19): catalog services,
+/// What the session's project and region offer: catalog services,
 /// Neutron extensions and the highest compute/volume microversions. GET only,
 /// cached like the connection. Nothing is cached when detection fails, and the
 /// result then has `known: false`, so the UI hides nothing.
@@ -394,7 +408,7 @@ pub async fn capabilities(session: &Session, os: &AsyncOpenStack) -> Capabilitie
         }
     };
     // Octavia has no microversions: discovery picks its newest version (`v2.27`),
-    // which reads the same way (roadmap 54).
+    // which reads the same way.
     let has_lb = services.iter().any(|s| s == "load-balancer" || s == "octavia");
     let lb_mv = async { if has_lb { max_mv(S::LoadBalancer).await } else { None } };
     // Glance's enabled import methods; `None` (fail open) when the image service is missing
@@ -457,7 +471,7 @@ fn import_methods(v: &serde_json::Value) -> Vec<String> {
 }
 
 /// The scoped token's role names as Keystone spells them, sorted (application
-/// credential roles are sent by name, roadmap 57). Keystone already adds implied
+/// credential roles are sent by name). Keystone already adds implied
 /// roles (`admin` → `member` → `reader`) to the token.
 pub fn token_role_names(os: &AsyncOpenStack) -> Vec<String> {
     let roles = os.get_auth_info().and_then(|i| i.token.roles).unwrap_or_default();
@@ -527,6 +541,7 @@ pub fn catalog_services(os: &AsyncOpenStack) -> Vec<crate::model::CatalogService
     catalog_services_of(os.get_token_catalog().unwrap_or_default())
 }
 
+/// [`catalog_services`] on an already-read catalog, for tests.
 fn catalog_services_of(
     services: Vec<openstack_sdk::types::identity::v3::ServiceEndpoints>,
 ) -> Vec<crate::model::CatalogService> {
@@ -560,6 +575,9 @@ fn catalog_services_of(
     out
 }
 
+/// One [`ApiEndpoint`](crate::model::ApiEndpoint) per service: the endpoint for `interface` in
+/// `region` (an endpoint without a region matches any). Services with none are dropped, or
+/// kept with an empty `url` when `keep_unreachable`. Sorted by service type.
 fn catalog_entries(
     services: Vec<openstack_sdk::types::identity::v3::ServiceEndpoints>,
     interface: &str,

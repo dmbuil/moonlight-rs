@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// `OsAction::RouterCreate`: `POST /v2.0/routers`, with an external gateway when a network is
+/// given. A gateway QoS policy without an external network is refused (it lives in
+/// `external_gateway_info`).
 pub(super) async fn router_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -28,6 +31,9 @@ pub(super) async fn router_create(
     Ok(())
 }
 
+/// `OsAction::AdminRouterCreate` (Admin › Routers): `POST /v2.0/routers` for a project, with
+/// Horizon's admin options (SNAT, AZ hints, distributed, HA). Options left `None` are not sent,
+/// so Neutron's defaults apply; SNAT needs an external network.
 pub(super) async fn admin_router_create(x: &mut Exec<'_>, spec: &AdminRouterSpec) -> R<()> {
     use openstack_sdk::api::network::v2::router::create as m;
     let mut b = m::RouterBuilder::default();
@@ -59,6 +65,9 @@ pub(super) async fn admin_router_create(x: &mut Exec<'_>, spec: &AdminRouterSpec
     Ok(())
 }
 
+/// `OsAction::RouterUpdate`: `PUT /v2.0/routers/{id}`. `snat` carries the current gateway
+/// network because `enable_snat` lives in `external_gateway_info`, which is replaced whole.
+/// `distributed` and `ha` are admin-only and sent only when `Some`.
 pub(super) async fn router_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -91,6 +100,8 @@ pub(super) async fn router_update(
     Ok(())
 }
 
+/// `OsAction::RouterSetGateway`: `PUT /v2.0/routers/{id}` with
+/// `external_gateway_info.network_id`.
 pub(super) async fn router_set_gateway(x: &mut Exec<'_>, id: &str, network_id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::set as m;
     let gw = m::ExternalGatewayInfoBuilder::default()
@@ -106,6 +117,8 @@ pub(super) async fn router_set_gateway(x: &mut Exec<'_>, id: &str, network_id: &
     Ok(())
 }
 
+/// `OsAction::RouterClearGateway`: `PUT /v2.0/routers/{id}` with
+/// `"external_gateway_info": null`.
 pub(super) async fn router_clear_gateway(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::set as m;
     let body = m::RouterBuilder::default()
@@ -117,6 +130,8 @@ pub(super) async fn router_clear_gateway(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `OsAction::RouterAddInterface`: `PUT /v2.0/routers/{id}/add_router_interface` on a
+/// subnet (Neutron creates the port with the subnet's gateway IP).
 pub(super) async fn router_add_interface(x: &mut Exec<'_>, id: &str, subnet_id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::add_router_interface as m;
     x.send(
@@ -130,6 +145,8 @@ pub(super) async fn router_add_interface(x: &mut Exec<'_>, id: &str, subnet_id: 
     Ok(())
 }
 
+/// `OsAction::RouterRemoveInterface`: `PUT /v2.0/routers/{id}/remove_router_interface` by
+/// port ID.
 pub(super) async fn router_remove_interface(x: &mut Exec<'_>, id: &str, port_id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::remove_router_interface as m;
     x.send(
@@ -143,6 +160,9 @@ pub(super) async fn router_remove_interface(x: &mut Exec<'_>, id: &str, port_id:
     Ok(())
 }
 
+/// `OsAction::RouterAddRoute`: `PUT /v2.0/routers/{id}/add_extraroutes` (extension
+/// `extraroute-atomic`), after `validate_route`. Without that extension the UI sends
+/// `RouterSetRoutes` instead.
 pub(super) async fn router_add_route(x: &mut Exec<'_>, id: &str, destination: &str, nexthop: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::add_extraroutes as m;
     let (d, h) = validate_route(destination, nexthop).map_err(AppError::invalid)?;
@@ -160,6 +180,9 @@ pub(super) async fn router_add_route(x: &mut Exec<'_>, id: &str, destination: &s
     Ok(())
 }
 
+/// `OsAction::RouterRemoveRoute`: `PUT /v2.0/routers/{id}/remove_extraroutes`
+/// (`extraroute-atomic`). The route is sent as listed, unvalidated, so an odd existing one can
+/// still be removed.
 pub(super) async fn router_remove_route(x: &mut Exec<'_>, id: &str, destination: &str, nexthop: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::remove_extraroutes as m;
     let route = m::RoutesBuilder::default()
@@ -176,6 +199,8 @@ pub(super) async fn router_remove_route(x: &mut Exec<'_>, id: &str, destination:
     Ok(())
 }
 
+/// `OsAction::RouterSetRoutes`: `PUT /v2.0/routers/{id}` replacing the whole `routes` list:
+/// the fallback for clouds with plain `extraroute` only (it races with concurrent edits).
 pub(super) async fn router_set_routes(x: &mut Exec<'_>, id: &str, routes: &[(String, String)]) -> R<()> {
     use openstack_sdk::api::network::v2::router::set as m;
     let list = routes
@@ -194,6 +219,7 @@ pub(super) async fn router_set_routes(x: &mut Exec<'_>, id: &str, routes: &[(Str
     Ok(())
 }
 
+/// `OsAction::RouterDelete`: `DELETE /v2.0/routers/{id}`.
 pub(super) async fn router_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::network::v2::router::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
@@ -297,7 +323,7 @@ mod tests {
             json!({"router": {"name": "gw", "admin_state_up": false,
                 "external_gateway_info": {"network_id": "ext", "enable_snat": false}}})
         );
-        // Admin Edit Router (roadmap 89): type and HA mode only when they change.
+        // Admin Edit Router: type and HA mode only when they change.
         let r = dry(OsAction::RouterUpdate {
             id: id("r"),
             name: id("gw"),

@@ -1,3 +1,7 @@
+//! The server binary (`ssr`): reads the settings (`server::settings`), sets up logging, builds
+//! the axum router with the Leptos routes and Moonlight's own handlers, and serves plain HTTP or
+//! TLS. The browser's entry point is `moonlight::hydrate`, not this file.
+
 // The binary is its own crate, so `lib.rs`'s limit doesn't apply here. Without
 // it the release build fails with "queries overflow the depth limit!" while
 // computing the layout of the `DataTable<ServerUsage>` view future
@@ -8,7 +12,7 @@
 /// debug build: the first request after a start builds the scoped connection
 /// (rescope, discovery, capability detection) and renders the page in one poll,
 /// and unoptimised futures that size overflowed it (`tokio-rt-worker has
-/// overflowed its stack`, roadmap 62). Release builds use far less.
+/// overflowed its stack`). Release builds use far less.
 #[cfg(feature = "ssr")]
 const WORKER_STACK: usize = 16 * 1024 * 1024;
 
@@ -41,7 +45,7 @@ async fn serve() {
         eprintln!("configuration error: {e}");
         std::process::exit(1);
     });
-    // Held until `serve` returns: dropping it flushes the log file's last lines (roadmap 81).
+    // Held until `serve` returns: dropping it flushes the log file's last lines.
     let (subscriber, _log_guard) = moonlight::server::logging::subscriber(&settings.log).unwrap_or_else(|e| {
         eprintln!("configuration error: {e}");
         std::process::exit(1);
@@ -59,9 +63,7 @@ async fn serve() {
         ),
     }
     if let Some(n) = settings.log.legacy_keep() {
-        tracing::warn!(
-            "[log] keep = {n} is the old file count: read as max_files = {n}; keep is now yes/no (roadmap 84)"
-        );
+        tracing::warn!("[log] keep = {n} is the old file count: read as max_files = {n}; keep is now yes/no");
     }
 
     if let Err(e) = moonlight::server::config::init(&settings) {
@@ -75,7 +77,7 @@ async fn serve() {
     let routes = generate_route_list(App);
 
     let app = Router::new()
-        // WebSSO (roadmap 80): plain redirects outside Leptos, so they answer 303.
+        // WebSSO: plain redirects outside Leptos, so they answer 303.
         .route(
             moonlight::server::websso::START,
             axum::routing::get(moonlight::server::websso::start),
@@ -84,7 +86,7 @@ async fn serve() {
             moonlight::server::websso::CALLBACK,
             axum::routing::post(moonlight::server::websso::callback),
         )
-        // Image file uploads (roadmap 45): a streamed body, so not a server function.
+        // Image file uploads: a streamed body, so not a server function.
         .route(
             moonlight::model::IMAGE_UPLOAD_ROUTE,
             axum::routing::put(moonlight::server::upload::proxy),
@@ -99,7 +101,7 @@ async fn serve() {
         .layer(moonlight::server::compression())
         .with_state(leptos_options);
 
-    // HTTPS when `[server] tls_cert_file` and `tls_key_file` are set (roadmap 107).
+    // HTTPS when `[server] tls_cert_file` and `tls_key_file` are set.
     let tls = settings
         .server
         .tls_files()

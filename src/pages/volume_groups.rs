@@ -1,5 +1,5 @@
 //! Volume group and group snapshot detail pages (generic volume groups,
-//! roadmap 5): overview plus the volumes or volume snapshots each holds. The
+//!): overview plus the volumes or volume snapshots each holds. The
 //! lists are in `lists.rs`. The header menus hold the group actions
 //! (`ops::volume_group_detail_items`, `ops::group_snapshot_items`).
 

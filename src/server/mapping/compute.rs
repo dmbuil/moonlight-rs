@@ -2,6 +2,8 @@
 
 use super::*;
 
+/// The server's `addresses`, by network name, with Nova's `OS-EXT-IPS` type (fixed or
+/// floating) and MAC.
 fn addresses(server: &Value) -> Vec<Address> {
     let Some(map) = server.get("addresses").and_then(Value::as_object) else {
         return vec![];
@@ -36,6 +38,8 @@ fn i_lenient(v: &Value, k: &str) -> Option<i64> {
     }
 }
 
+/// The flavor's sizes; Nova calls ephemeral `OS-FLV-EXT-DATA:ephemeral` (or `ephemeral` when
+/// embedded, 2.47+) and `swap` `0` or `""` when there is none (→ `None`).
 fn flavor_info(f: &Value, id: String, name: String) -> FlavorInfo {
     FlavorInfo {
         id,
@@ -48,6 +52,8 @@ fn flavor_info(f: &Value, id: String, name: String) -> FlavorInfo {
     }
 }
 
+/// The server's flavor: from the flavor list by ID, or, from Nova 2.47, embedded in the server
+/// (no ID, so matched by name). A deleted flavor shows its ID.
 fn flavor_of(server: &Value, flavors: &HashMap<String, &Value>) -> FlavorInfo {
     let f = server.get("flavor").cloned().unwrap_or(Value::Null);
     // Microversion >= 2.47 embeds the flavor (with `original_name`, no id): look the id up by name.
@@ -66,6 +72,8 @@ fn flavor_of(server: &Value, flavors: &HashMap<String, &Value>) -> FlavorInfo {
     }
 }
 
+/// Usual root device names, for picking the boot volume when Nova doesn't report
+/// `root_device_name`.
 const ROOT_DEVICES: &[&str] = &["/dev/vda", "/dev/sda", "/dev/xvda", "/dev/hda"];
 
 /// Image a server was booted from. For boot-from-volume (`"image": ""`), the
@@ -90,6 +98,8 @@ fn boot_image_id(server: &Value, volumes: &HashMap<String, &Value>) -> Option<St
     image_id(server).or_else(|| s(boot_volume(server, volumes)?.get("volume_image_metadata")?, "image_id"))
 }
 
+/// The volume the server boots from, among its attached ones: the one on Nova's
+/// `root_device_name`, else on a usual root device, else any bootable volume.
 fn boot_volume<'v>(server: &Value, volumes: &HashMap<String, &'v Value>) -> Option<&'v Value> {
     let server_id = s(server, "id")?;
     let root = s(server, "OS-EXT-SRV-ATTR:root_device_name");
@@ -117,6 +127,7 @@ fn boot_volume<'v>(server: &Value, volumes: &HashMap<String, &'v Value>) -> Opti
     Some(*boot)
 }
 
+/// One instance row, its flavor and boot image resolved from the lookups (all keyed by ID).
 pub(super) fn instance(
     server: &Value,
     flavors: &HashMap<String, &Value>,
@@ -171,7 +182,7 @@ pub fn instances(servers: &[Value], flavors: &[Value], images: &[Value], volumes
     out
 }
 
-/// [`instances`] for one page of a paged list (roadmap 88), in the order Nova
+/// [`instances`] for one page of a paged list, in the order Nova
 /// answered: the marker of the next page is the last row, so re-sorting here would
 /// break the paging. Nova embeds the flavor (2.47), so no flavor list is needed.
 /// Boot-from-volume rows get no image here but their attached volumes in
@@ -192,7 +203,7 @@ pub fn instances_page(servers: &[Value], images: &[Value]) -> Vec<Instance> {
 }
 
 /// Image IDs the servers were built from, each once: what a page asks Glance for
-/// (`images?id=in:…`) instead of every image of the cloud (roadmap 88).
+/// (`images?id=in:…`) instead of every image of the cloud.
 pub fn image_ids(servers: &[Value]) -> Vec<String> {
     let mut ids: Vec<String> = servers.iter().filter_map(image_id).collect();
     ids.sort();
@@ -212,7 +223,7 @@ fn attached_volume_ids(server: &Value) -> Vec<String> {
 }
 
 /// The image of each server booted from these volumes, as `(server ID, image
-/// name)`, from the volumes alone (a paged list's second call, roadmap 88). Each
+/// name)`, from the volumes alone (a paged list's second call). Each
 /// server is rebuilt from the volumes' `attachments`, so [`boot_volume`] picks the
 /// same volume as for a full list, except that the server's own root device name is
 /// unknown here: a conventional root device or a bootable volume decides. A volume
@@ -389,6 +400,7 @@ pub fn server_groups(raw: &[Value]) -> Vec<ServerGroup> {
     out
 }
 
+/// One server group; `policies` merges the pre-2.64 list and 2.64's single `policy`.
 pub(super) fn server_group(g: &Value) -> ServerGroup {
     let mut policies = strs(g, "policies");
     // microversion >= 2.64 uses a single `policy`

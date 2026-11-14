@@ -1,4 +1,4 @@
-//! *Launch Stack* and *Change Stack Template* (Heat, roadmap 62). A page rather
+//! *Launch Stack* and *Change Stack Template* (Heat). A page rather
 //! than a dialog: the parameter fields come from the template, which Heat reads
 //! (`run_stack_validate`) once the user has given it. Step one takes the template
 //! and environment; step two the name, timeout, rollback and parameters. *Preview*
@@ -21,10 +21,14 @@ use crate::model::*;
 /// What the form holds when *Launch*/*Preview* is pressed.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StackForm {
+    /// The stack name, checked with `valid_stack_name` (fixed on an update).
     pub name: String,
     pub source: TemplateSource,
+    /// The creation timeout in minutes, as typed; blank leaves Heat's default.
     pub timeout: String,
+    /// Roll back on failure; sent inverted as Heat's `disable_rollback`.
     pub rollback: bool,
+    /// Parameter name → the text typed for it.
     pub values: HashMap<String, String>,
     /// An update: blank parameters keep the stack's value instead of being required.
     pub update: bool,
@@ -96,7 +100,7 @@ pub fn initial_values(params: &[TemplateParam], current: &[(String, String)]) ->
 
 thread_local! {
     /// A template the Template Generator hands to the next *Launch Stack*
-    /// (roadmap 92). Browser only: set by a click there, taken by the page it
+    ///. Browser only: set by a click there, taken by the page it
     /// navigates to; the server never sets it, so SSR always starts empty.
     static HANDED: RefCell<Option<String>> = const { RefCell::new(None) };
 }
@@ -106,6 +110,8 @@ pub fn hand_template(template: String) {
     HANDED.with(|h| *h.borrow_mut() = Some(template));
 }
 
+/// Takes (and clears) the template [`hand_template`] left, so only the first *Launch Stack*
+/// after the Template Generator is prefilled.
 fn take_handed() -> Option<String> {
     HANDED.with(|h| h.borrow_mut().take())
 }
@@ -128,6 +134,11 @@ pub fn StackChangePage() -> impl IntoView {
     }
 }
 
+/// Both steps of the form, shared by [`StackLaunchPage`] (`existing` is `None`) and
+/// [`StackChangePage`] (`existing` is the stack, whose template, timeout, rollback and parameter
+/// values prefill it; the name is fixed and blank parameters keep their value). *Next* asks Heat to
+/// validate the template and read its parameters; the buttons stay disabled while a request runs,
+/// and *Launch*/*Change* also with writes off.
 #[component]
 fn StackFormView(existing: Option<StackDetail>) -> impl IntoView {
     let i18n = use_i18n();

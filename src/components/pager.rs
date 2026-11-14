@@ -1,4 +1,4 @@
-//! Controls of the server-paged lists (roadmap 88): the page's query string read into
+//! Controls of the server-paged lists: the page's query string read into
 //! a [`ListQuery`], the filter bar and *Previous* / *Next*. The state lives in the URL
 //! (`?marker=…&f=…&q=…&sort=…&dir=…`), so a page, its filter and its sort can be
 //! linked and reloaded; kept outside it are only the stack of markers *Previous*
@@ -72,7 +72,7 @@ pub fn shown_total(api: Option<u64>, total: Option<&(CountKey, Counting)>, key: 
     })
 }
 
-/// Names a paged page fills in after its rows show (roadmap 88). `names` is by
+/// Names a paged page fills in after its rows show. `names` is by
 /// resource ID: absent = still loading, `None` = not found (the cell shows the ID).
 /// `active` is false on a whole list (`page_size = 0`), whose rows come named:
 /// nothing is loaded and a missing name is not "loading". It starts true (paging
@@ -349,7 +349,7 @@ pub fn FilterBar(list: PagedList, #[prop(optional)] scope: ListScope) -> impl In
             </select>
             {move || match kind() {
                 k @ (FilterKind::Text | FilterKind::Exact) => {
-                    // Neutron, IDs and hosts match whole values: say so (roadmap 88).
+                    // Neutron, IDs and hosts match whole values: say so.
                     let hint = if k == FilterKind::Exact { K::FilterExact } else { K::FilterSearch };
                     view! {
                         <input type="search" name="q" class="filter-value" prop:value=value
@@ -384,7 +384,7 @@ pub fn FilterBar(list: PagedList, #[prop(optional)] scope: ListScope) -> impl In
 /// following page's marker (`None` on the last page); `stack` is the page's
 /// [`PagerState`]. A deep link (a marker, no history) has no known row numbers, and
 /// its *Previous* reads *First page*. Without the API's `count`, a *Count all*
-/// link asks `count_rows` for `list`'s total in `scope` on a click (roadmap 88).
+/// link asks `count_rows` for `list`'s total in `scope` on a click.
 #[component]
 pub fn Pager(
     list: PagedList,
@@ -498,7 +498,7 @@ pub fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
 }
 
 /// A paged list's [`FilterBar`], and under it, when the server waited for a
-/// filter (`[admin] filter_first`, roadmap 89), why the table is empty.
+/// filter (`[admin] filter_first`), why the table is empty.
 pub fn filter_bar(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyView {
     let i18n = use_i18n();
     let note = needs_filter
@@ -506,7 +506,7 @@ pub fn filter_bar(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyV
     view! { <FilterBar list=list scope=scope/> {note} }.into_any()
 }
 
-/// The table of a paged list (roadmap 88), Admin or Project (`scope`): one page
+/// The table of a paged list, Admin or Project (`scope`): one page
 /// with the filter bar and *Previous* / *Next*, or, when the server sent the whole
 /// list (`page_size = 0`, or a Project panel with `paged_lists = "admin"`), the
 /// client-side table and search box as before. Bulk actions act on the rows shown.

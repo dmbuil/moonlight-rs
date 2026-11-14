@@ -1,4 +1,4 @@
-//! Firewall (FWaaS v2, roadmap 93).
+//! Firewall (FWaaS v2).
 
 use super::*;
 
@@ -9,7 +9,7 @@ fn firewall_ports_apply(v: &Vals) -> bool {
 
 /// *Add Rule* (`None`) or *Edit Rule*. No *Shared*: the Project panel never offers or
 /// sends it (Neutron's default, not shared, applies); it belongs to the Admin panel
-/// (roadmap 94), as for policies and groups.
+///, as for policies and groups.
 pub fn firewall_rule_dialog(lang: Lang, rule: Option<&FirewallRuleRow>) -> Dialog {
     let tr = |k| t(lang, k).to_string();
     let r = rule.cloned();

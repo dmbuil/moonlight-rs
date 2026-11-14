@@ -21,7 +21,7 @@ pub struct TopoNetwork {
     pub external: bool,
     pub shared: bool,
     /// The session's project owns it (a project's own network may be `shared` too);
-    /// the topology marks the others (roadmap 74).
+    /// the topology marks the others.
     #[serde(default)]
     pub owned: bool,
     pub status: String,
@@ -56,7 +56,7 @@ pub struct Topology {
     pub networks: Vec<TopoNetwork>,
     pub devices: Vec<TopoDevice>,
     pub links: Vec<TopoLink>,
-    /// `[network] topology_max_networks` (roadmap 100), sent with the data so
+    /// `[network] topology_max_networks`, sent with the data so
     /// the server render and the hydrated page agree; `0`: no limit.
     #[serde(default)]
     pub max_networks: usize,

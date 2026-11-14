@@ -1,3 +1,7 @@
+//! Project › Compute › *Instances*: the paged list with its status, task and boot-image cells
+//! (images of volume-booted instances load late, in chunks), plus cells reused by the detail
+//! page and the admin list.
+
 use std::sync::Arc;
 
 use leptos::prelude::*;
@@ -18,6 +22,8 @@ use crate::components::widgets::{
 use crate::i18n::{K, Lang, power_state, server_status, t, task_state, use_i18n};
 use crate::model::{Address, BOOT_IMAGE_CHUNK, Instance, ListScope, OsAction, PagedList};
 
+/// An instance's addresses, one per line, each floating IP tagged *Floating*; `-` for none.
+/// Shared by Project › Instances, Admin › Instances and the instance's *Overview*.
 #[component]
 pub fn IpList(addresses: Vec<Address>) -> impl IntoView {
     let i18n = crate::i18n::use_i18n();
@@ -72,7 +78,7 @@ pub fn image_cell(i: &Instance, l: crate::i18n::Lang) -> AnyView {
 }
 
 /// Images of a paged page's boot-from-volume rows by server ID, filled after the
-/// table shows (roadmap 88): absent = still loading, `None` = no image found.
+/// table shows: absent = still loading, `None` = no image found.
 pub type BootImages = RwSignal<HashMap<String, Option<String>>>;
 
 /// The *Image* cell: Nova's or the boot volume's image, or, on a paged page, the
@@ -138,6 +144,8 @@ pub fn load_boot_images(rows: Vec<(String, Vec<String>)>, boot: BootImages) {
     });
 }
 
+/// Search text for Project › Instances when the whole list came back: name, ID, image, IPs,
+/// flavor, key pair, status and zone.
 fn search(i: &Instance) -> String {
     let ips: Vec<&str> = i.addresses.iter().map(|a| a.addr.as_str()).collect();
     format!(
@@ -153,6 +161,9 @@ fn search(i: &Instance) -> String {
     )
 }
 
+/// Project › Compute › Instances: Horizon's table with *Launch Instance*, the bulk delete
+/// and the actions on picked rows, one page at a time. It polls while a row is
+/// busy, and names the images of boot-from-volume rows after the table shows.
 #[component]
 pub fn InstancesPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -163,7 +174,7 @@ pub fn InstancesPage() -> impl IntoView {
             |r| matches!(r, Some(Ok(td)) if td.data.rows.iter().any(|i| is_busy(i.task_state.as_deref(), &i.status))),
         )
     });
-    // A paged page (roadmap 88 slice E) names its boot-from-volume rows' images later.
+    // A paged page names its boot-from-volume rows' images later.
     let boot: BootImages = RwSignal::new(HashMap::new());
     Effect::new(move |_| {
         let Some(Ok(t)) = data.get() else { return };

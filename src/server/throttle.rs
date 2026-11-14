@@ -1,4 +1,4 @@
-//! Sign-in throttling (roadmap 50): failed sign-ins counted per username and
+//! Sign-in throttling: failed sign-ins counted per username and
 //! per client address, in this process's memory. After `max` failures, `login`
 //! answers without asking Keystone until `window` has passed since the last
 //! failure. Many clouds leave Keystone's own lockout
@@ -9,7 +9,7 @@
 //!
 //! Counting is atomic per key, but `blocked` and `failed` are two steps: a
 //! burst of parallel attempts can all pass `blocked` before the first one
-//! fails, so at most the limit plus one burst reaches Keystone (roadmap 63).
+//! fails, so at most the limit plus one burst reaches Keystone.
 
 use std::time::Duration;
 
@@ -17,7 +17,9 @@ use moka::future::Cache;
 
 /// Failure counters with their limit; `max == 0` turns throttling off.
 pub struct Throttle {
+    /// Failed sign-ins per key from `keys`: hashed domain + username, and hashed client IP.
     failures: Cache<String, u32>,
+    /// Failures allowed before `blocked` says yes; 0 = never blocked.
     max: u32,
 }
 
@@ -52,7 +54,7 @@ impl Throttle {
         }
         for k in keys {
             // One atomic read-modify-write: a `get` then `insert` lost the
-            // failures of parallel attempts (roadmap 63).
+            // failures of parallel attempts.
             self.failures
                 .entry(k.clone())
                 .and_upsert_with(|e| async move { e.map_or(1, |e| e.into_value().saturating_add(1)) })

@@ -23,7 +23,7 @@ pub struct Volume {
     pub availability_zone: Option<String>,
     pub bootable: bool,
     pub encrypted: bool,
-    /// Cinder volume metadata (roadmap 25).
+    /// Cinder volume metadata.
     #[serde(default)]
     pub metadata: Vec<(String, String)>,
 }
@@ -39,12 +39,12 @@ pub struct Snapshot {
     pub volume_id: String,
     pub volume_name: Option<String>,
     pub created: String,
-    /// Cinder snapshot metadata (roadmap 25).
+    /// Cinder snapshot metadata.
     #[serde(default)]
     pub metadata: Vec<(String, String)>,
 }
 
-/// A row of Volumes › Backups (Cinder, roadmap 5).
+/// A row of Volumes › Backups (Cinder).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BackupRow {
     pub id: String,

@@ -1,4 +1,4 @@
-//! Pure query building for the paged lists (roadmap 88): no I/O. It turns a
+//! Pure query building for the paged lists: no I/O. It turns a
 //! [`ListQuery`] from the URL into the API's query parameters, refusing anything that
 //! is not in the list's filter and sort tables, and cuts the `page_size + 1` rows an
 //! API returns into a page and the marker of the next one. The GET itself is
@@ -47,7 +47,7 @@ pub fn params(list: PagedList, q: &ListQuery, limit: u32) -> Result<Vec<(&'stati
     params_in(list, None, q, limit)
 }
 
-/// [`params`] for a list scoped to `project` (a Project panel, roadmap 88 slice E),
+/// [`params`] for a list scoped to `project` (a Project panel),
 /// or every project's when `None` (an Admin panel). In a project, Nova and Cinder
 /// lists drop `all_tenants` (a project-scoped token lists its own project's), and
 /// Neutron lists filter by `project_id`, since Neutron shows an admin every
@@ -125,7 +125,7 @@ pub fn cinder(
     (params, None)
 }
 
-/// The query of one request of *Count all* (roadmap 88): `q`'s filter (not its
+/// The query of one request of *Count all*: `q`'s filter (not its
 /// sort, which can't change a count), `limit` and `marker`, and on Neutron
 /// `fields=id`, so each row is only its ID.
 pub fn count_params(
@@ -459,7 +459,7 @@ mod tests {
     fn nova_flavor_and_image_filters_are_picked_by_name_and_send_the_id() {
         use crate::model::{ChoiceSet, FilterKind};
         let kind = |k: &str| PagedList::Instances.filters().iter().find(|d| d.key == k).unwrap().kind;
-        // Nova matched a typed flavor or image name against nothing (test cloud, roadmap 88).
+        // Nova matched a typed flavor or image name against nothing (test cloud).
         assert_eq!(kind("flavor"), FilterKind::Pick(ChoiceSet::Flavors));
         assert_eq!(kind("image"), FilterKind::Pick(ChoiceSet::Images));
         assert_eq!(

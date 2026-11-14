@@ -1,11 +1,11 @@
-//! Barbican writes (roadmap 55): secrets, containers, ACLs; orders (roadmap 58).
+//! Barbican writes: secrets, containers, ACLs; orders.
 
 use super::*;
 
 /// Barbican's secret types (`POST /v1/secrets` `secret_type`).
 pub const SECRET_TYPES: [&str; 6] = ["symmetric", "public", "private", "passphrase", "certificate", "opaque"];
 
-/// `PUT …/acl` replacing the whole `read` ACL (roadmap 75). User IDs go in the
+/// `PUT …/acl` replacing the whole `read` ACL. User IDs go in the
 /// body, but are checked like IDs: one per entry, no separators.
 fn acl_put(path: &str, project_access: bool, users: &[String]) -> R<JsonRequest> {
     for u in users {
@@ -18,6 +18,9 @@ fn acl_put(path: &str, project_access: bool, users: &[String]) -> R<JsonRequest>
     Ok(JsonRequest::key_manager(http::Method::PUT, path, Some(body)))
 }
 
+/// `POST /v1/secrets`. Barbican refuses a content type without a payload, so
+/// both go together; `application/octet-stream` payloads are base64
+/// (`payload_content_encoding`), checked here so a typo fails before sending.
 fn secret_body(s: &SecretSpec) -> R<Value> {
     use base64::Engine;
     if !SECRET_TYPES.contains(&s.secret_type.as_str()) {
@@ -82,7 +85,7 @@ pub fn container_roles(container_type: &str) -> Option<(&'static [&'static str],
 }
 
 /// `POST /v1/containers`: secrets by role, as refs. Each ref must be an
-/// http(s) URL ending in a safe ID (roadmap 48); roles of a typed container are
+/// http(s) URL ending in a safe ID; roles of a typed container are
 /// checked and each used once.
 fn container_body(name: Option<&str>, container_type: &str, secrets: &[(String, String)]) -> R<Value> {
     if !["generic", "certificate", "rsa"].contains(&container_type) {
@@ -124,7 +127,7 @@ fn container_body(name: Option<&str>, container_type: &str, secrets: &[(String, 
     Ok(b)
 }
 
-/// `POST /v1/orders` (roadmap 58): `{"type", "meta": {…}}`. The spec is checked
+/// `POST /v1/orders`: `{"type", "meta": {…}}`. The spec is checked
 /// again here ([`OrderSpec::check`]), whatever the dialog allowed; the
 /// passphrase is masked in previews (`SECRET_KEYS`).
 fn order_body(o: &OrderSpec) -> R<Value> {
@@ -148,6 +151,8 @@ fn order_body(o: &OrderSpec) -> R<Value> {
     Ok(json!({"type": o.order_type, "meta": meta}))
 }
 
+/// `OrderCreate`: `POST /v1/orders`; Barbican generates the key (or key pair) and answers
+/// with an `order_ref`.
 pub(super) async fn order_create(x: &mut Exec<'_>, spec: &OrderSpec) -> R<()> {
     x.create(
         JsonRequest::key_manager(http::Method::POST, "orders", Some(order_body(spec)?)),
@@ -157,6 +162,7 @@ pub(super) async fn order_create(x: &mut Exec<'_>, spec: &OrderSpec) -> R<()> {
     Ok(())
 }
 
+/// `OrderDelete`: `DELETE /v1/orders/{id}` (the generated secrets stay).
 pub(super) async fn order_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::key_manager(
         http::Method::DELETE,
@@ -167,6 +173,7 @@ pub(super) async fn order_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `SecretCreate`: `POST /v1/secrets` (the payload is masked in the preview).
 pub(super) async fn secret_create(x: &mut Exec<'_>, spec: &SecretSpec) -> R<()> {
     x.create(
         JsonRequest::key_manager(http::Method::POST, "secrets", Some(secret_body(spec)?)),
@@ -176,6 +183,7 @@ pub(super) async fn secret_create(x: &mut Exec<'_>, spec: &SecretSpec) -> R<()> 
     Ok(())
 }
 
+/// `SecretDelete`: `DELETE /v1/secrets/{id}`.
 pub(super) async fn secret_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::key_manager(
         http::Method::DELETE,
@@ -186,6 +194,7 @@ pub(super) async fn secret_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ContainerCreate`: `POST /v1/containers`.
 pub(super) async fn container_create(
     x: &mut Exec<'_>,
     name: &Option<String>,
@@ -201,6 +210,7 @@ pub(super) async fn container_create(
     Ok(())
 }
 
+/// `ContainerDelete`: `DELETE /v1/containers/{id}` (its secrets stay).
 pub(super) async fn container_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::key_manager(
         http::Method::DELETE,
@@ -211,6 +221,7 @@ pub(super) async fn container_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `SecretAclSet`: `PUT /v1/secrets/{id}/acl`, replacing the `read` ACL.
 pub(super) async fn secret_acl_set(x: &mut Exec<'_>, id: &str, project_access: &bool, users: &[String]) -> R<()> {
     x.send(acl_put(
         &format!("secrets/{}/acl", non_empty(id, "secret")?),
@@ -221,6 +232,7 @@ pub(super) async fn secret_acl_set(x: &mut Exec<'_>, id: &str, project_access: &
     Ok(())
 }
 
+/// `SecretAclDelete`: `DELETE /v1/secrets/{id}/acl`, back to the default (project access).
 pub(super) async fn secret_acl_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::key_manager(
         http::Method::DELETE,
@@ -231,6 +243,7 @@ pub(super) async fn secret_acl_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ContainerAclSet`: `PUT /v1/containers/{id}/acl`, replacing the `read` ACL.
 pub(super) async fn container_acl_set(x: &mut Exec<'_>, id: &str, project_access: &bool, users: &[String]) -> R<()> {
     x.send(acl_put(
         &format!("containers/{}/acl", non_empty(id, "container")?),
@@ -241,6 +254,7 @@ pub(super) async fn container_acl_set(x: &mut Exec<'_>, id: &str, project_access
     Ok(())
 }
 
+/// `ContainerAclDelete`: `DELETE /v1/containers/{id}/acl`, back to the default.
 pub(super) async fn container_acl_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(JsonRequest::key_manager(
         http::Method::DELETE,
@@ -256,7 +270,7 @@ mod tests {
     use super::super::testing::*;
     use super::*;
 
-    // --- Key Manager (roadmap 55)
+    // --- Key Manager
 
     #[tokio::test]
     async fn orders_send_barbicans_body_and_mask_the_passphrase() {

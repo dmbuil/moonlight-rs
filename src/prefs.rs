@@ -1,5 +1,5 @@
 //! Deployment preferences from `moonlight.conf` that the browser needs too
-//! (roadmap 29, after Horizon's `local_settings.py`). The serde defaults here
+//! (after Horizon's `local_settings.py`). The serde defaults here
 //! are the only definition of each default: a missing section or key, in the
 //! file or in the session info, always gets the same value.
 //!
@@ -18,16 +18,16 @@ pub struct Prefs {
     pub poll_interval_ms: u32,
     /// `[ui] bug_url`: *Report a Bug* in the user menu.
     pub bug_url: Option<String>,
-    /// `[ui] background_batch_from` (roadmap 87): a bulk action with this many
+    /// `[ui] background_batch_from`: a bulk action with this many
     /// items or more runs in the background, with a progress card, instead of
     /// in its dialog. `0` keeps every batch in the dialog.
     pub background_batch_from: u32,
-    /// `[ui] page_size` (roadmap 88): rows per page of the paged lists. `0` loads
+    /// `[ui] page_size`: rows per page of the paged lists. `0` loads
     /// every row at once, as before paging.
     pub page_size: u32,
-    /// `[ui] paged_lists` (roadmap 88): which lists are paged.
+    /// `[ui] paged_lists`: which lists are paged.
     pub paged_lists: PagedLists,
-    /// `[ui] quota_edit` (roadmap 112): who sees *Edit Quotas* on Project › Quotas.
+    /// `[ui] quota_edit`: who sees *Edit Quotas* on Project › Quotas.
     pub quota_edit: QuotaEdit,
     pub launch: LaunchPrefs,
     pub network: NetworkPrefs,
@@ -36,7 +36,7 @@ pub struct Prefs {
     pub admin: AdminPrefs,
 }
 
-/// `[admin]` (roadmap 89): Horizon's `ENABLE_FLAVOR_EDIT` and `FILTER_DATA_FIRST`.
+/// `[admin]`: Horizon's `ENABLE_FLAVOR_EDIT` and `FILTER_DATA_FIRST`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AdminPrefs {
     /// Admin › Flavors' *Edit Flavor*: Nova can't change a flavor, so it is
@@ -47,10 +47,10 @@ pub struct AdminPrefs {
     pub filter_first: Vec<crate::model::PagedList>,
 }
 
-/// Which lists `[ui] page_size` applies to (roadmap 88).
+/// Which lists `[ui] page_size` applies to.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PagedLists {
-    /// The big Admin lists only (the default; Project panels were measured small, roadmap 27).
+    /// The big Admin lists only (the default; Project panels were measured small).
     #[default]
     Admin,
     /// The Project panels as well.
@@ -58,7 +58,7 @@ pub enum PagedLists {
 }
 
 /// Who may edit the session's own project quotas from Project › Quotas
-/// (roadmap 112). Another project's quotas (Identity › Projects › *Modify
+///. Another project's quotas (Identity › Projects › *Modify
 /// Quotas*) always need the `admin` role, whatever this says; Admin ›
 /// *Defaults* is not affected either.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,7 +123,7 @@ pub struct LoginPrefs {
     pub password_reveal: bool,
     /// Contents of `[login] message_file`.
     pub message: Option<String>,
-    /// `[websso] choices` when `[websso] enabled` (roadmap 80): Horizon's
+    /// `[websso] choices` when `[websso] enabled`: Horizon's
     /// *Authenticate using* select. Empty = password sign-in only, no select.
     pub websso_choices: Vec<SsoChoice>,
     /// `[websso] initial_choice`: preselected in that select.
@@ -146,7 +146,7 @@ impl Default for LoginPrefs {
 }
 
 /// The server route that sends the browser to Keystone for a WebSSO choice:
-/// `?choice=<id>` (roadmap 80, `server::websso::start`).
+/// `?choice=<id>` (`server::websso::start`).
 pub const WEBSSO_START: &str = "/auth/websso/start";
 
 /// One way to sign in (`WEBSSO_CHOICES`): [`SsoChoice::CREDENTIALS`] is the
@@ -195,6 +195,7 @@ pub struct LaunchPrefs {
     pub can_set_password: bool,
     /// Flavor order in the wizard (`CREATE_INSTANCE_FLAVOR_SORT`).
     pub flavor_sort: FlavorSort,
+    /// Sort `flavor_sort` descending.
     pub flavor_sort_reverse: bool,
 }
 
@@ -232,6 +233,8 @@ impl LaunchPrefs {
     }
 }
 
+/// `[launch] flavor_sort`: the column *Launch Instance* sorts flavors by (Horizon's
+/// `CREATE_INSTANCE_FLAVOR_SORT`, RAM by default). Written in lower case in the file.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FlavorSort {
@@ -258,7 +261,7 @@ pub struct NetworkPrefs {
     pub fip_topology_check: bool,
     /// *Network Topology* draws its *Topology* and *Graph* tabs only up to this
     /// many networks (own, shared and external); above it they show a note and
-    /// the *List* view stays available (roadmap 100). `0`: no limit.
+    /// the *List* view stays available. `0`: no limit.
     pub topology_max_networks: usize,
     /// Admin *Create Network*'s provider types, in this order (Horizon's
     /// `supported_provider_types`); `["*"]`: every type of
@@ -341,6 +344,9 @@ impl NetworkPrefs {
     }
 }
 
+/// `[network.allowed_private_subnet_cidr]`: the ranges a new subnet must fall in, per IP version
+/// (Horizon's `ALLOWED_PRIVATE_SUBNET_CIDR`). An empty list allows any subnet of that version;
+/// each entry is validated as a CIDR when the config loads.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AllowedCidrs {
@@ -401,15 +407,15 @@ pub struct ImagePrefs {
     /// Preselected visibility where one is chosen.
     pub default_visibility: String,
     /// Offer *Create Image* › *URL* (Glance `web-download` import; Horizon's
-    /// `IMAGES_ALLOW_LOCATION`, roadmap 45). Off by default: the cloud fetches the URL.
+    /// `IMAGES_ALLOW_LOCATION`). Off by default: the cloud fetches the URL.
     pub allow_location: bool,
-    /// How *Create Image* › *File* reaches Glance (roadmap 45); `off` hides the source.
+    /// How *Create Image* › *File* reaches Glance; `off` hides the source.
     pub upload: ImageUpload,
     /// Largest file *File* accepts, in GiB (1024³ bytes); checked in the dialog and again by
     /// the server, for both modes.
     pub max_upload_gb: u32,
     /// Image property keys the metadata editors hide and the server never sends (Horizon's
-    /// `IMAGE_RESERVED_CUSTOM_PROPERTIES`, roadmap 25). `os_glance_*` is always reserved.
+    /// `IMAGE_RESERVED_CUSTOM_PROPERTIES`). `os_glance_*` is always reserved.
     pub reserved_properties: Vec<String>,
 }
 
@@ -451,7 +457,7 @@ impl Default for ImagePrefs {
     }
 }
 
-/// `[console]`: the instance *Log* and *Console* tabs (roadmap 31). Both are
+/// `[console]`: the instance *Log* and *Console* tabs. Both are
 /// Nova POSTs that read without changing the server, so they are sent only
 /// when this is enabled **and** `[writes] mode = on`; dry-run shows the request.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -475,6 +481,7 @@ impl Default for ConsolePrefs {
     }
 }
 
+/// `[console] type`: which remote console *Console* asks Nova for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConsoleType {
@@ -485,6 +492,8 @@ pub enum ConsoleType {
     Spice,
 }
 
+/// Glance image visibilities, in Horizon's order: the choices for `[images] default_visibility`
+/// (checked at load) and the visibility select of a volume's *Upload to Image*.
 pub const VISIBILITIES: [&str; 4] = ["private", "shared", "community", "public"];
 
 /// An IP network (`10.0.0.0/8`), for the subnet allow-list.
@@ -495,6 +504,8 @@ pub struct Cidr {
 }
 
 impl Cidr {
+    /// Parses `addr/len`, rejecting a prefix longer than the address (33 for IPv4). The address
+    /// need not be the network address: `10.0.0.1/8` is accepted as written.
     pub fn parse(s: &str) -> Result<Cidr, String> {
         let s = s.trim();
         let bad = || format!("not a CIDR: {s}");
@@ -507,6 +518,7 @@ impl Cidr {
         Ok(Cidr { addr, len })
     }
 
+    /// The address as 128 bits, IPv4 shifted to the top so one mask works for both versions.
     fn bits(addr: IpAddr) -> u128 {
         match addr {
             IpAddr::V4(a) => u128::from(u32::from(a)) << 96,

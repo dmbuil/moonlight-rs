@@ -33,6 +33,7 @@ pub struct RouterRow {
     pub id: String,
     pub name: String,
     pub status: String,
+    /// The gateway's network name (else its ID) and ID; `None` without a gateway.
     pub external_network: Option<String>,
     pub external_network_id: Option<String>,
     /// The gateway's `enable_snat`; `None` without a gateway.
@@ -40,7 +41,7 @@ pub struct RouterRow {
     pub admin_up: bool,
     pub availability_zones: Vec<String>,
     /// `distributed` / `ha`: Neutron shows them to admins only, and only with
-    /// the `dvr` / `l3-ha` extensions; `None` when absent (roadmap 89).
+    /// the `dvr` / `l3-ha` extensions; `None` when absent.
     #[serde(default)]
     pub distributed: Option<bool>,
     #[serde(default)]
@@ -70,7 +71,7 @@ pub struct TrunkRow {
     pub subports: Vec<Subport>,
 }
 
-// --- Firewall (FWaaS v2, roadmap 93) --------------------------------------------
+// --- Firewall (FWaaS v2) --------------------------------------------
 
 /// A sub-port to add: `vlan` needs an ID (1-4094); `inherit` takes the
 /// segmentation of the port's network and no ID.
@@ -142,12 +143,18 @@ pub struct QosPolicyRow {
 /// A rule to create or change; [`QosRuleSpec::body`] keeps only the fields of its type.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct QosRuleSpec {
+    /// One of [`QOS_RULE_TYPES`]; it picks the path (`…/<kind>_rules`) and the fields kept.
     pub kind: String,
+    /// One of [`QosRuleSpec::directions`] for the type; DSCP marking has none.
     pub direction: Option<String>,
+    /// `bandwidth_limit`: the cap and its burst, in kbps.
     pub max_kbps: Option<u32>,
     pub max_burst_kbps: Option<u32>,
+    /// `dscp_marking`: one of [`DSCP_MARKS`].
     pub dscp_mark: Option<u8>,
+    /// `minimum_bandwidth`, in kbps.
     pub min_kbps: Option<u32>,
+    /// `minimum_packet_rate`, in thousands of packets per second.
     pub min_kpps: Option<u32>,
 }
 
@@ -208,6 +215,7 @@ pub struct SecurityGroupRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    /// One Horizon-like line per rule (`server::mapping::network::describe_rule`).
     pub rules: Vec<String>,
     /// Shared with the project through Neutron RBAC (`shared`).
     #[serde(default)]
@@ -225,7 +233,7 @@ pub struct FloatingIpRow {
     pub instance_name: Option<String>,
     pub pool: String,
     /// The pool's network ID (`floating_network_id`): admin *Associate* offers
-    /// only the ports it reaches (roadmap 89).
+    /// only the ports it reaches.
     #[serde(default)]
     pub pool_id: String,
     pub status: String,

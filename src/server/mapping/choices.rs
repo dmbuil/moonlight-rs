@@ -2,24 +2,29 @@
 
 use super::*;
 
+/// A boolean cell, raw (`true`/`false`): the dialog translates it.
 fn yes(v: bool) -> String {
     v.to_string()
 }
 
+/// A size in GB for a choice cell; missing = `0 GB`.
 fn gb(n: Option<i64>) -> String {
     format!("{} GB", n.unwrap_or(0))
 }
 
+/// A size in MiB (Nova's flavor RAM) as human-readable bytes.
 fn mib_text(n: Option<i64>) -> String {
     crate::i18n::bytes((n.unwrap_or(0).max(0) as u64) * 1024 * 1024)
 }
 
+/// `v[k]`, a timestamp, shortened for a cell; `-` when missing.
 pub(super) fn when(v: &Value, k: &str) -> String {
     s(v, k)
         .map(|t| crate::components::widgets::short_time(&t))
         .unwrap_or_else(|| "-".into())
 }
 
+/// Choices sorted by label, ignoring case.
 pub(super) fn sorted(mut out: Vec<Choice>) -> Vec<Choice> {
     out.sort_by_key(|c| c.label.to_lowercase());
     out
@@ -401,7 +406,7 @@ pub fn floating_ip_detail(
 
 /// Load balancer member candidates: every fixed IP of an instance port, value
 /// `ip@subnet_id` (the member needs both), label `instance: ip`, cells
-/// `[instance, ip, subnet name]` for the members step's tables (roadmap 54).
+/// `[instance, ip, subnet name]` for the members step's tables.
 pub fn lb_member_choices(ports: &[Value], servers: &HashMap<String, String>, subnets: &[Value]) -> Vec<Choice> {
     let subnet_names = names_by_id(subnets);
     sorted(
@@ -447,7 +452,7 @@ pub fn lb_member_subnet_choices(networks: &[Value], subnets: &[Value]) -> Vec<Ch
 
 /// Enabled Octavia flavors, labelled `name (description)`.
 /// Octavia availability zones that are enabled, by name (the value Octavia
-/// takes), with the description (roadmap 54).
+/// takes), with the description.
 pub fn lb_az_choices(raw: &[Value]) -> Vec<Choice> {
     sorted(
         raw.iter()
@@ -464,6 +469,8 @@ pub fn lb_az_choices(raw: &[Value]) -> Vec<Choice> {
     )
 }
 
+/// Octavia `GET lbaas/flavors` → *Create Load Balancer*'s flavor picker: enabled ones only,
+/// labelled with their description.
 pub fn lb_flavor_choices(raw: &[Value]) -> Vec<Choice> {
     sorted(
         raw.iter()
@@ -605,7 +612,7 @@ pub fn label_port(p: &Value, server_names: &HashMap<String, String>) -> String {
 
 /// IDs of networks with a subnet (in their `subnets` list) that `subnets`
 /// lacks: the external networks of another project, whose subnets neither the
-/// `tenant_id` nor the `shared` filter returns (roadmap 64).
+/// `tenant_id` nor the `shared` filter returns.
 pub fn networks_without_subnets(nets: &[Value], subnets: &[Value]) -> Vec<String> {
     let have: std::collections::HashSet<String> = subnets.iter().filter_map(|x| s(x, "id")).collect();
     nets.iter()

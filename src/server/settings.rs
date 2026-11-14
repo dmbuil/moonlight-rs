@@ -1,5 +1,5 @@
 //! `moonlight.conf`: TOML files layered the way oslo.config layers Nova's and
-//! Neutron's (roadmap 3). Lowest to highest: built-in defaults, the files
+//! Neutron's. Lowest to highest: built-in defaults, the files
 //! (`--config-file`, in CLI order, else the first default file found), every
 //! `*.conf` of the directories (`--config-dir`, else the first default
 //! `moonlight.conf.d/`) sorted by name, and the `MOONLIGHT_*` environment
@@ -56,7 +56,7 @@ pub struct Settings {
     pub websso: WebSso,
 }
 
-/// `[admin]` (roadmap 89): Horizon's `ENABLE_FLAVOR_EDIT` and `FILTER_DATA_FIRST`.
+/// `[admin]`: Horizon's `ENABLE_FLAVOR_EDIT` and `FILTER_DATA_FIRST`.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AdminSettings {
@@ -76,7 +76,7 @@ pub struct Keystone {
     /// Catalog interface: `public`, `internal` or `admin` (`OPENSTACK_ENDPOINT_TYPE`).
     pub interface: String,
     /// Several domains in use: Identity › Domains and *Set Domain Context* for
-    /// admins (`OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT`, roadmap 57).
+    /// admins (`OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT`).
     pub multidomain: bool,
 }
 
@@ -92,7 +92,7 @@ impl Default for Keystone {
     }
 }
 
-/// `[server]` (roadmap 107): how Moonlight itself listens. The address stays
+/// `[server]`: how Moonlight itself listens. The address stays
 /// Leptos's (`LEPTOS_SITE_ADDR`).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -144,7 +144,7 @@ impl Default for Tls {
 pub struct Session {
     /// Base64, at least 64 bytes. Never logged (see `Debug`).
     pub cookie_key: Option<String>,
-    /// `Secure` session cookie named `__Host-ml_session`, plus HSTS (roadmap 49).
+    /// `Secure` session cookie named `__Host-ml_session`, plus HSTS.
     /// On by default: turn it off only for plain-HTTP development.
     pub secure_cookies: bool,
     /// On logout, ask Keystone to revoke the session's token (Horizon's default,
@@ -159,7 +159,7 @@ pub struct Session {
     /// (`PASSWORD_EXPIRES_WARNING_THRESHOLD_DAYS`).
     pub password_expiry_warning_days: Option<u32>,
     /// The URL users open, for the same-origin check of writes when a reverse
-    /// proxy rewrites `Host` (roadmap 48). Unset: the request's `Host`.
+    /// proxy rewrites `Host`. Unset: the request's `Host`.
     pub public_url: Option<String>,
 }
 
@@ -220,7 +220,7 @@ pub struct Login {
     /// Text file shown above the form, e.g. a maintenance notice (`MESSAGES_PATH`).
     pub message_file: Option<String>,
     /// Failed sign-ins (per username, and per address with `[log]
-    /// client_ip_header`) before `login` stops asking Keystone; 0 = off (roadmap 50).
+    /// client_ip_header`) before `login` stops asking Keystone; 0 = off.
     pub max_failures: u32,
     /// How long that lasts, counted from the last failure.
     pub lockout_seconds: u32,
@@ -256,19 +256,19 @@ pub struct Ui {
     /// Send the SDK's full error text (with internal URIs) to the browser.
     pub show_error_details: bool,
     /// Show the REST requests an action sent (or, in dry-run, built) in its
-    /// result (roadmap 78).
+    /// result.
     pub show_requests: bool,
-    /// Bulk actions with this many items or more run in the background (roadmap 87).
+    /// Bulk actions with this many items or more run in the background.
     pub background_batch_from: u32,
-    /// Rows per page of the paged lists, 1–999; `0` = no paging (roadmap 88).
+    /// Rows per page of the paged lists, 1–999; `0` = no paging.
     pub page_size: u32,
-    /// `admin` (default) or `all`: which lists are paged (roadmap 88).
+    /// `admin` (default) or `all`: which lists are paged.
     pub paged_lists: String,
     /// `all` (default), `admin` or `off`: who sees *Edit Quotas* on Project ›
-    /// Quotas (roadmap 112).
+    /// Quotas.
     pub quota_edit: String,
     /// Most rows a full list may have before the page fails instead of showing a cut list
-    /// (roadmap 104); `0` = no cap.
+    ///; `0` = no cap.
     pub max_list_items: u32,
 }
 
@@ -292,10 +292,10 @@ impl Default for Ui {
     }
 }
 
-/// `[ui] max_list_items` default (roadmap 104): ten pages of 1000.
+/// `[ui] max_list_items` default: ten pages of 1000.
 pub const DEFAULT_MAX_LIST_ITEMS: u32 = 10_000;
 
-/// Largest `[ui] page_size` (roadmap 88). A page asks for `page_size + 1` rows, the extra one
+/// Largest `[ui] page_size`. A page asks for `page_size + 1` rows, the extra one
 /// only saying whether there is a *Next*; Nova (`max_limit`) and Glance (`api_limit_max`) cap
 /// `limit` at 1000 by default, so at 1000 the extra row never came and *Next* never showed.
 const MAX_PAGE_SIZE: u32 = 999;
@@ -308,14 +308,14 @@ pub struct ApiAccess {
     pub clouds_yaml_name: String,
     /// os-client-config vendor profile (`OPENSTACK_CLOUDS_YAML_PROFILE`).
     pub clouds_yaml_profile: Option<String>,
-    /// Jinja templates replacing the built-in downloads (roadmap 57): API
+    /// Jinja templates replacing the built-in downloads: API
     /// Access's (`OPENRC_CUSTOM_TEMPLATE`, `OPENSTACK_CLOUDS_YAML_CUSTOM_TEMPLATE`)
     /// and a new application credential's. Unset = built-in.
     pub openrc_template: Option<String>,
     pub clouds_yaml_template: Option<String>,
     pub app_credential_openrc_template: Option<String>,
     pub app_credential_clouds_yaml_template: Option<String>,
-    /// API Access's `clouds.yaml` for WebSSO sessions (`v3websso`, roadmap 80).
+    /// API Access's `clouds.yaml` for WebSSO sessions (`v3websso`).
     pub websso_clouds_yaml_template: Option<String>,
 }
 
@@ -341,7 +341,7 @@ pub struct Plugins {
     pub enabled: Vec<String>,
 }
 
-/// `[key_manager]`: the Key Manager panels (`key-manager` plugin, roadmap 55).
+/// `[key_manager]`: the Key Manager panels (`key-manager` plugin).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct KeyManager {
@@ -350,7 +350,7 @@ pub struct KeyManager {
     pub allow_payload: bool,
 }
 
-/// `[cache]`: in-process caches (roadmap 66).
+/// `[cache]`: in-process caches.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CacheSettings {
@@ -371,12 +371,12 @@ impl Default for CacheSettings {
 pub struct Log {
     /// A `tracing` filter, like `RUST_LOG`.
     pub filter: String,
-    /// Log file; unset or `""` = stdout only. Its directory must exist (roadmap 81).
+    /// Log file; unset or `""` = stdout only. Its directory must exist.
     pub file: Option<String>,
     /// When a new file is started; rotated files get a date suffix.
     pub rotation: Rotation,
     /// Whether a restart appends to the current file (`true`, the default) or
-    /// starts it empty (roadmap 84). A number is the old meaning of `keep`.
+    /// starts it empty. A number is the old meaning of `keep`.
     pub keep: KeepSetting,
     /// Log files kept, the current one included; 0 = all. Unset: the old
     /// numeric `keep` if there is one, else 7.
@@ -390,7 +390,7 @@ pub struct Log {
     pub client_ip_header: Option<String>,
     /// Proxies in front of Moonlight that append to that header: the client is
     /// the entry this many places from the right; 0 = the leftmost, which the
-    /// client controls (roadmap 63).
+    /// client controls.
     pub trusted_proxies: u32,
 }
 
@@ -411,7 +411,7 @@ impl Default for Log {
 }
 
 impl Log {
-    /// Whether a restart keeps the current log file's lines (roadmap 84).
+    /// Whether a restart keeps the current log file's lines.
     pub fn keep_current(&self) -> bool {
         match self.keep {
             KeepSetting::Flag(on) => on,
@@ -454,7 +454,7 @@ pub enum Rotation {
     Daily,
 }
 
-/// `[log] keep` (roadmap 84): a yes/no (`true`/`false`, or the strings `yes`,
+/// `[log] keep`: a yes/no (`true`/`false`, or the strings `yes`,
 /// `enabled`, `on` / `no`, `disabled`, `off`), or a number, which is what `keep`
 /// meant before (files kept, now `max_files`) and is still read as that.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -507,7 +507,7 @@ pub enum LogFormat {
 }
 
 /// `[websso]`: sign-in through Keystone federation (OIDC, SAML), after
-/// Horizon's `WEBSSO_*` settings (roadmap 80).
+/// Horizon's `WEBSSO_*` settings.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebSso {
@@ -671,7 +671,7 @@ fn url_setting(name: &str, value: Option<&str>) -> Result<Option<String>, String
 
 /// `scheme://host[:port]` of a URL, as browsers send it in `Origin`: lowercase,
 /// without path, user info or a default port (`:443` kept, it never matched,
-/// roadmap 63).
+///).
 fn origin_of(name: &str, url: &str) -> Result<String, String> {
     let u = url::Url::parse(url).map_err(|e| format!("{name}: {e} (got {url:?})"))?;
     Ok(u.origin().ascii_serialization())
@@ -1212,7 +1212,7 @@ mod tests {
             (Rotation::Hourly, false, 24, true, LogFormat::Json)
         );
         assert!(log("[log]\nrotation = \"weekly\"\n").unwrap_err().contains("rotation"));
-        // `keep` (roadmap 84): a yes/no in any of its spellings, or the old count.
+        // `keep`: a yes/no in any of its spellings, or the old count.
         for (v, on) in [
             ("true", true),
             ("\"yes\"", true),
@@ -1375,15 +1375,12 @@ mod tests {
             "safe by default"
         );
         assert!(!c.show_error_details, "internal URIs stay in the log by default");
-        assert!(
-            !c.show_requests,
-            "results without the REST requests by default (roadmap 78)"
-        );
+        assert!(!c.show_requests, "results without the REST requests by default");
         assert!(parse("[ui]\nshow_requests = true").unwrap().show_requests);
         assert_eq!(
             parse("").unwrap().prefs.background_batch_from,
             10,
-            "bulk actions of 10 items or more run in the background (roadmap 87)"
+            "bulk actions of 10 items or more run in the background"
         );
         assert_eq!(
             parse("[ui]\nbackground_batch_from = 0")
@@ -1395,7 +1392,7 @@ mod tests {
         assert_eq!(
             (c.prefs.page_size, c.prefs.paged_lists),
             (100, PagedLists::Admin),
-            "Admin lists, 100 rows a page (roadmap 88)"
+            "Admin lists, 100 rows a page"
         );
         assert_eq!(
             (
@@ -1490,7 +1487,7 @@ mod tests {
         assert_eq!(
             parse("").unwrap().lookup_ttl.as_secs(),
             30,
-            "name lookups cached 30 s by default (roadmap 66)"
+            "name lookups cached 30 s by default"
         );
         assert!(
             parse("[cache]\nlookup_seconds = 0\n").unwrap().lookup_ttl.is_zero(),

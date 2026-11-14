@@ -91,7 +91,7 @@ impl UsageSummary {
     }
 }
 
-/// One project's line on Admin › Overview (roadmap 85): its servers in the
+/// One project's line on Admin › Overview: its servers in the
 /// period, summed like Horizon's `NovaUsage` (sizes of the servers that still
 /// exist, hours of all of them).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -101,12 +101,13 @@ pub struct ProjectUsage {
     pub project: String,
     pub servers: Vec<ServerUsage>,
     /// Keystone named other projects but not this one: Horizon's "(Deleted)"
-    /// after the ID (roadmap 89). `false` when no names could be read.
+    /// after the ID. `false` when no names could be read.
     #[serde(default)]
     pub deleted: bool,
 }
 
 impl ProjectUsage {
+    /// The project's servers as a period-less [`UsageSummary`], to reuse its totals.
     fn summary(&self) -> UsageSummary {
         UsageSummary {
             start: String::new(),
@@ -126,12 +127,15 @@ impl ProjectUsage {
     pub fn memory_mb(&self) -> i64 {
         self.summary().active_ram_mb()
     }
+    /// VCPU-hours over the period, ended servers included.
     pub fn vcpu_hours(&self) -> f64 {
         self.summary().vcpu_hours()
     }
+    /// Disk GB-hours over the period, ended servers included.
     pub fn gb_hours(&self) -> f64 {
         self.summary().gb_hours()
     }
+    /// RAM MB-hours over the period, ended servers included.
     pub fn ram_mb_hours(&self) -> f64 {
         self.summary().ram_mb_hours()
     }
@@ -194,7 +198,7 @@ impl GlobalUsage {
 }
 
 /// `v` with `places` decimals, never `-0.00`: summing an empty `f64` iterator
-/// gives `-0.0`, and a tiny negative rounds to `-0.00` (roadmap 60: *Usage
+/// gives `-0.0`, and a tiny negative rounds to `-0.00` (*Usage
 /// Summary* with no instances in the period). Real negatives keep their sign.
 pub fn fixed(v: f64, places: usize) -> String {
     let s = format!("{v:.places$}");
@@ -446,7 +450,7 @@ mod usage_tests {
         };
         assert!(
             gone.csv().ends_with("dc87 (Deleted),2,2048,10,2.00\n"),
-            "Horizon's label (roadmap 89)"
+            "Horizon's label"
         );
     }
 
@@ -459,7 +463,7 @@ mod usage_tests {
         };
         assert!(
             s.vcpu_hours().is_sign_negative(),
-            "an empty f64 sum is -0.0: the cause of roadmap 60"
+            "an empty f64 sum is -0.0, which printed as -0.00"
         );
         let csv = s.csv();
         assert!(

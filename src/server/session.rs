@@ -15,7 +15,7 @@ use crate::model::{AppError, ErrorKind};
 pub const SESSION_COOKIE: &str = "ml_session";
 /// Cookie name with `secure_cookies = true`: the `__Host-` prefix makes the
 /// browser refuse it unless it is `Secure`, `Path=/` and has no `Domain`, so a
-/// sibling subdomain can't plant or overwrite it (roadmap 49).
+/// sibling subdomain can't plant or overwrite it.
 pub const SECURE_SESSION_COOKIE: &str = "__Host-ml_session";
 
 /// The session cookie's name for this deployment.
@@ -36,17 +36,17 @@ pub struct Session {
     pub project_name: String,
     pub region: Option<String>,
     /// When the user signed in: `[session] timeout_minutes` counts from here.
-    /// Required: a cookie from before this field (roadmap 49) no longer decodes
-    /// and signs out once; a default of "now" made it never time out (roadmap 63).
+    /// Required: a cookie from before this field no longer decodes
+    /// and signs out once; a default of "now" made it never time out.
     pub logged_in_at: DateTime<Utc>,
     /// Keystone's `password_expires_at`, for the expiry warning.
     #[serde(default)]
     pub password_expires_at: Option<DateTime<Utc>>,
     /// Identity › Domains' *Set Domain Context*: `(id, name)` scoping the
-    /// identity lists instead of the user's own domain (roadmap 57).
+    /// identity lists instead of the user's own domain.
     #[serde(default)]
     pub domain_context: Option<(String, String)>,
-    /// How the user signed in through WebSSO (roadmap 80); `None` for a
+    /// How the user signed in through WebSSO; `None` for a
     /// password sign-in. Logout then sends the browser to `[websso]
     /// logout_url`, and API Access offers a `v3websso` `clouds.yaml`.
     #[serde(default)]
@@ -63,7 +63,7 @@ pub struct SsoVia {
 }
 
 // By hand so the token never reaches a log line or panic message, like
-// `settings::Session`'s cookie key (roadmap 63).
+// `settings::Session`'s cookie key.
 impl std::fmt::Debug for Session {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Session")
@@ -121,7 +121,7 @@ pub fn encode(session: &Session, key: &Key, secure: bool, ends_at: DateTime<Utc>
 /// Browsers keep a cookie only if its name and value total at most 4096 bytes
 /// (RFC 6265 §6.1, the limit every major browser enforces), and silently drop
 /// a larger one: the user then lands on the login page again. Federated tokens
-/// can carry the user's IdP groups and grow past it (roadmap 80).
+/// can carry the user's IdP groups and grow past it.
 pub const MAX_COOKIE_BYTES: usize = 4096;
 
 /// Whether a `Set-Cookie` value from [`encode`] will be kept by the browser.
@@ -273,9 +273,9 @@ pub fn client_ip_of(headers: &http::HeaderMap) -> String {
 
 /// The client's entry in a `X-Forwarded-For`-style list. Each proxy appends the
 /// address it saw on the right; anything to the left of what our `trusted`
-/// proxies added was sent by the client and can be forged (roadmap 63). So the
+/// proxies added was sent by the client and can be forged. So the
 /// entry `trusted` places from the right, or the leftmost when the list is
-/// shorter; `trusted == 0` takes the leftmost (the behaviour before item 63).
+/// shorter; `trusted == 0` takes the leftmost.
 /// Several header lines count as one list, in order.
 pub fn client_ip_from(headers: &http::HeaderMap, name: &http::HeaderName, trusted: u32) -> Option<String> {
     let hops: Vec<&str> = headers
@@ -295,6 +295,8 @@ pub fn client_ip_from(headers: &http::HeaderMap, name: &http::HeaderName, truste
     hops.get(i).map(|a| a.to_string())
 }
 
+/// Writes `session` into the response as the encrypted cookie, expiring with the session
+/// (`[session] timeout_minutes` or the token, whichever comes first).
 pub fn store(session: &Session) {
     let st = state();
     set_cookie(&encode(
@@ -312,6 +314,8 @@ pub fn clear() {
     }
 }
 
+/// Appends a `Set-Cookie` to the server function's response (several can go out at once,
+/// AGENTS.md §6); does nothing outside a Leptos request.
 fn set_cookie(value: &str) {
     if let (Some(resp), Ok(v)) = (
         use_context::<leptos_axum::ResponseOptions>(),
@@ -368,7 +372,7 @@ mod tests {
         let mut json = serde_json::to_value(sample()).unwrap();
         json.as_object_mut().unwrap().remove("websso");
         let s: Session = serde_json::from_value(json).unwrap();
-        assert_eq!(s.websso, None, "no `websso` field: a password sign-in (roadmap 80)");
+        assert_eq!(s.websso, None, "no `websso` field: a password sign-in");
     }
 
     #[test]

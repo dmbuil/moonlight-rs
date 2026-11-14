@@ -1,7 +1,7 @@
-//! Orchestration (Heat, roadmap 62): the *Stacks* list and the stack detail page
+//! Orchestration (Heat): the *Stacks* list and the stack detail page
 //! with Horizon's tabs, the *Topology* one a graph drawn with draw.io's OpenStack
 //! icons. Actions: *Check*, *Suspend*, *Resume*, *Delete* (single and bulk).
-//! Both pages refresh while Heat is working on a stack (`*_IN_PROGRESS`, roadmap 46).
+//! Both pages refresh while Heat is working on a stack (`*_IN_PROGRESS`).
 
 use std::sync::Arc;
 
@@ -58,6 +58,7 @@ fn names(v: &[String]) -> String {
     if v.is_empty() { "-".into() } else { v.join(", ") }
 }
 
+/// Columns of Stacks: name (linked to the stack), created, updated, status pill and row actions.
 fn stack_columns() -> Vec<Col<StackRow>> {
     vec![
         col(K::Name, |x: &StackRow, _| {
@@ -125,6 +126,8 @@ pub fn StacksPage() -> impl IntoView {
     }
 }
 
+/// A resource's name, linked to its Moonlight page when [`StackResource::href`] has one (Heat
+/// types Moonlight has a page for), else in bold.
 fn resource_name_cell(r: &StackResource) -> AnyView {
     let name = r.name.clone();
     match r.href.clone() {
@@ -133,6 +136,8 @@ fn resource_name_cell(r: &StackResource) -> AnyView {
     }
 }
 
+/// Columns of the *Resources* tab: name, physical ID, type, updated, status and status reason, as
+/// Horizon's tab.
 fn resource_columns() -> Vec<Col<StackResource>> {
     vec![
         col(K::StackResource, |r: &StackResource, _| resource_name_cell(r)).sort_text(|r| r.name.clone()),
@@ -149,6 +154,8 @@ fn resource_columns() -> Vec<Col<StackResource>> {
     ]
 }
 
+/// Columns of the *Topology* tab's *List* view: each resource with what it depends on and what
+/// requires it, sortable by how many.
 fn topology_columns() -> Vec<Col<StackResource>> {
     vec![
         col(K::StackResource, |r: &StackResource, _| resource_name_cell(r)).sort_text(|r| r.name.clone()),
@@ -160,6 +167,8 @@ fn topology_columns() -> Vec<Col<StackResource>> {
     ]
 }
 
+/// Columns of the *Events* tab: time, resource, physical ID, status (without the busy bar, see
+/// [`event_pill`]) and reason.
 fn event_columns() -> Vec<Col<StackEvent>> {
     vec![
         col(K::EventTime, |e: &StackEvent, _| short_time(&e.time))
@@ -174,6 +183,8 @@ fn event_columns() -> Vec<Col<StackEvent>> {
     ]
 }
 
+/// Columns of the stack's outputs: key, value (or the error Heat gave resolving it, as a red pill)
+/// and description.
 fn output_columns() -> Vec<Col<StackOutput>> {
     vec![
         col(K::Key, |o: &StackOutput, _| mono(o.key.clone())).sort_text(|o| o.key.clone()),
@@ -229,8 +240,11 @@ pub fn StackDetailPage() -> impl IntoView {
 /// The *Topology* tab's state, kept by the page across refreshes.
 #[derive(Clone, Copy)]
 struct GraphOpts {
+    /// Shows the dependency list instead of the graph (the *List* button).
     list: RwSignal<bool>,
+    /// Bumped by *Center Topology*; the canvas re-fits the graph each time it changes.
     center: RwSignal<u32>,
+    /// The zoom and pan, kept so a refresh while Heat works does not reset them.
     keep: KeptView,
 }
 
@@ -312,8 +326,9 @@ fn graph_legend(lang: Lang) -> AnyView {
     .into_any()
 }
 
-/// Radius of a resource node and of the stack node.
+/// Radius of a resource node.
 const NODE_R: f64 = 22.0;
+/// Radius of the stack node, drawn larger in the middle of the graph.
 const STACK_R: f64 = 28.0;
 
 /// Room per node for the force layout: the node and its label.
@@ -324,8 +339,11 @@ const ROOM: f64 = 130.0;
 /// these signals while the nodes still get `blur`/`mouseleave`.
 #[derive(Clone, Copy)]
 struct GraphCtx {
+    /// The focused node: a resource's name, or the stack's ID for the stack node.
     focus: RwSignal<Option<String>>,
+    /// Where the popover goes, in viewport pixels: the pointer, or the focused node's top right.
     at: RwSignal<(f64, f64)>,
+    /// The canvas was just dragged: the click that ends a pan must not open a node.
     moved: RwSignal<bool>,
 }
 
@@ -467,12 +485,17 @@ fn StackGraph(d: StackDetail, opts: GraphOpts) -> impl IntoView {
 #[component]
 fn GraphNode(
     ctx: GraphCtx,
-    #[prop(into)] id: String,
+    /// A resource's name, or the stack's ID (what [`GraphCtx::focus`] holds).
+    #[prop(into)]
+    id: String,
+    /// The resource's page, if Moonlight has one: makes the node a link.
     href: Option<String>,
     #[prop(into)] label: String,
+    /// The graph's edges, to highlight the node's neighbours.
     edges: StoredValue<Vec<Edge>>,
     #[prop(into)] transform: String,
     tone: Tone,
+    /// Heat is working on it (`*_IN_PROGRESS`): its icon pulses.
     busy: bool,
     children: Children,
 ) -> impl IntoView {
@@ -557,6 +580,7 @@ fn StackTip(ctx: GraphCtx, stack: StoredValue<StackRow>, resources: StoredValue<
     }
 }
 
+/// *Resources*: every resource of the stack, or a note when it has none.
 fn resources_tab(rows: &[StackResource]) -> AnyView {
     let i18n = use_i18n();
     if rows.is_empty() {
@@ -570,6 +594,7 @@ fn resources_tab(rows: &[StackResource]) -> AnyView {
     .into_any()
 }
 
+/// *Events*: the stack's latest events (`HEAT_EVENTS` of them), newest first.
 fn events_tab(rows: &[StackEvent]) -> AnyView {
     let (rows, cols) = (rows.to_vec(), event_columns());
     view! {
@@ -579,6 +604,7 @@ fn events_tab(rows: &[StackEvent]) -> AnyView {
     .into_any()
 }
 
+/// *Template*: the template as Heat stored it, verbatim.
 fn template_tab(template: &str) -> AnyView {
     view! { <pre class="console-log">{template.to_string()}</pre> }.into_any()
 }

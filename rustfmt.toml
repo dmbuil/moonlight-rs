@@ -1,4 +1,4 @@
-# rustfmt config (roadmap 105). `cargo fmt` formats; never format by hand.
+# rustfmt config. `cargo fmt` formats; never format by hand.
 # rustfmt leaves `view!` and other macro bodies alone, so lines there may stay longer.
 edition = "2024"
 max_width = 120

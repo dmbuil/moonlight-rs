@@ -2,6 +2,11 @@
 
 use super::*;
 
+/// `ServerLaunch`: `POST /servers` (2.19, for `description`), following Horizon's launch wizard.
+/// The boot source becomes `imageRef` or a `block_device_mapping_v2` entry (a new volume from an
+/// image, an existing volume or a volume snapshot); networks and ports go in `networks`,
+/// security groups by name, the server group as a scheduler hint. Fails on an empty name, flavor
+/// or source, a count outside 1–100 or user data over 16 KB.
 pub(super) async fn launch(x: &mut Exec<'_>, s: &LaunchSpec) -> R<()> {
     // 2.19 adds `description`; everything else is as in 2.1.
     use openstack_sdk::api::compute::v2::server::create_219 as m;
@@ -132,6 +137,7 @@ pub(super) async fn launch(x: &mut Exec<'_>, s: &LaunchSpec) -> R<()> {
     Ok(())
 }
 
+/// `ServerUpdate`: renames the instance, `PUT /servers/{id}`.
 pub(super) async fn server_update(x: &mut Exec<'_>, id: &str, name: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::set_21 as m;
     let body = m::ServerBuilder::default()
@@ -143,6 +149,7 @@ pub(super) async fn server_update(x: &mut Exec<'_>, id: &str, name: &str) -> R<(
     Ok(())
 }
 
+/// `ServerStart`: `POST /servers/{id}/action` with `os-start`.
 pub(super) async fn server_start(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::os_start as m;
     x.send(
@@ -156,6 +163,7 @@ pub(super) async fn server_start(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerStop`: `POST /servers/{id}/action` with `os-stop`.
 pub(super) async fn server_stop(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::os_stop as m;
     x.send(
@@ -169,6 +177,7 @@ pub(super) async fn server_stop(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerReboot`: `POST /servers/{id}/action` with `reboot`, soft or hard.
 pub(super) async fn server_reboot(x: &mut Exec<'_>, id: &str, kind: &RebootKind) -> R<()> {
     use openstack_sdk::api::compute::v2::server::reboot as m;
     let t = match kind {
@@ -181,6 +190,7 @@ pub(super) async fn server_reboot(x: &mut Exec<'_>, id: &str, kind: &RebootKind)
     Ok(())
 }
 
+/// `ServerPause`: `POST /servers/{id}/action` with `pause`.
 pub(super) async fn server_pause(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::pause as m;
     x.send(
@@ -194,6 +204,7 @@ pub(super) async fn server_pause(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerUnpause`: `POST /servers/{id}/action` with `unpause`.
 pub(super) async fn server_unpause(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::unpause as m;
     x.send(
@@ -207,6 +218,7 @@ pub(super) async fn server_unpause(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerSuspend`: `POST /servers/{id}/action` with `suspend`.
 pub(super) async fn server_suspend(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::suspend as m;
     x.send(
@@ -220,6 +232,7 @@ pub(super) async fn server_suspend(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerResume`: `POST /servers/{id}/action` with `resume`.
 pub(super) async fn server_resume(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::resume as m;
     x.send(
@@ -233,6 +246,7 @@ pub(super) async fn server_resume(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerLock`: `POST /servers/{id}/action` with `lock`.
 pub(super) async fn server_lock(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::lock_21 as m;
     x.send(
@@ -246,6 +260,7 @@ pub(super) async fn server_lock(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerUnlock`: `POST /servers/{id}/action` with `unlock`.
 pub(super) async fn server_unlock(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::unlock_21 as m;
     x.send(
@@ -259,6 +274,8 @@ pub(super) async fn server_unlock(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerSnapshot`: `POST /servers/{id}/action` with `createImage`; Nova makes the Glance image
+/// (or, for a volume-backed instance, volume snapshots behind it).
 pub(super) async fn server_snapshot(x: &mut Exec<'_>, id: &str, name: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::create_image_21 as m;
     let body = m::CreateImageBuilder::default()
@@ -276,12 +293,15 @@ pub(super) async fn server_snapshot(x: &mut Exec<'_>, id: &str, name: &str) -> R
     Ok(())
 }
 
+/// `ServerDelete`: `DELETE /servers/{id}`.
 pub(super) async fn server_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `ServerSetMetadata`: replaces all the instance's metadata, `PUT /servers/{id}/metadata`; keys
+/// and values are checked by `checked_metadata` first.
 pub(super) async fn server_set_metadata(x: &mut Exec<'_>, id: &str, metadata: &[(String, String)]) -> R<()> {
     use openstack_sdk::api::compute::v2::server::metadata::replace as m;
     let md = checked_metadata(metadata)?;
@@ -296,6 +316,9 @@ pub(super) async fn server_set_metadata(x: &mut Exec<'_>, id: &str, metadata: &[
     Ok(())
 }
 
+/// `ServerSetSecurityGroups`: one `addSecurityGroup` / `removeSecurityGroup` action per group
+/// (`POST /servers/{id}/action`, by name), each recorded as an `ItemResult` labelled `+ name` or
+/// `- name`, so one failure doesn't hide the others. Fails if both lists are empty.
 pub(super) async fn server_set_security_groups(x: &mut Exec<'_>, id: &str, add: &[String], remove: &[String]) -> R<()> {
     use openstack_sdk::api::compute::v2::server::{add_security_group as a, remove_security_group as r};
     if add.is_empty() && remove.is_empty() {
@@ -344,6 +367,7 @@ pub(super) async fn server_set_security_groups(x: &mut Exec<'_>, id: &str, add: 
     Ok(())
 }
 
+/// `ServerAttachVolume`: `POST /servers/{server_id}/os-volume_attachments`; Nova picks the device.
 pub(super) async fn server_attach_volume(x: &mut Exec<'_>, server_id: &str, volume_id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::volume_attachment::create_20 as m;
     let body = m::VolumeAttachmentBuilder::default()
@@ -361,6 +385,7 @@ pub(super) async fn server_attach_volume(x: &mut Exec<'_>, server_id: &str, volu
     Ok(())
 }
 
+/// `ServerDetachVolume`: `DELETE /servers/{server_id}/os-volume_attachments/{volume_id}`.
 pub(super) async fn server_detach_volume(x: &mut Exec<'_>, server_id: &str, volume_id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::volume_attachment::delete as m;
     x.send(
@@ -374,6 +399,8 @@ pub(super) async fn server_detach_volume(x: &mut Exec<'_>, server_id: &str, volu
     Ok(())
 }
 
+/// `ServerResize`: `POST /servers/{id}/action` with `resize`; the instance then waits in
+/// `VERIFY_RESIZE` for [`server_confirm_resize`] or [`server_revert_resize`].
 pub(super) async fn server_resize(x: &mut Exec<'_>, id: &str, flavor_id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::resize as m;
     let body = m::ResizeBuilder::default()
@@ -385,6 +412,7 @@ pub(super) async fn server_resize(x: &mut Exec<'_>, id: &str, flavor_id: &str) -
     Ok(())
 }
 
+/// `ServerConfirmResize`: `POST /servers/{id}/action` with `confirmResize`.
 pub(super) async fn server_confirm_resize(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::confirm_resize as m;
     x.send(
@@ -398,6 +426,7 @@ pub(super) async fn server_confirm_resize(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerRevertResize`: `POST /servers/{id}/action` with `revertResize`.
 pub(super) async fn server_revert_resize(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::revert_resize as m;
     x.send(
@@ -411,6 +440,8 @@ pub(super) async fn server_revert_resize(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerRebuild`: `POST /servers/{id}/action` with `rebuild` (2.94; from 2.93 Nova also rebuilds a
+/// volume-backed instance) from `image_id`. Destroys the root disk's data.
 pub(super) async fn server_rebuild(x: &mut Exec<'_>, id: &str, image_id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::rebuild_294 as m;
     let body = m::RebuildBuilder::default()
@@ -422,6 +453,8 @@ pub(super) async fn server_rebuild(x: &mut Exec<'_>, id: &str, image_id: &str) -
     Ok(())
 }
 
+/// `ServerShelve`: `POST /servers/{id}/action` with `shelve`. Unshelve is built inline in
+/// `apply` (its body depends on the microversion).
 pub(super) async fn server_shelve(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::shelve as m;
     x.send(
@@ -435,6 +468,9 @@ pub(super) async fn server_shelve(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerRescue`: `POST /servers/{id}/action` with `rescue`, optionally from another image.
+/// Nova generates the rescue password and returns it once: it is handed back as a `Secret`
+/// (`SecretKind::Password`) to show, like a generated key.
 pub(super) async fn server_rescue(x: &mut Exec<'_>, id: &str, image_id: &Option<String>) -> R<()> {
     use openstack_sdk::api::compute::v2::server::rescue as m;
     let mut b = m::RescueBuilder::default();
@@ -458,6 +494,7 @@ pub(super) async fn server_rescue(x: &mut Exec<'_>, id: &str, image_id: &Option<
     Ok(())
 }
 
+/// `ServerUnrescue`: `POST /servers/{id}/action` with `unrescue`.
 pub(super) async fn server_unrescue(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::unrescue as m;
     x.send(
@@ -471,6 +508,8 @@ pub(super) async fn server_unrescue(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerAttachInterface`: `POST /servers/{id}/os-interface` with either a network (and an
+/// optional fixed IP) or an existing port, never both.
 pub(super) async fn server_attach_interface(
     x: &mut Exec<'_>,
     id: &str,
@@ -509,6 +548,7 @@ pub(super) async fn server_attach_interface(
     Ok(())
 }
 
+/// `ServerDetachInterface`: `DELETE /servers/{id}/os-interface/{port_id}`.
 pub(super) async fn server_detach_interface(x: &mut Exec<'_>, id: &str, port_id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server::interface::delete as m;
     x.send(
@@ -522,6 +562,8 @@ pub(super) async fn server_detach_interface(x: &mut Exec<'_>, id: &str, port_id:
     Ok(())
 }
 
+/// `KeyPairImport`: `POST /os-keypairs` (2.10, for `type`) with the user's public key, checked by
+/// `model::check_public_key` first. `key_type` is `ssh` or `x509`.
 pub(super) async fn key_pair_import(x: &mut Exec<'_>, name: &str, public_key: &str, key_type: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::keypair::create_210 as m;
     let public_key = non_empty(public_key, "public key")?;
@@ -541,6 +583,9 @@ pub(super) async fn key_pair_import(x: &mut Exec<'_>, name: &str, public_key: &s
     Ok(())
 }
 
+/// `KeyPairGenerate`: makes an Ed25519 key here and sends only its public half, `POST
+/// /os-keypairs` (2.10), as Nova stopped generating keys in 2.92. The private key is returned
+/// once as a `Secret` (`{name}.pem`), and only when the write really happened (not in dry-run).
 pub(super) async fn key_pair_generate(x: &mut Exec<'_>, name: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::keypair::create_210 as m;
     use ssh_key::{Algorithm, LineEnding, PrivateKey, rand_core::OsRng};
@@ -569,6 +614,7 @@ pub(super) async fn key_pair_generate(x: &mut Exec<'_>, name: &str) -> R<()> {
     Ok(())
 }
 
+/// `KeyPairDelete`: `DELETE /os-keypairs/{name}` (key pairs are identified by name).
 pub(super) async fn key_pair_delete(x: &mut Exec<'_>, name: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::keypair::delete_20 as m;
     x.send(m::Request::builder().id(name).build().map_err(build_err)?)
@@ -576,6 +622,8 @@ pub(super) async fn key_pair_delete(x: &mut Exec<'_>, name: &str) -> R<()> {
     Ok(())
 }
 
+/// `ServerGroupCreate`: `POST /os-server-groups` (2.64, one `policy` string rather than a list).
+/// `policy` is `affinity`, `anti-affinity`, `soft-affinity` or `soft-anti-affinity`.
 pub(super) async fn server_group_create(x: &mut Exec<'_>, name: &str, policy: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server_group::create_264 as m;
     let p = match policy {
@@ -595,6 +643,7 @@ pub(super) async fn server_group_create(x: &mut Exec<'_>, name: &str, policy: &s
     Ok(())
 }
 
+/// `ServerGroupDelete`: `DELETE /os-server-groups/{id}`.
 pub(super) async fn server_group_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::compute::v2::server_group::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;

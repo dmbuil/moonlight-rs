@@ -1,8 +1,8 @@
-//! Neutron FWaaS v2 writes (roadmap 93): rules, policies, groups.
+//! Neutron FWaaS v2 writes: rules, policies, groups.
 
 use super::*;
 
-/// A Neutron FWaaS v2 request (`fwaas/{path}`, roadmap 93).
+/// A Neutron FWaaS v2 request (`fwaas/{path}`).
 fn fwaas(method: http::Method, path: String, body: Option<Value>) -> JsonRequest {
     JsonRequest::new(
         method,
@@ -12,7 +12,11 @@ fn fwaas(method: http::Method, path: String, body: Option<Value>) -> JsonRequest
     )
 }
 
-/// Not in the SDK (`openstack-sdk-network` has no `fwaas` module): JSON requests.
+/// `OsAction::FirewallRuleCreate`: `POST /v2.0/fwaas/firewall_rules` with
+/// `FirewallRuleSpec::body`.
+///
+/// None of the FWaaS writes are in the SDK (`openstack-sdk-network` has no `fwaas` module),
+/// so all of them are JSON requests built with [`fwaas`].
 pub(super) async fn firewall_rule_create(x: &mut Exec<'_>, spec: &FirewallRuleSpec) -> R<()> {
     x.create(
         fwaas(
@@ -26,6 +30,8 @@ pub(super) async fn firewall_rule_create(x: &mut Exec<'_>, spec: &FirewallRuleSp
     Ok(())
 }
 
+/// `OsAction::FirewallRuleUpdate`: `PUT /v2.0/fwaas/firewall_rules/{id}` with the whole rule
+/// body, as for create.
 pub(super) async fn firewall_rule_update(x: &mut Exec<'_>, id: &str, spec: &FirewallRuleSpec) -> R<()> {
     let path = format!("firewall_rules/{}", non_empty(id, "firewall rule")?);
     x.send(fwaas(
@@ -37,6 +43,7 @@ pub(super) async fn firewall_rule_update(x: &mut Exec<'_>, id: &str, spec: &Fire
     Ok(())
 }
 
+/// `OsAction::FirewallRuleDelete`: `DELETE /v2.0/fwaas/firewall_rules/{id}`.
 pub(super) async fn firewall_rule_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(fwaas(
         http::Method::DELETE,
@@ -47,6 +54,8 @@ pub(super) async fn firewall_rule_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `OsAction::FirewallPolicyCreate`: `POST /v2.0/fwaas/firewall_policies` with its ordered
+/// rules.
 pub(super) async fn firewall_policy_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -75,6 +84,9 @@ pub(super) async fn firewall_policy_create(
     Ok(())
 }
 
+/// `OsAction::FirewallPolicyUpdate`: `PUT /v2.0/fwaas/firewall_policies/{id}` with name,
+/// description and `audited`. The rules are changed with `insert_rule` / `remove_rule`, not
+/// here.
 pub(super) async fn firewall_policy_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -92,6 +104,7 @@ pub(super) async fn firewall_policy_update(
     Ok(())
 }
 
+/// `OsAction::FirewallPolicyDelete`: `DELETE /v2.0/fwaas/firewall_policies/{id}`.
 pub(super) async fn firewall_policy_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(fwaas(
         http::Method::DELETE,
@@ -102,6 +115,9 @@ pub(super) async fn firewall_policy_delete(x: &mut Exec<'_>, id: &str) -> R<()> 
     Ok(())
 }
 
+/// `OsAction::FirewallPolicyInsertRule`: `PUT
+/// /v2.0/fwaas/firewall_policies/{id}/insert_rule`, before or after another rule (at most one;
+/// neither puts it first).
 pub(super) async fn firewall_policy_insert_rule(
     x: &mut Exec<'_>,
     id: &str,
@@ -128,6 +144,8 @@ pub(super) async fn firewall_policy_insert_rule(
     Ok(())
 }
 
+/// `OsAction::FirewallPolicyRemoveRule`: `PUT
+/// /v2.0/fwaas/firewall_policies/{id}/remove_rule`; the rule itself is kept.
 pub(super) async fn firewall_policy_remove_rule(x: &mut Exec<'_>, id: &str, rule_id: &str) -> R<()> {
     let path = format!("firewall_policies/{}/remove_rule", non_empty(id, "firewall policy")?);
     x.send(fwaas(
@@ -139,6 +157,8 @@ pub(super) async fn firewall_policy_remove_rule(x: &mut Exec<'_>, id: &str, rule
     Ok(())
 }
 
+/// `OsAction::FirewallGroupCreate`: `POST /v2.0/fwaas/firewall_groups` with its policies (each
+/// optional) and ports.
 pub(super) async fn firewall_group_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -172,6 +192,9 @@ pub(super) async fn firewall_group_create(
     Ok(())
 }
 
+/// `OsAction::FirewallGroupUpdate`: `PUT /v2.0/fwaas/firewall_groups/{id}`. Both policies
+/// are always sent, so `None` sends `null` and stops filtering in that direction. Ports change
+/// with `firewall_group_set_ports`.
 pub(super) async fn firewall_group_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -194,6 +217,8 @@ pub(super) async fn firewall_group_update(
     Ok(())
 }
 
+/// `OsAction::FirewallGroupSetPorts`: `PUT /v2.0/fwaas/firewall_groups/{id}` with the full
+/// `ports` list (Neutron replaces it).
 pub(super) async fn firewall_group_set_ports(x: &mut Exec<'_>, id: &str, port_ids: &[String]) -> R<()> {
     // Neutron replaces the whole list: an empty one leaves the group INACTIVE.
     let ports = port_ids.iter().map(|p| non_empty(p, "port")).collect::<R<Vec<_>>>()?;
@@ -207,6 +232,7 @@ pub(super) async fn firewall_group_set_ports(x: &mut Exec<'_>, id: &str, port_id
     Ok(())
 }
 
+/// `OsAction::FirewallGroupDelete`: `DELETE /v2.0/fwaas/firewall_groups/{id}`.
 pub(super) async fn firewall_group_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     x.send(fwaas(
         http::Method::DELETE,
@@ -244,7 +270,7 @@ mod tests {
             json!({"firewall_rule": {"name": "ssh", "description": "", "protocol": "tcp", "action": "allow", "ip_version": 4,
                                      "source_ip_address": null, "source_port": null, "destination_ip_address": "10.0.0.0/24",
                                      "destination_port": "22", "enabled": true}}),
-            "no `shared`: the Project panel never sends it (Admin only, roadmap 94)"
+            "no `shared`: the Project panel never sends it (Admin only)"
         );
         let any = FirewallRuleSpec {
             protocol: id("any"),

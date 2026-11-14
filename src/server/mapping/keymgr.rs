@@ -1,4 +1,4 @@
-//! Barbican (roadmap 55): secrets, containers, ACLs, consumers; orders (roadmap 58).
+//! Barbican: secrets, containers, ACLs, consumers; orders.
 
 use super::*;
 
@@ -47,7 +47,7 @@ pub fn secret_choices(raw: &[Value]) -> Vec<Choice> {
         .collect()
 }
 
-/// Certificates a `TERMINATED_HTTPS` listener can use (roadmap 54), as
+/// Certificates a `TERMINATED_HTTPS` listener can use, as
 /// octavia-dashboard lists them: `certificate` containers holding both a
 /// `certificate` and a `private_key`, then opaque secrets (PKCS#12 bundles) that
 /// aren't part of one. The value is the Barbican URL Octavia takes; the label the
@@ -132,7 +132,7 @@ pub fn secret_acl(acl: &Value) -> (Vec<String>, Option<bool>) {
     (strs(read, "users"), project)
 }
 
-/// What uses a secret (roadmap 75): its consumers (`service resource_type
+/// What uses a secret: its consumers (`service resource_type
 /// resource_id`), then each container holding it that has consumers
 /// (`container NAME: consumer, …`). Octavia registers on the container, not on
 /// its secrets, so the second part is what finds a load balancer.
@@ -159,7 +159,7 @@ pub fn secret_in_use(id: &str, consumers: &[SecretConsumer], containers: &[Conta
 /// `tls_container_ref`, `ca_tls_container_ref`, `crl_container_ref`. Load
 /// balancers are named from `load_balancers` (the project's), else by ID.
 /// Octavia registers no Barbican consumer, so this is how a load balancer using a
-/// certificate is found (roadmap 75).
+/// certificate is found.
 pub fn octavia_cert_refs(listeners: &[Value], pools: &[Value], load_balancers: &[Value]) -> Vec<(String, OctaviaUse)> {
     let names = names_by_id(load_balancers);
     let mut out = vec![];
@@ -297,7 +297,7 @@ pub fn containers(raw: &[Value], secrets: &[Value]) -> Vec<ContainerRow> {
     out
 }
 
-/// Orders (roadmap 58), newest first: the generated secret or container by
+/// Orders, newest first: the generated secret or container by
 /// ID, the error code (a number or a string, by release) and reason.
 pub fn orders(raw: &[Value]) -> Vec<OrderRow> {
     let mut out: Vec<_> = raw
@@ -384,7 +384,7 @@ mod tests {
         );
     }
 
-    /// Roadmap 54, slice 3: like octavia-dashboard, certificate containers with
+    /// Like octavia-dashboard, certificate containers with
     /// a private key, then opaque secrets not in one, with the certificate's expiry.
     #[test]
     fn lb_certificates_are_complete_containers_and_loose_bundles() {

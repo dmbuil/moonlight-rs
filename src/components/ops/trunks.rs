@@ -28,6 +28,8 @@ fn subport_fields(lang: Lang, optional: bool) -> Vec<Field> {
     ]
 }
 
+/// The sub-port of *Create Trunk* / *Add Subports*, `None` when no port is picked. A VLAN needs an
+/// ID of 1-4094 (checked by `SubportSpec::body`, which the action sends); `inherit` takes none.
 fn subport_spec(v: &Values, lang: Lang) -> Result<Option<SubportSpec>, String> {
     let Some(port_id) = v.opt("subport") else {
         return Ok(None);

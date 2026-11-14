@@ -25,9 +25,13 @@ use crate::model::*;
 /// Toolbar state.
 #[derive(Clone, Copy)]
 struct Opts {
+    /// *Small*: smaller boxes, icons only, and no addresses on the wires.
     small: RwSignal<bool>,
+    /// *Toggle Labels*: names and addresses on the drawing.
     labels: RwSignal<bool>,
+    /// *Toggle Collapse*: devices whose networks do not overlap share a row (*Topology* tab).
     collapsed: RwSignal<bool>,
+    /// Bumped by *Center Topology*; the canvas re-fits the drawing each time it changes.
     center: RwSignal<u32>,
 }
 
@@ -40,9 +44,13 @@ struct Opts {
 /// aborts the WASM app and the next page never renders).
 #[derive(Clone, Copy)]
 struct Ctx {
+    /// The whole topology, for the neighbours and the popover.
     topo: StoredValue<Topology>,
+    /// The focused node: a device's or a network's ID.
     focus: RwSignal<Option<String>>,
+    /// Where the popover goes, in viewport pixels: the pointer, or the focused node's top right.
     at: RwSignal<(f64, f64)>,
+    /// The canvas was just dragged: the click that ends a pan must not open a node.
     moved: RwSignal<bool>,
 }
 
@@ -65,6 +73,7 @@ impl Ctx {
             }
         }
     }
+    /// `" hl"` for a wire that touches the focused node, `" dim"` for the others.
     fn wire_state(&self, device: &str, network: &str) -> &'static str {
         match self.focus.try_get().flatten() {
             None => "",
@@ -74,6 +83,7 @@ impl Ctx {
     }
 }
 
+/// The detail page a router or instance node opens.
 fn device_href(d: &TopoDevice) -> String {
     match d.kind {
         TopoKind::Router => format!("/project/routers/{}", d.id),
@@ -81,10 +91,12 @@ fn device_href(d: &TopoDevice) -> String {
     }
 }
 
+/// The detail page a network bar opens.
 fn network_href(id: &str) -> String {
     format!("/project/networks/{id}")
 }
 
+/// The device's kind as the popover and the list name it.
 fn kind_label(k: TopoKind) -> K {
     match k {
         TopoKind::Router => K::Router,
@@ -92,6 +104,7 @@ fn kind_label(k: TopoKind) -> K {
     }
 }
 
+/// The status dot's colour class: Nova's statuses for an instance, Neutron's for a router.
 fn tone_class(d: &TopoDevice) -> &'static str {
     let tone = match d.kind {
         TopoKind::Server => Tone::server(&d.status),
@@ -109,9 +122,10 @@ fn net_style(name: &str) -> String {
 /// Whose a network is, drawn without relying on colour: external and shared
 /// networks get a hatched fill and a badge (globe, share) over their own colour,
 /// both when a network is both (cross-hatched), and a legend lists the kinds on
-/// screen (roadmap 74).
+/// screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NetKind {
+    /// The project's own network, neither external nor another project's.
     Own,
     /// `router:external`: a provider / floating IP network, whoever owns it.
     External,
@@ -122,6 +136,7 @@ enum NetKind {
 }
 
 impl NetKind {
+    /// Every kind, in the order the marks and the legend list them.
     const ALL: [NetKind; 3] = [NetKind::Own, NetKind::External, NetKind::Shared];
 
     /// `[Own]`, or the marks of the network in [`NetKind::ALL`] order.
@@ -134,6 +149,7 @@ impl NetKind {
         if marks.is_empty() { vec![NetKind::Own] } else { marks }
     }
 
+    /// The kind's name in the legend.
     fn label(self) -> K {
         match self {
             NetKind::Own => K::ProjectNetwork,
@@ -142,7 +158,7 @@ impl NetKind {
         }
     }
 
-    /// The `<pattern>` drawn over the network's colour (see [`HatchDefs`]).
+    /// The `<pattern>` drawn over the network's colour (see [`hatch_defs`]).
     fn hatch(self) -> Option<&'static str> {
         match self {
             NetKind::Own => None,
@@ -287,6 +303,8 @@ pub(crate) fn clip(s: &str, max: usize) -> String {
     }
 }
 
+/// One port's addresses for the popover and the wire label: its fixed IPs, then its floating
+/// IPs (marked), or *Gateway* for a router's external gateway without addresses.
 fn link_ips(l: &TopoLink, lang: Lang) -> String {
     let mut out = l.ips.clone();
     out.extend(l.floating.iter().map(|f| format!("{f} ({})", t(lang, K::Floating))));
@@ -306,13 +324,17 @@ fn pair_ips(topo: &Topology, links: &[usize], lang: Lang) -> String {
     all.join(", ")
 }
 
+/// *Network › Network Topology*: Horizon's create buttons, the *Topology* / *Graph* tabs, the
+/// toolbar (size, labels, collapse, center, *List*) and the drawing, from one `get_topology`
+/// call. The drawing's controls are disabled when the too-many note replaces it, and *Collapse*
+/// and *Center* also while the list does.
 #[component]
 pub fn NetworkTopologyPage() -> impl IntoView {
     let i18n = use_i18n();
     let data = Resource::new(data_version, |_| get_topology());
     let tab = RwSignal::new(0usize);
     let list = RwSignal::new(false);
-    // Set by `TopoBody`: the network count when it is over the limit (roadmap 100).
+    // Set by `TopoBody`: the network count when it is over the limit.
     let too_many = RwSignal::new(None::<usize>);
     // The drawing's controls do nothing while the note replaces it.
     let no_drawing = move || list.get() || too_many.get().is_some();
@@ -362,12 +384,19 @@ pub fn NetworkTopologyPage() -> impl IntoView {
     }
 }
 
+/// What the page shows once the topology loaded: the hint, legend and timing, then the list, the
+/// too-many note, the *Topology* columns or the *Graph*. Provides the [`Ctx`] every node reads.
 #[component]
 fn TopoBody(
     topo: Topology,
+    /// Milliseconds and API calls the fetch took, for the timing chip.
     timing: (u64, u32),
+    /// `0` *Topology*, else *Graph*.
     tab: RwSignal<usize>,
+    /// Shows [`TopoList`] instead of the drawing.
     list: RwSignal<bool>,
+    /// Set here to the network count when it is over `topology_max_networks`, so the
+    /// page disables the drawing's controls.
     too_many: RwSignal<Option<usize>>,
     opts: Opts,
 ) -> impl IntoView {
@@ -404,7 +433,7 @@ fn TopoBody(
 }
 
 /// Over `[network] topology_max_networks`: a note instead of the drawing, with
-/// the way to the same data as a list or on the *Networks* panel (roadmap 100).
+/// the way to the same data as a list or on the *Networks* panel.
 #[component]
 fn TooMany(n: usize, max: usize, list: RwSignal<bool>) -> impl IntoView {
     let i18n = use_i18n();
@@ -505,6 +534,9 @@ fn device_shape(d: &TopoDevice, s: Size, small: bool, labels: bool) -> AnyView {
     .into_any()
 }
 
+/// The *Topology* tab, as Horizon draws it: each network a vertical bar, routers and instances
+/// as boxes in rows across them, wired to the networks they have ports on. Geometry from
+/// `topo_layout::columns`.
 #[component]
 fn ColumnsView(opts: Opts) -> impl IntoView {
     let i18n = use_i18n();
@@ -618,6 +650,9 @@ fn room(small: bool) -> f64 {
     if small { 90.0 } else { 180.0 }
 }
 
+/// The *Graph* tab: networks and devices as nodes of a force layout, computed in an effect (so
+/// only in the browser; the server renders a placeholder), with one edge per device and network
+/// it has ports on ([`geo::pairs`]).
 #[component]
 fn GraphView(opts: Opts) -> impl IntoView {
     let i18n = use_i18n();

@@ -1,4 +1,4 @@
-//! Heat (roadmap 62): stacks, resources, events, resource types, templates.
+//! Heat: stacks, resources, events, resource types, templates.
 
 use super::*;
 
@@ -9,6 +9,7 @@ pub fn stacks(raw: &[Value]) -> Vec<StackRow> {
     out
 }
 
+/// One stack from `GET stacks`: Heat names it `stack_name` and its status `stack_status`.
 fn stack_row(x: &Value) -> StackRow {
     let id = s(x, "id").unwrap_or_default();
     StackRow {

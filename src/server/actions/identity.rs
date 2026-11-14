@@ -1,4 +1,4 @@
-//! Keystone writes (roadmap 57): projects, users, groups, roles, application credentials.
+//! Keystone writes: projects, users, groups, roles, application credentials.
 
 use super::*;
 
@@ -29,6 +29,8 @@ pub fn parse_access_rules(text: &str) -> Result<Vec<AccessRule>, String> {
         .collect()
 }
 
+/// `AppCredentialCreate`: `POST /users/{user_id}/application_credentials`. Keystone
+/// returns the secret only in this response; it becomes the outcome's one-time `Secret`.
 pub(super) async fn app_credential_create(x: &mut Exec<'_>, spec: &AppCredentialSpec) -> R<()> {
     use openstack_sdk::api::identity::v3::user::application_credential::create as m;
     // Parsed first: the request borrows them until it is built.
@@ -91,6 +93,7 @@ pub(super) async fn app_credential_create(x: &mut Exec<'_>, spec: &AppCredential
     Ok(())
 }
 
+/// `ProjectCreate`: `POST /projects`, always with an explicit `domain_id`.
 pub(super) async fn project_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -100,7 +103,7 @@ pub(super) async fn project_create(
 ) -> R<()> {
     use openstack_sdk::api::identity::v3::project::create as m;
     let mut b = m::ProjectBuilder::default();
-    // Always explicit: without it Keystone uses its default domain (roadmap 57).
+    // Always explicit: without it Keystone uses its default domain.
     b.name(non_empty(name, "project name")?)
         .enabled(*enabled)
         .domain_id(Some(Cow::from(non_empty(domain_id, "domain")?)));
@@ -118,6 +121,7 @@ pub(super) async fn project_create(
     Ok(())
 }
 
+/// `ProjectUpdate`: `PATCH /projects/{id}` (name, description, enabled).
 pub(super) async fn project_update(x: &mut Exec<'_>, id: &str, name: &str, description: &str, enabled: &bool) -> R<()> {
     use openstack_sdk::api::identity::v3::project::set as m;
     let body = m::ProjectBuilder::default()
@@ -137,6 +141,7 @@ pub(super) async fn project_update(x: &mut Exec<'_>, id: &str, name: &str, descr
     Ok(())
 }
 
+/// `ProjectDelete`: `DELETE /projects/{id}`.
 pub(super) async fn project_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::project::delete as m;
     x.send(
@@ -149,6 +154,9 @@ pub(super) async fn project_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `ProjectRoleGrant` / `ProjectRoleRevoke`: `PUT` or `DELETE`
+/// `/projects/{project_id}/{users|groups}/{actor_id}/roles/{role_id}`; exactly one of
+/// `user_id` and `group_id` must be set.
 pub(super) async fn project_role_grant_or_revoke(
     x: &mut Exec<'_>,
     project_id: &str,
@@ -180,10 +188,12 @@ pub(super) async fn project_role_grant_or_revoke(
     Ok(())
 }
 
+/// `UserCreate`: `POST /users`, then, when a primary project and a role are given,
+/// `PUT /projects/{project_id}/users/{new_id}/roles/{role_id}` (as Horizon's form does).
 pub(super) async fn user_create(x: &mut Exec<'_>, spec: &UserSpec) -> R<()> {
     let mut user = serde_json::Map::new();
     user.insert("name".into(), json!(non_empty(&spec.name, "user name")?));
-    // Always explicit: without it Keystone uses its default domain (roadmap 57).
+    // Always explicit: without it Keystone uses its default domain.
     user.insert("domain_id".into(), json!(non_empty(&spec.domain_id, "domain")?));
     if spec.password.is_empty() {
         return Err(AppError::invalid("a password is required"));
@@ -223,6 +233,8 @@ pub(super) async fn user_create(x: &mut Exec<'_>, spec: &UserSpec) -> R<()> {
     Ok(())
 }
 
+/// `UserUpdate`: `PATCH /users/{id}`; an empty email or description clears it, no
+/// project sends `default_project_id: null`.
 pub(super) async fn user_update(
     x: &mut Exec<'_>,
     id: &str,
@@ -247,6 +259,7 @@ pub(super) async fn user_update(
     Ok(())
 }
 
+/// `UserSetEnabled`: `PATCH /users/{id}` with `enabled`.
 pub(super) async fn user_set_enabled(x: &mut Exec<'_>, id: &str, enabled: &bool) -> R<()> {
     let body = json!({"user": {"enabled": enabled}});
     x.send(JsonRequest::new(
@@ -259,6 +272,7 @@ pub(super) async fn user_set_enabled(x: &mut Exec<'_>, id: &str, enabled: &bool)
     Ok(())
 }
 
+/// `UserSetPassword`: `PATCH /users/{id}` with `password` (masked in the preview).
 pub(super) async fn user_set_password(x: &mut Exec<'_>, id: &str, password: &str) -> R<()> {
     if password.is_empty() {
         return Err(AppError::invalid("a password is required"));
@@ -274,6 +288,7 @@ pub(super) async fn user_set_password(x: &mut Exec<'_>, id: &str, password: &str
     Ok(())
 }
 
+/// `UserDelete`: `DELETE /users/{id}`.
 pub(super) async fn user_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::user::delete as m;
     x.send(
@@ -286,10 +301,11 @@ pub(super) async fn user_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `GroupCreate`: `POST /groups`, always with an explicit `domain_id`.
 pub(super) async fn group_create(x: &mut Exec<'_>, name: &str, description: &Option<String>, domain_id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::group::create as m;
     let mut b = m::GroupBuilder::default();
-    // Always explicit: without it Keystone uses its default domain (roadmap 57).
+    // Always explicit: without it Keystone uses its default domain.
     b.name(non_empty(name, "group name")?)
         .domain_id(non_empty(domain_id, "domain")?);
     if let Some(d) = opt(description) {
@@ -306,6 +322,7 @@ pub(super) async fn group_create(x: &mut Exec<'_>, name: &str, description: &Opt
     Ok(())
 }
 
+/// `GroupUpdate`: `PATCH /groups/{id}` (name, description).
 pub(super) async fn group_update(x: &mut Exec<'_>, id: &str, name: &str, description: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::group::set as m;
     let body = m::GroupBuilder::default()
@@ -324,6 +341,7 @@ pub(super) async fn group_update(x: &mut Exec<'_>, id: &str, name: &str, descrip
     Ok(())
 }
 
+/// `GroupDelete`: `DELETE /groups/{id}`.
 pub(super) async fn group_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::group::delete as m;
     x.send(
@@ -336,6 +354,7 @@ pub(super) async fn group_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `GroupAddUser`: `PUT /groups/{group_id}/users/{user_id}`.
 pub(super) async fn group_add_user(x: &mut Exec<'_>, group_id: &str, user_id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::group::user::set as m;
     x.send(
@@ -349,6 +368,7 @@ pub(super) async fn group_add_user(x: &mut Exec<'_>, group_id: &str, user_id: &s
     Ok(())
 }
 
+/// `GroupRemoveUser`: `DELETE /groups/{group_id}/users/{user_id}`.
 pub(super) async fn group_remove_user(x: &mut Exec<'_>, group_id: &str, user_id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::group::user::delete as m;
     x.send(
@@ -362,6 +382,7 @@ pub(super) async fn group_remove_user(x: &mut Exec<'_>, group_id: &str, user_id:
     Ok(())
 }
 
+/// `RoleCreate`: `POST /roles`.
 pub(super) async fn role_create(x: &mut Exec<'_>, name: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::role::create as m;
     let body = m::RoleBuilder::default()
@@ -373,6 +394,7 @@ pub(super) async fn role_create(x: &mut Exec<'_>, name: &str) -> R<()> {
     Ok(())
 }
 
+/// `RoleUpdate`: `PATCH /roles/{id}` (renames it).
 pub(super) async fn role_update(x: &mut Exec<'_>, id: &str, name: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::role::set as m;
     let body = m::RoleBuilder::default()
@@ -390,6 +412,7 @@ pub(super) async fn role_update(x: &mut Exec<'_>, id: &str, name: &str) -> R<()>
     Ok(())
 }
 
+/// `RoleDelete`: `DELETE /roles/{id}`.
 pub(super) async fn role_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::role::delete as m;
     x.send(
@@ -402,6 +425,7 @@ pub(super) async fn role_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
+/// `AppCredentialDelete`: `DELETE /users/{user_id}/application_credentials/{id}`.
 pub(super) async fn app_credential_delete(x: &mut Exec<'_>, user_id: &str, id: &str) -> R<()> {
     use openstack_sdk::api::identity::v3::user::application_credential::delete as m;
     x.send(

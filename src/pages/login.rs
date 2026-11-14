@@ -1,3 +1,7 @@
+//! The sign-in page: Keystone password form (domain, user, password) and, when `[login]`
+//! offers them, the WebSSO choices. The browser never sees the token: the server
+//! keeps it in the encrypted session cookie (AGENTS.md §1.5).
+
 use leptos::prelude::*;
 use leptos_meta::Title;
 
@@ -10,6 +14,10 @@ use crate::model::Choice;
 use crate::model::ErrorKind;
 use crate::prefs::{LoginPrefs, SsoChoice, WEBSSO_START};
 
+/// The sign-in page (`/login`): theme and language menus, the brand, the error of the last
+/// attempt (bad credentials, no project to scope to, `[login] max_failures` reached, or a
+/// WebSSO callback's `?sso=` refusal), and the [`LoginForm`], drawn with the defaults until
+/// the `[login]` settings load.
 #[component]
 pub fn LoginPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -17,7 +25,7 @@ pub fn LoginPage() -> impl IntoView {
     // `[login]` settings; the defaults render while (or if) they cannot load.
     let prefs = Resource::new(|| (), |_| get_login_prefs());
     // `?sso=…`: why the WebSSO callback sent the browser back
-    // (`server::websso::Refusal::code`, roadmap 80).
+    // (`server::websso::Refusal::code`).
     let query = leptos_router::hooks::use_query_map();
     let sso_error = move || {
         query.with(|q| match q.get("sso").as_deref() {
@@ -36,7 +44,7 @@ pub fn LoginPage() -> impl IntoView {
                 match e.kind {
                     // Credentials were accepted but there is no project to scope to.
                     ErrorKind::Forbidden => i18n.t(K::NoProjects),
-                    // `[login] max_failures` reached (roadmap 50).
+                    // `[login] max_failures` reached.
                     ErrorKind::TooManyAttempts => i18n.t(K::LoginThrottled),
                     _ => i18n.t(K::LoginFailed),
                 }
@@ -71,7 +79,7 @@ pub fn LoginPage() -> impl IntoView {
 /// `domain_choices`, or no domain at all; password autocomplete and reveal.
 /// With `[websso]`, an *Authenticate using* select first: a federated choice
 /// hides the credentials and turns the button into a link to Keystone's WebSSO
-/// (through `WEBSSO_START`), as Horizon does (roadmap 80).
+/// (through `WEBSSO_START`), as Horizon does.
 #[component]
 fn LoginForm(action: ServerAction<Login>, prefs: LoginPrefs) -> impl IntoView {
     let i18n = use_i18n();

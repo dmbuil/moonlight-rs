@@ -11,10 +11,13 @@ use crate::model::{TopoKind, Topology};
 /// Node and spacing sizes for *Small* / *Normal*.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Size {
+    /// Device box width, in SVG units (as are the other sizes).
     pub box_w: f64,
     pub box_h: f64,
+    /// Vertical space between two device rows.
     pub row_gap: f64,
     pub bar_w: f64,
+    /// Horizontal space between a bar and the boxes beside it, where the wires run.
     pub pad: f64,
 }
 
@@ -46,7 +49,9 @@ impl Size {
     }
 }
 
+/// Empty space around the drawing, in SVG units.
 const MARGIN: f64 = 16.0;
+/// The shortest network bar, so a network with one device still reads as a bar.
 const MIN_BAR_H: f64 = 180.0;
 
 /// A network's vertical bar in the *Topology* tab, at `x`, from `y`, `h` high.
@@ -531,7 +536,7 @@ mod tests {
 
     #[test]
     fn a_project_with_over_a_hundred_instances_lays_out_quickly_and_in_bounds() {
-        // The review list of roadmap 20 asks for 100+ instances: 12 networks, 130 servers
+        // A large project, 100+ instances: 12 networks, 130 servers
         // spread over them (two networks each for some), 2 routers.
         let mut t = Topology::default();
         for i in 0..12 {

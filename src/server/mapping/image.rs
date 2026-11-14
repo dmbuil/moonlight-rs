@@ -15,7 +15,7 @@ pub fn images(raw: &[Value], project_id: &str, project_names: &HashMap<String, S
     out
 }
 
-/// [`images`] in Glance's order, for a paged list (roadmap 88): the next page's
+/// [`images`] in Glance's order, for a paged list: the next page's
 /// marker is the last row.
 pub fn images_page(raw: &[Value], project_id: &str, project_names: &HashMap<String, String>) -> Vec<Image> {
     raw.iter()
@@ -39,6 +39,7 @@ pub fn images_page(raw: &[Value], project_id: &str, project_names: &HashMap<Stri
         .collect()
 }
 
+/// The keys Glance defines on an image; every other key is a custom property.
 const IMAGE_CORE_KEYS: &[&str] = &[
     "id",
     "name",
@@ -72,6 +73,7 @@ pub fn is_image_core_key(k: &str) -> bool {
     IMAGE_CORE_KEYS.contains(&k)
 }
 
+/// The image's custom properties (non-core keys), sorted, non-string values as JSON text.
 fn image_properties(im: &Value) -> Vec<(String, String)> {
     let mut properties: Vec<(String, String)> = im
         .as_object()

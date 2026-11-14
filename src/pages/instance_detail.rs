@@ -1,3 +1,7 @@
+//! One instance's detail page, in Horizon's tabs: *Overview*, *Interfaces*, *Log*, *Console*
+//! and *Action Log*. Log and Console are read-only POSTs sent only with writes and
+//! `[console] enabled` on (AGENTS.md §1.3).
+
 use leptos::prelude::*;
 use leptos_meta::Title;
 use leptos_router::hooks::use_params_map;
@@ -15,6 +19,7 @@ use crate::components::widgets::{
 use crate::i18n::{K, bytes, power_state, server_status, task_state, use_i18n};
 use crate::model::{Address, AppError, ConsoleReply, Instance, InstanceDetail};
 
+/// The page's tabs, in Horizon's order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Overview,
@@ -24,6 +29,7 @@ enum Tab {
     Actions,
 }
 
+/// Each tab and its label, in the order the tab bar shows them.
 const TABS: [(Tab, K); 5] = [
     (Tab::Overview, K::Overview),
     (Tab::Interfaces, K::Interfaces),
@@ -44,6 +50,7 @@ fn by_network(addresses: &[Address]) -> Vec<(String, Vec<Address>)> {
     out
 }
 
+/// One `<dt>`/`<dd>` row of an overview card (this page's own copy of `details::Kv`).
 #[component]
 fn Row(label: K, children: Children) -> impl IntoView {
     let i18n = use_i18n();
@@ -53,6 +60,9 @@ fn Row(label: K, children: Children) -> impl IntoView {
     }
 }
 
+/// Project › Compute › Instances › an instance (`/project/instances/:id`): breadcrumb, name
+/// with lock, status and task, the instance's menu, and Horizon's tabs. It polls while a task
+/// or a transient status is in progress.
 #[component]
 pub fn InstanceDetailPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -119,6 +129,8 @@ pub fn InstanceDetailPage() -> impl IntoView {
     }
 }
 
+/// The active tab's content. *Log* and *Console* explain themselves instead when `[console]
+/// enabled` is off, and *Console* when the instance is not `ACTIVE`.
 #[component]
 fn DetailBody(d: InstanceDetail, tab: RwSignal<Tab>) -> impl IntoView {
     let i18n = use_i18n();
@@ -212,7 +224,7 @@ fn ConsoleTab(id: String) -> impl IntoView {
     let i18n = use_i18n();
     let console = LocalResource::new(move || run_instance_console(id.clone()));
     // *Fit* (noVNC scales the screen to the frame) or *1:1* (native size, scrolling
-    // inside the frame); the viewer's last choice, in this browser (roadmap 99).
+    // inside the frame); the viewer's last choice, in this browser.
     let fit = RwSignal::new(console_fit());
     let pick = move |on: bool| {
         fit.set(on);
@@ -250,7 +262,7 @@ fn ConsoleTab(id: String) -> impl IntoView {
     }
 }
 
-/// Where the *Console* tab remembers *Fit* or *1:1* (roadmap 99).
+/// Where the *Console* tab remembers *Fit* or *1:1*.
 #[cfg(feature = "hydrate")]
 const CONSOLE_FIT_KEY: &str = "moonlight.console.fit";
 
@@ -268,6 +280,7 @@ fn console_fit() -> bool {
     true
 }
 
+/// Remembers this browser's *Fit* / *1:1* choice; a no-op on the server.
 fn remember_console_fit(_fit: bool) {
     // Best effort: a blocked storage only forgets the choice.
     #[cfg(feature = "hydrate")]
@@ -276,6 +289,8 @@ fn remember_console_fit(_fit: bool) {
     }
 }
 
+/// *Overview*: the fault Nova reports (if any), then Horizon's *Information*, *Specs*, *IP
+/// Addresses*, *Security Groups*, *Metadata* and *Volumes Attached* cards.
 fn overview(d: InstanceDetail) -> impl IntoView {
     let i18n = use_i18n();
     let created = d.base.created.clone();
@@ -399,6 +414,8 @@ fn overview(d: InstanceDetail) -> impl IntoView {
     }
 }
 
+/// *Interfaces*: the instance's ports (name, network, fixed IPs, MAC, status, admin state)
+/// and each interface's menu; a port without a name shows the start of its ID, as Horizon.
 fn interfaces(d: InstanceDetail) -> impl IntoView {
     let i18n = use_i18n();
     view! {
@@ -451,6 +468,8 @@ fn interfaces(d: InstanceDetail) -> impl IntoView {
     }
 }
 
+/// *Action Log*: Nova's instance actions (`os-instance-actions`): request ID, action, start
+/// time, user and message.
 fn actions(d: InstanceDetail) -> impl IntoView {
     let i18n = use_i18n();
     view! {

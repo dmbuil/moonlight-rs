@@ -1,3 +1,7 @@
+//! The root component: the HTML shell rendered on the server and the router with every page's
+//! route (Horizon's URL layout, so bookmarks map across). A new page gets its `Route` here and,
+//! if it is a panel, a menu entry in `components/nav.rs` (AGENTS.md §4).
+
 use leptos::prelude::*;
 use leptos_meta::{MetaTags, Stylesheet, Title, provide_meta_context};
 use leptos_router::components::{Outlet, ParentRoute, Redirect, Route, Router, Routes};
@@ -31,6 +35,9 @@ use crate::pages::trunks::TrunkDetailPage;
 use crate::pages::volume_groups::{GroupSnapshotDetailPage, VolumeGroupDetailPage};
 use crate::theme::{ThemeCtx, initial_theme};
 
+/// The HTML document the server renders around [`App`]. `lang` and `data-theme` come from the
+/// request's cookies (or `Accept-Language` and `default_theme`) so the first paint is already in
+/// the user's language and theme, before hydration.
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     let lang = initial_lang();
     let theme = initial_theme();
@@ -53,6 +60,9 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
     }
 }
 
+/// The application: provides the language, theme and `<title>` contexts and declares the routes.
+/// Every route renders with `SsrMode::Async`, so the server waits for the page's data and can
+/// answer an expired session with a redirect instead of a half-rendered page.
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
@@ -135,7 +145,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("template_generator") view=TemplateGeneratorPage/>
                         <Route path=path!("api_access") view=ApiAccessPage/>
                     </ParentRoute>
-                    // Horizon's Admin dashboard (roadmap 85), Horizon's URLs; `/admin` is
+                    // Horizon's Admin dashboard, Horizon's URLs; `/admin` is
                     // its Overview.
                     <ParentRoute path=path!("/admin") view=Outlet>
                         <Route path=path!("") view=AdminOverviewPage/>
@@ -160,7 +170,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("metadata_defs/:id") view=MetadefDetailPage/>
                         <Route path=path!("info") view=SystemInfoPage/>
                     </ParentRoute>
-                    // Horizon's Identity dashboard (roadmap 57); `/identity` opens Projects like Horizon's.
+                    // Horizon's Identity dashboard; `/identity` opens Projects like Horizon's.
                     <ParentRoute path=path!("/identity") view=Outlet>
                         <Route path=path!("") view=|| view! { <Redirect path="/identity/projects"/> }/>
                         <Route path=path!("domains") view=IdentityDomainsPage/>
@@ -181,6 +191,7 @@ pub fn App() -> impl IntoView {
     }
 }
 
+/// Fallback for a URL no route matches: a 404 with a link back to the project overview.
 #[component]
 fn NotFound() -> impl IntoView {
     let i18n = use_i18n();

@@ -1,8 +1,9 @@
-//! The instance *Log* and *Console* tabs (roadmap 31). Both are Nova POSTs
+//! The instance *Log* and *Console* tabs. Both are Nova POSTs
 //! that read without changing the server, so they are not in `fetch.rs`
 //! (GET only) but go through [`Exec`] like writes: sent only with
 //! `[writes] mode = on`, previewed in dry-run, rejected when off. On top of
-//! that `[console] enabled` must be set. These are the only two such calls.
+//! that `[console] enabled` must be set. The only other read-only POSTs are
+//! Heat's `validate` and `preview`, in `heat.rs` (AGENTS.md §1.3).
 
 use openstack_sdk::AsyncOpenStack;
 use openstack_sdk::api::compute::v2::server::{os_get_console_output, os_get_vncconsole_21, remote_console::create_26};
@@ -12,12 +13,15 @@ use super::actions::Exec;
 use crate::model::*;
 use crate::prefs::{ConsolePrefs, ConsoleType};
 
+/// Every function here fails with an [`AppError`].
 type R<T> = Result<T, AppError>;
 
+/// An SDK builder error: a request we built wrong, reported as invalid input.
 fn build_err<E: std::fmt::Display>(e: E) -> AppError {
     AppError::invalid(format!("invalid request: {e}"))
 }
 
+/// Refuses both tabs unless `[console] enabled` is set, whatever `[writes] mode` says.
 fn enabled(prefs: &ConsolePrefs) -> R<()> {
     if prefs.enabled {
         Ok(())
@@ -41,12 +45,15 @@ pub fn log_request(id: &str, lines: Option<u32>) -> R<os_get_console_output::Req
         .map_err(build_err)
 }
 
+/// The graphical console protocols Moonlight can embed (noVNC, SPICE HTML5).
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Protocol {
     Vnc,
     Spice,
 }
 
+/// Nova 2.6+ `POST /servers/{id}/remote-consoles` for one protocol, with the browser client
+/// type (`novnc`, `spice-html5`).
 fn remote_request(id: &str, p: Protocol) -> R<create_26::Request<'_>> {
     let (protocol, kind) = match p {
         Protocol::Vnc => (create_26::Protocol::Vnc, create_26::Type::Novnc),
@@ -107,6 +114,9 @@ pub fn remote_console(v: &Value) -> R<RemoteConsole> {
     })
 }
 
+/// The *Log* tab: `POST /servers/{id}/action` `os-getConsoleOutput` through [`Exec`], so only
+/// sent with `[writes] mode = on` (dry-run returns the preview and no data). `lines: None` asks
+/// for the whole log.
 pub async fn log(
     mode: WriteMode,
     prefs: &ConsolePrefs,
@@ -124,7 +134,9 @@ pub async fn log(
     })
 }
 
-/// `remote_consoles`: the cloud has Nova 2.6 (`needs::REMOTE_CONSOLE`).
+/// The *Console* tab: a console URL through [`Exec`]. With `remote_consoles` (the cloud has
+/// Nova 2.6, `needs::REMOTE_CONSOLE`) it tries `[console] type`'s protocols in order and returns
+/// the first error only if none works; else the legacy `os-getVNCConsole` action.
 pub async fn remote(
     mode: WriteMode,
     prefs: &ConsolePrefs,

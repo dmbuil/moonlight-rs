@@ -1,4 +1,4 @@
-//! Heat's read-only POSTs (roadmap 62): `validate` (a template's parameters, for
+//! Heat's read-only POSTs: `validate` (a template's parameters, for
 //! the launch form) and `stacks/preview` (*Preview Stack*). They change nothing,
 //! but are POSTs, so like the console calls (`console.rs`) they go through
 //! [`Exec`]: sent only with `[writes] mode = on`, previewed in dry-run. In
@@ -10,6 +10,7 @@ use serde_json::Value;
 use super::actions::{Exec, JsonRequest, stack_body, template_body};
 use crate::model::*;
 
+/// Every function here fails with an [`AppError`].
 type R<T> = Result<T, AppError>;
 
 /// `POST validate` with the template and environment.

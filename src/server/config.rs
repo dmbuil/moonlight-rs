@@ -1,3 +1,12 @@
+//! Validated configuration ([`Config`]) and the process-wide [`AppState`]: the cookie key and
+//! the in-process caches (connections, projects, capabilities, lookups, revoked tokens, sign-in
+//! throttle). Built once by [`init`] at start-up from `settings::Settings`; read everywhere through
+//! [`state`].
+//!
+//! Every cache here is disposable: losing one costs a Keystone or API round-trip, never
+//! correctness, which keeps the server stateless (AGENTS.md §3). Cache keys holding tokens are
+//! `sha256` hashes, never the token (AGENTS.md §1.5).
+
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -12,23 +21,27 @@ use crate::server::settings::Settings;
 /// Validated settings (see `settings` for where they come from).
 #[derive(Clone, Debug)]
 pub struct Config {
+    /// `[keystone] url`: the identity endpoint every sign-in and catalog lookup starts from.
     pub keystone_url: String,
+    /// `[keystone] default_domain`: preselected on the login form.
     pub default_domain: String,
+    /// `[keystone] default_region`: the region a new session starts in; `None` = the catalog's
+    /// first.
     pub default_region: Option<String>,
     /// `[session] secure_cookies`: `Secure` + `__Host-` cookie, and HSTS.
     pub secure_cookies: bool,
-    /// `[session] revoke_on_logout`: Keystone revocation on logout (roadmap 49).
+    /// `[session] revoke_on_logout`: Keystone revocation on logout.
     pub revoke_on_logout: bool,
-    /// `[keystone] multidomain`: the Domains panel (roadmap 57).
+    /// `[keystone] multidomain`: the Domains panel.
     pub multidomain: bool,
-    /// `[key_manager] allow_payload`: *Show Payload* on secrets (roadmap 55).
+    /// `[key_manager] allow_payload`: *Show Payload* on secrets.
     pub key_manager_payload: bool,
     /// `[cache] lookup_seconds`: lifetime of `AppState::lookups`; zero = no cache.
     pub lookup_ttl: Duration,
     /// `[session] public_url` as an origin (`https://host[:port]`), for the
-    /// same-origin check of writes (roadmap 48); `None` = compare with `Host`.
+    /// same-origin check of writes; `None` = compare with `Host`.
     pub public_origin: Option<String>,
-    /// `[websso]` when enabled (roadmap 80): where to send the browser to sign
+    /// `[websso]` when enabled: where to send the browser to sign
     /// in through the identity provider.
     pub websso: Option<super::websso::WebSso>,
     /// `[writes] mode`: off | dry-run | on. Defaults to dry-run.
@@ -36,6 +49,7 @@ pub struct Config {
     /// `[ui] help_url`, `change_password_url`: user-menu links (cloud-specific
     /// portals, like Horizon's); hidden when unset.
     pub help_url: Option<String>,
+    /// See `help_url`.
     pub change_password_url: Option<String>,
     /// `[plugins] enabled`: opt-in panels (Octavia, Heat…).
     pub plugins: Vec<crate::model::Plugin>,
@@ -43,30 +57,36 @@ pub struct Config {
     pub interface: String,
     /// `[tls]`: CA bundle path and certificate verification.
     pub ca_file: Option<String>,
+    /// `[tls] verify`: check the cloud's certificates.
     pub verify_tls: bool,
     /// `[session]`.
     pub session_timeout: chrono::Duration,
+    /// A token this close to expiring counts as expired (`token_margin_seconds`).
     pub token_margin: chrono::Duration,
+    /// Days before a password expires to start warning; `None` = never warn.
     pub password_expiry_warning_days: Option<u32>,
+    /// `[login]`: what the login page shows (sent to the browser).
     pub login: crate::prefs::LoginPrefs,
     /// `[ui]`: used when the user has not picked one (no cookie).
     pub default_theme: crate::theme::Theme,
+    /// `None` = from `Accept-Language`.
     pub default_language: Option<crate::i18n::Lang>,
     /// `[ui] show_error_details`: send the SDK's full error text to the browser
-    /// (roadmap 50). Off: the log has it.
+    ///. Off: the log has it.
     pub show_error_details: bool,
     /// `[ui] show_requests`: keep the REST requests in action results, dry-run
-    /// included (roadmap 78). Off: they never reach the browser.
+    /// included. Off: they never reach the browser.
     pub show_requests: bool,
-    /// `[ui] max_list_items`: a full list longer than this fails (roadmap 104); 0 = no cap.
+    /// `[ui] max_list_items`: a full list longer than this fails; 0 = no cap.
     pub max_list_items: u32,
     /// `[log] client_ip_header`.
     pub client_ip_header: Option<http::HeaderName>,
     /// `[log] trusted_proxies`: proxies that append to `client_ip_header`,
-    /// counted from the right; 0 = its leftmost entry (roadmap 63).
+    /// counted from the right; 0 = its leftmost entry.
     pub trusted_proxies: u32,
     /// `[api_access]`.
     pub clouds_yaml_name: String,
+    /// The `profile:` written into `clouds.yaml`; `None` = no profile line.
     pub clouds_yaml_profile: Option<String>,
     /// Sent to the browser with the session info.
     pub prefs: crate::prefs::Prefs,
@@ -76,6 +96,7 @@ pub struct Config {
 /// only costs one extra Keystone round-trip per user.
 pub struct AppState {
     pub config: Config,
+    /// Encrypts the session cookie (`[session] cookie_key`, else random per process).
     pub cookie_key: Key,
     /// Project-scoped SDK connections, keyed by hash(token, project, region).
     pub connections: Cache<String, AsyncOpenStack>,
@@ -83,20 +104,20 @@ pub struct AppState {
     pub projects: Cache<String, Vec<ProjectRef>>,
     /// What a project + region offers, keyed like `connections`.
     pub capabilities: Cache<String, crate::model::Capabilities>,
-    /// Tokens of sessions that logged out, keyed by hash(token) (roadmap 49):
+    /// Tokens of sessions that logged out, keyed by hash(token):
     /// `session::current` refuses them, so a copied cookie stops working even
     /// though `connections` may still hold a scoped connection for it. Per
     /// process; with several replicas, Keystone revocation covers the rest.
     pub revoked: Cache<String, ()>,
-    /// Lists used only for names (`fetch::lookup`, roadmap 66), keyed by
+    /// Lists used only for names (`fetch::lookup`), keyed by
     /// hash(token, project, region) + `/` + the list's name, so a user never
     /// sees another's (visibility differs per role). Emptied for the session
     /// after each write and at logout. Weighed by item count.
     pub lookups: Cache<String, std::sync::Arc<Vec<serde_json::Value>>>,
-    /// Failed sign-ins (`[login] max_failures`, `lockout_seconds`; roadmap 50).
+    /// Failed sign-ins (`[login] max_failures`, `lockout_seconds`;).
     pub login_throttle: super::throttle::Throttle,
     /// WebSSO nonce cookies already used, keyed by hash(cookie value), so a
-    /// replayed one is refused (roadmap 80). Per process: the browser deletes
+    /// replayed one is refused. Per process: the browser deletes
     /// the cookie on use anyway.
     pub websso_used: Cache<String, ()>,
 }
@@ -104,8 +125,12 @@ pub struct AppState {
 /// Items `AppState::lookups` holds at most, over every session.
 const LOOKUP_ITEMS: u64 = 200_000;
 
+/// Set once by [`init`]; read by [`state`].
 static STATE: OnceLock<AppState> = OnceLock::new();
 
+/// Builds the [`AppState`] from the settings, once, at start-up: validates the download
+/// templates and the cookie key (base64, at least 64 bytes; a random key when unset, so
+/// sessions end on restart) and sizes the caches. Returns the message to print on bad settings.
 pub fn init(settings: &Settings) -> Result<&'static AppState, String> {
     let config = settings.config()?;
     let a = &settings.api_access;
@@ -189,6 +214,7 @@ pub fn try_state() -> Option<&'static AppState> {
     STATE.get()
 }
 
+/// The state. Panics before [`init`], which `main` runs before serving.
 pub fn state() -> &'static AppState {
     STATE
         .get()

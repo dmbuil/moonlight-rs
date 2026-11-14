@@ -1,4 +1,4 @@
-//! WebSSO sign-in through Keystone federation (roadmap 80), as Horizon does it
+//! WebSSO sign-in through Keystone federation, as Horizon does it
 //! with `WEBSSO_ENABLED`: the browser leaves for
 //! `{keystone}/v3/auth/OS-FEDERATION/…/websso`, Keystone's Apache does the
 //! identity provider's dance (OIDC, SAML), and Keystone posts an unscoped token
@@ -41,7 +41,9 @@ pub const NONCE_SECONDS: i64 = 10 * 60;
 /// every cookie value is unique and its hash names it.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Nonce {
+    /// Unix seconds.
     expires: i64,
+    /// The federated choice ID the sign-in started with (see `WebSso::via`).
     choice: String,
 }
 
@@ -186,6 +188,8 @@ pub fn nonce_removal() -> String {
         .to_string()
 }
 
+/// The nonce cookie's attributes. `SameSite=None` (hence `Secure`): Keystone posts the token
+/// back from another site, and a `Lax` cookie would not come with that POST.
 fn nonce_attrs(c: cookie::CookieBuilder<'static>) -> cookie::CookieBuilder<'static> {
     c.path("/").http_only(true).secure(true).same_site(SameSite::None)
 }

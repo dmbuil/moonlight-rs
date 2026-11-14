@@ -1,3 +1,6 @@
+//! Project › Compute › *Overview*: quota donuts grouped like Horizon (compute, volume,
+//! network) and the usage summary for a period, with its CSV download.
+
 use leptos::prelude::*;
 
 use leptos_router::hooks::use_query_map;
@@ -9,6 +12,7 @@ use crate::components::widgets::{ErrorBox, PageHeader, Skeleton, age_cell, data_
 use crate::i18n::{K, bytes, grouped, use_i18n, used_of};
 use crate::model::{Quota, QuotaGroup, QuotaKey, QuotaUnit, ServerUsage, UsageSummary};
 
+/// A quota group's heading.
 fn group_label(g: QuotaGroup) -> K {
     match g {
         QuotaGroup::Compute => K::Compute,
@@ -17,6 +21,7 @@ fn group_label(g: QuotaGroup) -> K {
     }
 }
 
+/// A quota's caption under its donut.
 fn quota_label(k: QuotaKey) -> K {
     match k {
         QuotaKey::Instances => K::Instances,
@@ -34,6 +39,7 @@ fn quota_label(k: QuotaKey) -> K {
     }
 }
 
+/// A quota amount in its unit: a count as is, MiB and GiB as human-readable bytes.
 pub fn fmt_amount(v: i64, unit: QuotaUnit) -> String {
     match unit {
         QuotaUnit::Count => v.to_string(),
@@ -42,7 +48,7 @@ pub fn fmt_amount(v: i64, unit: QuotaUnit) -> String {
     }
 }
 
-/// Fraction used, 0..=1 (0 for unlimited).
+/// Fraction used, 0..=1: 0 for unlimited, 1 for a limit of 0.
 pub fn ratio(q: &Quota) -> f64 {
     match q.limit {
         Some(l) if l > 0 => (q.used as f64 / l as f64).clamp(0.0, 1.0),
@@ -90,6 +96,9 @@ pub fn Donut(q: Quota, #[prop(optional)] label: Option<K>) -> impl IntoView {
     }
 }
 
+/// Project › Compute › Overview: Horizon's *Limit Summary* donuts by group (each group's
+/// error shown on its own, so one failing service doesn't hide the others), then the
+/// *Usage Summary*.
 #[component]
 pub fn OverviewPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -116,6 +125,7 @@ pub fn OverviewPage() -> impl IntoView {
     }
 }
 
+/// `v` MiB as human-readable bytes (negative counts as 0).
 fn mib(v: i64) -> String {
     bytes((v.max(0) as u64) * 1024 * 1024)
 }
@@ -146,7 +156,7 @@ pub fn UsageTotals(usage: UsageSummary, csv: String) -> impl IntoView {
     let file = format!("usage-{}-{}.csv", usage.start, usage.end);
     // Numbers are formatted inside the view's closures: the separators follow
     // the language, read reactively (not in the component body). Grouped by
-    // thousands for reading (roadmap 86); the CSV stays plain.
+    // thousands for reading; the CSV stays plain.
     let (instances, ram) = (usage.active_instances() as f64, mib(usage.active_ram_mb()));
     let hours = [
         (K::VcpuHours, usage.vcpu_hours()),

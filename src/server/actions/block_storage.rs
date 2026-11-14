@@ -18,6 +18,8 @@ fn volume_group_delete(id: &str, delete_volumes: bool) -> R<JsonRequest> {
     Ok(r)
 }
 
+/// `VolumeCreate`: `POST /volumes` (3.0), empty or from an image, a snapshot or another volume
+/// (`source_id` is then required). Fails on a size of 0 GiB.
 #[allow(clippy::too_many_arguments)] // one parameter per field of the variant
 pub(super) async fn volume_create(
     x: &mut Exec<'_>,
@@ -65,6 +67,8 @@ pub(super) async fn volume_create(
     Ok(())
 }
 
+/// `VolumeUpdate`: `PUT /volumes/{id}` with the name and description; an empty description is
+/// sent as `""`, which clears it.
 pub(super) async fn volume_update(x: &mut Exec<'_>, id: &str, name: &str, description: &Option<String>) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::set_30 as m;
     let body = m::VolumeBuilder::default()
@@ -77,6 +81,8 @@ pub(super) async fn volume_update(x: &mut Exec<'_>, id: &str, name: &str, descri
     Ok(())
 }
 
+/// `VolumeExtend`: `POST /volumes/{id}/action` with `os-extend` to `new_size_gb` (Cinder only
+/// grows a volume).
 pub(super) async fn volume_extend(x: &mut Exec<'_>, id: &str, new_size_gb: &u32) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::os_extend as m;
     let body = m::OsExtendBuilder::default()
@@ -94,12 +100,14 @@ pub(super) async fn volume_extend(x: &mut Exec<'_>, id: &str, new_size_gb: &u32)
     Ok(())
 }
 
+/// `VolumeDelete`: `DELETE /volumes/{id}`.
 pub(super) async fn volume_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `VolumeSetMetadata`: replaces all the volume's metadata, `PUT /volumes/{id}/metadata`.
 pub(super) async fn volume_set_metadata(x: &mut Exec<'_>, id: &str, metadata: &[(String, String)]) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::metadata::replace as m;
     let md = checked_metadata(metadata)?;
@@ -114,6 +122,8 @@ pub(super) async fn volume_set_metadata(x: &mut Exec<'_>, id: &str, metadata: &[
     Ok(())
 }
 
+/// `VolumeRetype`: `POST /volumes/{id}/action` with `os-retype`; `migrate` maps to the migration
+/// policy (`on-demand`, else `never`, which fails if the new type needs another backend).
 pub(super) async fn volume_retype(x: &mut Exec<'_>, id: &str, new_type: &str, migrate: &bool) -> R<()> {
     use openstack_sdk::api::block_storage::v3::volume::os_retype as m;
     let policy = if *migrate {
@@ -137,6 +147,9 @@ pub(super) async fn volume_retype(x: &mut Exec<'_>, id: &str, new_type: &str, mi
     Ok(())
 }
 
+/// `VolumeUploadImage`: `POST /volumes/{id}/action` with `os-volume_upload_image` (3.1, for
+/// `visibility`), container format `bare`. `force` uploads an attached volume. Fails on a disk
+/// format or visibility Cinder doesn't know.
 pub(super) async fn volume_upload_image(
     x: &mut Exec<'_>,
     id: &str,
@@ -189,6 +202,8 @@ pub(super) async fn volume_upload_image(
     Ok(())
 }
 
+/// `VolumeTransferCreate`: `POST /os-volume-transfer`. Cinder returns the transfer ID and its
+/// authorization key once: both go back as a `Secret` for the receiving project.
 pub(super) async fn volume_transfer_create(x: &mut Exec<'_>, volume_id: &str, name: &Option<String>) -> R<()> {
     use openstack_sdk::api::block_storage::v3::os_volume_transfer::create as m;
     let mut b = m::TransferBuilder::default();
@@ -214,6 +229,8 @@ pub(super) async fn volume_transfer_create(x: &mut Exec<'_>, volume_id: &str, na
     Ok(())
 }
 
+/// `VolumeTransferAccept`: `POST /os-volume-transfer/{transfer_id}/accept` with the key, which
+/// moves the volume into the current project.
 pub(super) async fn volume_transfer_accept(x: &mut Exec<'_>, transfer_id: &str, auth_key: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::os_volume_transfer::accept as m;
     let body = m::AcceptBuilder::default()
@@ -231,6 +248,7 @@ pub(super) async fn volume_transfer_accept(x: &mut Exec<'_>, transfer_id: &str, 
     Ok(())
 }
 
+/// `VolumeSnapshotCreate`: `POST /snapshots`; `force` snapshots an attached (`in-use`) volume.
 pub(super) async fn volume_snapshot_create(
     x: &mut Exec<'_>,
     volume_id: &str,
@@ -257,6 +275,7 @@ pub(super) async fn volume_snapshot_create(
     Ok(())
 }
 
+/// `SnapshotUpdate`: `PUT /snapshots/{id}` with the name and description (`""` clears it).
 pub(super) async fn snapshot_update(x: &mut Exec<'_>, id: &str, name: &str, description: &Option<String>) -> R<()> {
     use openstack_sdk::api::block_storage::v3::snapshot::set as m;
     let body = m::SnapshotBuilder::default()
@@ -269,12 +288,14 @@ pub(super) async fn snapshot_update(x: &mut Exec<'_>, id: &str, name: &str, desc
     Ok(())
 }
 
+/// `SnapshotDelete`: `DELETE /snapshots/{id}`.
 pub(super) async fn snapshot_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::snapshot::delete as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `SnapshotSetMetadata`: replaces all the snapshot's metadata, `PUT /snapshots/{id}/metadata`.
 pub(super) async fn snapshot_set_metadata(x: &mut Exec<'_>, id: &str, metadata: &[(String, String)]) -> R<()> {
     use openstack_sdk::api::block_storage::v3::snapshot::metadata::replace as m;
     let md = checked_metadata(metadata)?;
@@ -289,11 +310,13 @@ pub(super) async fn snapshot_set_metadata(x: &mut Exec<'_>, id: &str, metadata: 
     Ok(())
 }
 
+/// `VolumeGroupDelete`: sends [`volume_group_delete`], optionally with the group's volumes.
 pub(super) async fn delete_volume_group(x: &mut Exec<'_>, id: &str, delete_volumes: &bool) -> R<()> {
     x.send(volume_group_delete(id, *delete_volumes)?).await?;
     Ok(())
 }
 
+/// `VolumeGroupCreate`: `POST /groups` (3.13) with a group type and at least one volume type.
 pub(super) async fn volume_group_create(
     x: &mut Exec<'_>,
     name: &str,
@@ -333,6 +356,8 @@ pub(super) async fn volume_group_create(
     Ok(())
 }
 
+/// `VolumeGroupCreateFrom`: `POST /groups/action` with `create-from-src` (3.14), from either a
+/// source group or a group snapshot, never both.
 pub(super) async fn volume_group_create_from(
     x: &mut Exec<'_>,
     name: &str,
@@ -367,6 +392,7 @@ pub(super) async fn volume_group_create_from(
     Ok(())
 }
 
+/// `VolumeGroupUpdate`: `PUT /groups/{id}` (3.13) with the name and description.
 pub(super) async fn volume_group_update(x: &mut Exec<'_>, id: &str, name: &str, description: &Option<String>) -> R<()> {
     use openstack_sdk::api::block_storage::v3::group::set_313 as m;
     // An empty description is sent as `""` so clearing it works.
@@ -386,6 +412,8 @@ pub(super) async fn volume_group_update(x: &mut Exec<'_>, id: &str, name: &str, 
     Ok(())
 }
 
+/// `VolumeGroupSetVolumes`: `PUT /groups/{id}` (3.13) with `add_volumes` / `remove_volumes`,
+/// each one comma-separated string of volume IDs.
 pub(super) async fn volume_group_set_volumes(
     x: &mut Exec<'_>,
     id: &str,
@@ -426,6 +454,8 @@ pub(super) async fn volume_group_set_volumes(
     Ok(())
 }
 
+/// `GroupSnapshotCreate`: `POST /group_snapshots` (3.14), a consistent snapshot of every volume in
+/// the group.
 pub(super) async fn group_snapshot_create(
     x: &mut Exec<'_>,
     group_id: &str,
@@ -450,12 +480,15 @@ pub(super) async fn group_snapshot_create(
     Ok(())
 }
 
+/// `GroupSnapshotDelete`: `DELETE /group_snapshots/{id}` (3.14).
 pub(super) async fn group_snapshot_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::group_snapshot::delete_314 as m;
     x.send(m::Request::builder().id(id).build().map_err(build_err)?).await?;
     Ok(())
 }
 
+/// `BackupCreate`: `POST /backups` (3.51), optionally incremental, forced (attached volume) or
+/// from a snapshot. `incremental` and `force` are only sent when set.
 pub(super) async fn backup_create(
     x: &mut Exec<'_>,
     volume_id: &str,
@@ -494,6 +527,8 @@ pub(super) async fn backup_create(
     Ok(())
 }
 
+/// `BackupUpdate`: `PUT /backups/{id}` (3.9, the first that allows it) with the name and
+/// description.
 pub(super) async fn backup_update(x: &mut Exec<'_>, id: &str, name: &str, description: &Option<String>) -> R<()> {
     use openstack_sdk::api::block_storage::v3::backup::set_39 as m;
     // An empty description is sent as `""` so clearing it works.
@@ -513,6 +548,8 @@ pub(super) async fn backup_update(x: &mut Exec<'_>, id: &str, name: &str, descri
     Ok(())
 }
 
+/// `BackupRestore`: `POST /backups/{id}/restore`, over `volume_id` when given (its data is
+/// replaced), else into a new volume named `name`.
 pub(super) async fn backup_restore(
     x: &mut Exec<'_>,
     id: &str,
@@ -538,6 +575,7 @@ pub(super) async fn backup_restore(
     Ok(())
 }
 
+/// `BackupDelete`: `DELETE /backups/{id}`.
 pub(super) async fn backup_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     use openstack_sdk::api::block_storage::v3::backup::delete as m;
     x.send(

@@ -71,6 +71,8 @@ impl Lang {
     }
 }
 
+/// Builds the [`K`] enum and its English / Spanish table from one `Key => "en", "es";` list,
+/// so a key can't exist in one language and not the other.
 macro_rules! translations {
     ($($key:ident => $en:literal, $es:literal;)*) => {
         /// Translation keys.
@@ -140,7 +142,7 @@ translations! {
     GroupMembers => "Group Members", "Miembros del grupo";
     ImpliedRoles => "Implied Roles", "Roles implícitos";
     Quotas => "Quotas", "Cuotas";
-    // Project › Quotas (roadmap 82)
+    // Project › Quotas
     QuotaCol => "Quota", "Cuota";
     QuotaUsed => "Used", "En uso";
     QuotaReserved => "Reserved", "Reservado";
@@ -213,7 +215,7 @@ translations! {
     ServerGroups => "Server Groups", "Grupos de servidores";
     Volumes => "Volumes", "Volúmenes";
     Snapshots => "Snapshots", "Instantáneas";
-    // Volume groups (roadmap 5); *Delete Group(s)* reuse the Identity keys.
+    // Volume groups; *Delete Group(s)* reuse the Identity keys.
     GroupSnapshots => "Group Snapshots", "Instantáneas de grupo";
     VolumeGroup => "Group", "Grupo";
     GroupType => "Group Type", "Tipo de grupo";
@@ -247,7 +249,7 @@ translations! {
 
     // Generic table
     FilterPlaceholder => "Filter…", "Filtrar…";
-    // Paged lists (roadmap 88)
+    // Paged lists
     FilterBy => "Filter by", "Filtrar por";
     FilterApply => "Filter", "Filtrar";
     FilterSearch => "Search", "Buscar";
@@ -773,7 +775,7 @@ translations! {
     VnicSmartNic => "Smart NIC", "Smart NIC";
     VnicRemoteManaged => "Remote Managed", "Gestionado remotamente";
 
-    // Orchestration (Heat, roadmap 62)
+    // Orchestration (Heat)
     Stacks => "Stacks", "Pilas";
     StackTopology => "Topology", "Topología";
     StackResources => "Resources", "Recursos";
@@ -842,7 +844,7 @@ translations! {
     Aliases => "Aliases", "Alias";
     Function => "Function", "Función";
     Minutes => "min", "min";
-    // Template Generator (roadmap 92)
+    // Template Generator
     TemplateGenerator => "Template Generator", "Generador de plantillas";
     TgOtherType => "Other type…", "Otro tipo…";
     TgAddResource => "Add a resource", "Añadir un recurso";
@@ -883,7 +885,7 @@ translations! {
     TgRemoveLink => "Remove link", "Quitar enlace";
     TgLinkFailed => "That list property is not a JSON list; fix it in the form first.", "Esa propiedad de lista no es una lista JSON; corrígela antes en el formulario.";
 
-    // Alarming (Aodh, roadmap 79)
+    // Alarming (Aodh)
     Monitoring => "Monitoring", "Monitorización";
     Alarms => "Alarms", "Alarmas";
     AlarmState => "State", "Estado";
@@ -971,7 +973,7 @@ translations! {
     InsufficientDataActionsHelp => "URLs called when there is not enough data to evaluate, one per line.", "URL a las que se llama cuando no hay datos suficientes para evaluar, una por línea.";
     RepeatActionsHelp => "Call the actions on every evaluation while the alarm stays in the state, not only on entering it.", "Llamar a las acciones en cada evaluación mientras la alarma siga en el estado, no solo al entrar en él.";
 
-    // Key Manager (Barbican, roadmap 55)
+    // Key Manager (Barbican)
     KeyManager => "Key Manager", "Gestor de claves";
     Secrets => "Secrets", "Secretos";
     Containers => "Containers", "Contenedores";
@@ -1033,7 +1035,7 @@ translations! {
     SecretInUse => "Services using these secrets (consumers) stop working when they are deleted.", "Los servicios que usan estos secretos (consumidores) dejan de funcionar al eliminarlos.";
     SecretConsumersOf => "In use by", "En uso por";
     ContainerKeepsSecrets => "Only the container is deleted; the secrets in it stay.", "Solo se elimina el contenedor; sus secretos se conservan.";
-    // Key Manager › Orders (roadmap 58)
+    // Key Manager › Orders
     Orders => "Orders", "Pedidos";
     OrderKey => "Order Key", "Pedir clave";
     DeleteOrder => "Delete Order", "Eliminar pedido";
@@ -1058,7 +1060,7 @@ translations! {
     EditTrunk => "Edit Trunk", "Editar trunk";
     DeleteTrunk => "Delete Trunk", "Eliminar trunk";
     DeleteTrunks => "Delete Trunks", "Eliminar trunks";
-    // Firewall (FWaaS v2, roadmap 93): neutron-fwaas-dashboard's names
+    // Firewall (FWaaS v2): neutron-fwaas-dashboard's names
     Firewall => "Firewall", "Cortafuegos";
     FirewallGroups => "Firewall Groups", "Grupos de cortafuegos";
     FirewallPolicies => "Firewall Policies", "Políticas de cortafuegos";
@@ -1317,7 +1319,7 @@ translations! {
     PortTo => "To Port", "Puerto final";
     RemoteCidr => "Remote CIDR", "CIDR remoto";
     RemoteGroup => "Remote Security Group", "Grupo de seguridad remoto";
-    // *Add Rule* help under each field (roadmap 61).
+    // *Add Rule* help under each field.
     DirectionHelp => "Ingress: traffic arriving at the instances. Egress: traffic leaving them.", "Entrada: tráfico que llega a las instancias. Salida: tráfico que sale de ellas.";
     EtherTypeHelp => "IPv4 or IPv6; it must match the family of the remote CIDR.", "IPv4 o IPv6; debe coincidir con la familia del CIDR remoto.";
     IpProtocolHelp => "Empty: any protocol (then ports don't apply). Otherwise TCP, UDP or ICMP.", "Vacío: cualquier protocolo (los puertos no se aplican). Si no, TCP, UDP o ICMP.";
@@ -1335,7 +1337,7 @@ translations! {
     Disassociate => "Disassociate", "Desasociar";
     PortToAssociate => "Port to be associated", "Puerto que se asociará";
 
-    // Quick wins (roadmap 1, 6, 8, 9)
+    // Quick wins
     Unlocked => "Unlocked", "Desbloqueada";
     FromVolume => "from volume", "desde volumen";
     Ephemeral => "Ephemeral Disk", "Disco efímero";
@@ -1350,7 +1352,7 @@ translations! {
     Service => "Service", "Servicio";
     ServiceEndpoint => "Service Endpoint", "Endpoint del servicio";
 
-    // Error page (roadmap 14)
+    // Error page
     BackToSafety => "Back to safety", "Volver a un lugar seguro";
     Retry => "Retry", "Reintentar";
     TechnicalDetails => "Technical details", "Detalles técnicos";
@@ -1379,13 +1381,13 @@ translations! {
     ErrInternalText => "An unexpected error occurred while loading this page.", "Se ha producido un error inesperado al cargar esta página.";
     RegionFallback => "The region you were using is not available any more. Moonlight switched to", "La región que usabas ya no está disponible. Moonlight ha cambiado a";
 
-    // Theme (roadmap 18)
+    // Theme
     Theme => "Theme", "Tema";
     ThemeLight => "Light", "Claro";
     ThemeDark => "Dark", "Oscuro";
     ThemeSystem => "Auto", "Automático";
 
-    // Network Topology (roadmap 20)
+    // Network Topology
     NetworkTopology => "Network Topology", "Topología de red";
     TopologyTab => "Topology", "Topología";
     GraphTab => "Graph", "Grafo";
@@ -1404,7 +1406,7 @@ translations! {
     Connections => "Connections", "Conexiones";
     Router => "Router", "Router";
     Gateway => "gateway", "puerta de enlace";
-    // Instance actions parity (roadmap 21)
+    // Instance actions parity
     AssociateFloatingIp => "Associate Floating IP", "Asociar IP flotante";
     FloatingIp => "Floating IP", "IP flotante";
     AllocateNewIp => "Allocate a new IP from a pool", "Asignar una IP nueva de un pool";
@@ -1440,7 +1442,7 @@ translations! {
     StartInstances => "Start Instances", "Iniciar instancias";
     ShutOffInstances => "Shut Off Instances", "Apagar instancias";
     SoftRebootInstances => "Soft Reboot Instances", "Reinicio suave de instancias";
-    // Volume actions parity (roadmap 22)
+    // Volume actions parity
     ChangeVolumeType => "Change Volume Type", "Cambiar tipo de volumen";
     NewVolumeType => "Type", "Tipo";
     MigrateOnDemand => "Allow migration to another backend", "Permitir la migración a otro backend";
@@ -1483,7 +1485,7 @@ translations! {
     AppCredHelp => "An application credential lets an application authenticate as you, with your roles in the current project (or some of them), without your password.", "Una credencial de aplicación permite a una aplicación autenticarse como usted, con sus roles en el proyecto actual (o parte de ellos), sin su contraseña.";
     VolumeMessages => "Messages", "Mensajes";
     MessageLevel => "Level", "Nivel";
-    // Admin › System Information (roadmap 85)
+    // Admin › System Information
     SystemInformation => "System Information", "Información del sistema";
     CatalogServices => "Services", "Servicios";
     ComputeServices => "Compute Services", "Servicios de cómputo";
@@ -1495,7 +1497,7 @@ translations! {
     Endpoints => "Endpoints", "Endpoints";
     Disabled => "Disabled", "Deshabilitado";
     QuotaDefaults => "Defaults", "Valores predeterminados";
-    // Admin › Compute, Volume, Network (roadmap 85)
+    // Admin › Compute, Volume, Network
     VolumeAdminGroup => "Volume", "Volumen";
     Hypervisors => "Hypervisors", "Hipervisores";
     HypervisorTab => "Hypervisor", "Hipervisor";
@@ -1553,7 +1555,7 @@ translations! {
     NetworkQuotas => "Network Quotas", "Cuotas de red";
     QuotaName => "Quota Name", "Nombre de la cuota";
     MetadataDefinitions => "Metadata Definitions", "Definiciones de metadatos";
-    // Modules (roadmap 19)
+    // Modules
     Modules => "Detected capabilities", "Capacidades detectadas";
     ModulesUnknown => "Not detected yet: every panel and action is shown.", "Aún sin detectar: se muestran todos los paneles y acciones.";
     ComputeApi => "Compute API (Nova)", "API de cómputo (Nova)";
@@ -1561,7 +1563,7 @@ translations! {
     LoadBalancerApi => "Load Balancer API (Octavia)", "API de balanceadores (Octavia)";
     HiddenPanels => "Hidden panels", "Paneles ocultos";
     NetworkExtensions => "Network extensions", "Extensiones de red";
-    // Bulk actions (roadmap 10)
+    // Bulk actions
     SelectRow => "Select", "Seleccionar";
     SelectAllRows => "Select all visible rows", "Seleccionar todas las filas visibles";
     DeleteInstances => "Delete Instances", "Eliminar instancias";
@@ -1608,6 +1610,7 @@ pub fn page_range(lang: Lang, from: usize, shown: usize, count: Option<(u64, boo
     }
 }
 
+/// Footer count of a table with no paging ("Displaying 3 items"), singular for one.
 pub fn displaying(lang: Lang, n: usize) -> String {
     match (lang, n) {
         (Lang::EnUs, 1) => "Displaying 1 item".into(),
@@ -1617,7 +1620,7 @@ pub fn displaying(lang: Lang, n: usize) -> String {
     }
 }
 
-/// *Network Topology* over `[network] topology_max_networks` (roadmap 100).
+/// *Network Topology* over `[network] topology_max_networks`.
 pub fn topology_too_many(lang: Lang, n: usize, max: usize) -> String {
     match lang {
         Lang::EnUs => format!("This project sees {n} networks, more than the {max} the topology draws."),
@@ -1651,7 +1654,7 @@ pub fn age(lang: Lang, seconds: i64) -> String {
 
 /// [`age`] as its units (`["3 semanas", "2 días"]`), one or two, never empty: a
 /// table cell renders each unbreakable so a narrow column wraps between them
-/// (roadmap 72).
+///.
 pub fn age_parts(lang: Lang, seconds: i64) -> Vec<String> {
     const UNITS: [(i64, &str, &str, &str, &str); 6] = [
         (365 * 86_400, "year", "years", "año", "años"),
@@ -1771,6 +1774,8 @@ pub fn weekday_initials(lang: Lang) -> &'static [&'static str; 7] {
     }
 }
 
+/// Nova server group policy (`affinity`, `soft-anti-affinity`, …) in words; an unknown policy
+/// is shown as Nova sent it.
 pub fn server_group_policy(lang: Lang, p: &str) -> String {
     let k = match p {
         "affinity" => K::PolicyAffinity,
@@ -1838,7 +1843,7 @@ pub fn resource_status(lang: Lang, status: &str) -> String {
         "available" => ("Available", "Disponible"),
         "in-use" => ("In-use", "En uso"),
         "down" => ("Down", "Inactivo"),
-        // A FWaaS firewall group that isn't applied: no ports, or no policy (roadmap 93).
+        // A FWaaS firewall group that isn't applied: no ports, or no policy.
         "inactive" => ("Inactive", "Sin aplicar"),
         "error" => ("Error", "Error"),
         "creating" => ("Creating", "Creando"),
@@ -1856,7 +1861,7 @@ pub fn resource_status(lang: Lang, status: &str) -> String {
         "pending_create" => ("Pending Create", "Creación pendiente"),
         "pending_update" => ("Pending Update", "Actualización pendiente"),
         "pending_delete" => ("Pending Delete", "Eliminación pendiente"),
-        // A Barbican order being processed (roadmap 58).
+        // A Barbican order being processed.
         "pending" => ("Pending", "Pendiente"),
         _ => return title_case(status),
     };
@@ -1866,7 +1871,7 @@ pub fn resource_status(lang: Lang, status: &str) -> String {
     }
 }
 
-/// A Heat status (`CREATE_COMPLETE`, `UPDATE_IN_PROGRESS`…, roadmap 62):
+/// A Heat status (`CREATE_COMPLETE`, `UPDATE_IN_PROGRESS`…):
 /// action and state translated apart, as Horizon shows them ("Create Complete").
 pub fn stack_status(lang: Lang, status: &str) -> String {
     let Some((action, state)) = ["_IN_PROGRESS", "_COMPLETE", "_FAILED"]
@@ -1901,7 +1906,7 @@ pub fn stack_status(lang: Lang, status: &str) -> String {
     }
 }
 
-/// Barbican's secret and container types and container roles (roadmap 55),
+/// Barbican's secret and container types and container roles,
 /// humanised; unknown ones title-cased.
 pub fn key_manager_term(lang: Lang, term: &str) -> String {
     let (en, es) = match term {
@@ -1917,7 +1922,7 @@ pub fn key_manager_term(lang: Lang, term: &str) -> String {
         "public_key" => ("Public Key", "Clave pública"),
         "private_key_passphrase" => ("Private Key Passphrase", "Frase de paso de la clave privada"),
         "intermediates" => ("Intermediates", "Intermedios"),
-        // Order types (roadmap 58).
+        // Order types.
         "key" => ("Symmetric Key", "Clave simétrica"),
         "asymmetric" => ("RSA Key Pair", "Par de claves RSA"),
         _ => return title_case(term),
@@ -1928,6 +1933,8 @@ pub fn key_manager_term(lang: Lang, term: &str) -> String {
     }
 }
 
+/// Fallback label for a status or term with no translation: lower case, `_` as spaces,
+/// first letter capitalised (`SHUTOFF_X` → "Shutoff x").
 fn title_case(s: &str) -> String {
     let lower = s.to_lowercase().replace('_', " ");
     let mut c = lower.chars();
@@ -1940,7 +1947,7 @@ fn title_case(s: &str) -> String {
 /// Formats a size given in bytes: `1.5 GB`, `512 MB`…
 /// Number with `places` decimals; `Lang::EsEs` uses a decimal comma.
 pub fn decimal(lang: Lang, v: f64, places: usize) -> String {
-    // Never `-0.00` (roadmap 60).
+    // Never `-0.00`.
     let s = crate::model::fixed(v, places);
     match lang {
         Lang::EnUs => s,
@@ -1949,7 +1956,7 @@ pub fn decimal(lang: Lang, v: f64, places: usize) -> String {
 }
 
 /// [`decimal`] with the integer part grouped by thousands: `1,234,567.89` in
-/// English, `1.234.567,89` in Spanish (roadmap 86). Spanish leaves four-digit
+/// English, `1.234.567,89` in Spanish. Spanish leaves four-digit
 /// numbers ungrouped (`1234,50`), as the RAE and CLDR's `es` (minimum grouping
 /// digits 2) do. For display only: CSVs keep [`crate::model::fixed`].
 pub fn grouped(lang: Lang, v: f64, places: usize) -> String {
@@ -1979,7 +1986,7 @@ pub fn grouped(lang: Lang, v: f64, places: usize) -> String {
     out
 }
 
-/// A background job's progress (roadmap 87): `12 / 40`, grouped like [`grouped`].
+/// A background job's progress: `12 / 40`, grouped like [`grouped`].
 pub fn job_count(lang: Lang, done: usize, total: usize) -> String {
     format!("{} / {}", grouped(lang, done as f64, 0), grouped(lang, total as f64, 0))
 }
@@ -2307,7 +2314,7 @@ mod tests {
     fn decimal_uses_a_comma_in_spanish() {
         assert_eq!(decimal(Lang::EnUs, 1234.567, 2), "1234.57");
         assert_eq!(decimal(Lang::EsEs, 0.5, 2), "0,50");
-        // An empty `f64` sum is `-0.0` (roadmap 60): zero usage must not read `-0.00`.
+        // An empty `f64` sum is `-0.0`: zero usage must not read `-0.00`.
         assert_eq!(decimal(Lang::EnUs, -0.0, 2), "0.00");
         assert_eq!(decimal(Lang::EsEs, -0.0, 2), "0,00");
         assert_eq!(decimal(Lang::EnUs, -0.001, 2), "0.00", "rounds to zero");
@@ -2339,11 +2346,7 @@ mod tests {
             ("-1,234,567".into(), "-1.234.567".into()),
             "the sign stays in front"
         );
-        assert_eq!(
-            both(-0.0, 2),
-            ("0.00".into(), "0,00".into()),
-            "never -0.00 (roadmap 60)"
-        );
+        assert_eq!(both(-0.0, 2), ("0.00".into(), "0,00".into()), "never -0.00");
         assert_eq!(both(100000.0, 0), ("100,000".into(), "100.000".into()));
     }
 

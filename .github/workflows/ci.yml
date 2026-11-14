@@ -1,4 +1,4 @@
-# The AGENTS.md §2 checks on every push to main and every pull request (roadmap 105).
+# The AGENTS.md §2 checks on every push to main and every pull request.
 # Tests touch no network and need no secrets; nothing cloud-specific is read here.
 name: ci
 
@@ -65,6 +65,22 @@ jobs:
         with:
           tool: cargo-nextest
       - run: cargo nextest run --features ssr
+
+  doc:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: doc
+      # Broken intra-doc links, bare URLs, bad code blocks; both builds, as clippy.
+      - run: cargo doc --no-deps --document-private-items --features ssr
+      - run: cargo doc --no-deps --document-private-items --lib --features hydrate --target wasm32-unknown-unknown
 
   markdown:
     runs-on: ubuntu-latest

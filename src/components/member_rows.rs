@@ -1,4 +1,4 @@
-//! The members editor of the load balancer dialogs (roadmap 54), laid out like
+//! The members editor of the load balancer dialogs, laid out like
 //! Horizon's *Pool Members* step: an *Allocated Members* table (IP address,
 //! subnet, port, weight, *Remove*; a chevron opens the row's monitor address
 //! and port, admin state, backup and name) with *Add external member* under it,

@@ -1,4 +1,4 @@
-//! Aodh (roadmap 79): alarms and their history.
+//! Aodh: alarms and their history.
 
 use super::*;
 
@@ -9,6 +9,7 @@ pub fn alarms(raw: &[Value]) -> Vec<AlarmRow> {
     out
 }
 
+/// One alarm, its rule already summarised by `alarm_rule`; unnamed alarms show their ID.
 fn alarm_row(x: &Value, rule: &AlarmRule) -> AlarmRow {
     let id = s(x, "alarm_id").unwrap_or_default();
     AlarmRow {
@@ -63,6 +64,7 @@ fn alarm_spec(x: &Value) -> AlarmSpec {
     }
 }
 
+/// The alarm's `time_constraints` (when it may fire: cron `start`, `duration` in seconds).
 fn time_constraints(x: &Value) -> Vec<AlarmTimeConstraint> {
     arr(x, "time_constraints")
         .iter()
@@ -234,7 +236,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    // --- Alarming (roadmap 79) ---
+    // --- Alarming ---
 
     #[test]
     fn alarms_map_every_rule_type() {

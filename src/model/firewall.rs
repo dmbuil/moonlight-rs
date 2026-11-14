@@ -1,4 +1,4 @@
-//! Neutron FWaaS v2 (roadmap 93).
+//! Neutron FWaaS v2.
 
 use super::*;
 
@@ -12,7 +12,9 @@ pub struct FirewallRuleRow {
     pub protocol: Option<String>,
     /// 4 or 6.
     pub ip_version: u8,
+    /// An address or CIDR.
     pub source_ip: Option<String>,
+    /// A port or a `first:last` range, as FWaaS stores it.
     pub source_port: Option<String>,
     pub destination_ip: Option<String>,
     pub destination_port: Option<String>,
@@ -79,6 +81,7 @@ pub struct FirewallGroupRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    /// `None`: that direction is not filtered.
     pub ingress: Option<Ref>,
     pub egress: Option<Ref>,
     /// Resolved to their router or instance on the detail page; the list
@@ -226,4 +229,4 @@ pub fn validate_ip_or_cidr(a: &str, version: u8) -> Result<(), String> {
     Ok(())
 }
 
-// --- Orchestration (Heat, roadmap 62) ------------------------------------------
+// --- Orchestration (Heat) ------------------------------------------

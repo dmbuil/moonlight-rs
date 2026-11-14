@@ -4,10 +4,13 @@ use super::*;
 
 // Launch wizard rules, following Horizon's *Launch Instance*.
 
+/// The boot source is an image or an instance snapshot (a Glance image either way), so the
+/// *Create New Volume* choice and the image's size rules apply.
 fn image_like(v: &Vals) -> bool {
     matches!(v.get("source").map(String::as_str), Some("image" | "instance_snapshot"))
 }
 
+/// Nova creates a volume from the image to boot from (*Create New Volume* = Yes).
 fn creates_volume(v: &Vals) -> bool {
     image_like(v) && v.get("create_volume").map(String::as_str) == Some("true")
 }
@@ -17,6 +20,7 @@ fn boots_from_volume(v: &Vals) -> bool {
     !image_like(v) || creates_volume(v)
 }
 
+/// The set the *Source* step's table lists for the chosen boot source.
 fn source_set(v: &Vals) -> Option<ChoiceSet> {
     match v.get("source").map(String::as_str) {
         Some("image") => Some(ChoiceSet::LaunchImages),
@@ -27,6 +31,7 @@ fn source_set(v: &Vals) -> Option<ChoiceSet> {
     }
 }
 
+/// The choice of `set` whose value is `id`, once the set has loaded.
 pub(super) fn chosen<'a>(sets: &'a Sets, set: Option<ChoiceSet>, id: Option<&String>) -> Option<&'a Choice> {
     sets.get(&set?)?.iter().find(|c| Some(&c.value) == id)
 }
@@ -38,6 +43,7 @@ fn image_facts<'a>(v: &Vals, sets: &'a Sets) -> Option<&'a Facts> {
         .flatten()
 }
 
+/// Why a flavor is too small for the image: under the field and as its tooltip in the table.
 fn flavor_message(lang: Lang, issue: FlavorIssue) -> String {
     match issue {
         FlavorIssue::Ram(mb) => crate::i18n::flavor_needs_ram(lang, mb),
@@ -51,6 +57,7 @@ pub fn launch_dialog(lang: Lang) -> Dialog {
     launch_with(lang, &crate::components::dialog::prefs().launch, None)
 }
 
+/// The *Boot Source* choices, in Horizon's order; `[launch]` can turn some off.
 const BOOT_SOURCES: [(&str, K); 4] = [
     ("image", K::BootImage),
     ("instance_snapshot", K::BootInstanceSnapshot),
@@ -255,14 +262,16 @@ pub fn instance_items(lang: Lang, inst: &Instance) -> Vec<MenuItem> {
     let c = caps();
     allowed(&inst.status, Some(inst.locked), busy)
         .into_iter()
-        // Version-dependent actions hide on clouds that are too old (roadmap 19).
+        // Version-dependent actions hide on clouds that are too old.
         .filter(|op| *op != Op::Rebuild || needs::REBUILD.met(&c))
-        // Without ports Nova has nowhere to put a group and answers 400 (roadmap 42).
+        // Without ports Nova has nowhere to put a group and answers 400.
         .filter(|op| *op != Op::EditSecurityGroups || !inst.addresses.is_empty())
         .map(|op| instance_item(lang, inst, op))
         .collect()
 }
 
+/// The menu entry of one [`Op`] for `inst`: its dialog (one-click actions still confirm, like
+/// Horizon) and the `OsAction` it builds. Also used by Admin › Instances.
 pub(super) fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
     let tr = |k| t(lang, k).to_string();
     let (id, name) = (inst.id.clone(), inst.name.clone());
@@ -515,7 +524,7 @@ pub fn associate_ip_dialog(lang: Lang, server_id: &str) -> Dialog {
                 Source::Of(ChoiceSet::AssociablePorts, server_id.to_string()),
             )
             .required()
-            // Search box however few ports there are (roadmap 110).
+            // Search box however few ports there are.
             .searchable(),
         ],
         move |v| {
@@ -590,7 +599,7 @@ pub fn security_groups_dialog(lang: Lang, server_id: &str, current: &[String]) -
         t(lang, K::EditSecurityGroups),
         t(lang, K::Save),
         // *Allocated / Available* tables with a filter (name and description), for
-        // projects with many groups (roadmap 43).
+        // projects with many groups.
         vec![
             Field::pick_many(
                 "groups",
@@ -635,7 +644,7 @@ pub fn port_security_groups_dialog(lang: Lang, server_id: &str) -> Dialog {
             )
             .required(),
             // Same filtered tables as *Edit Security Groups*; the port's groups are
-            // preset by `on_change` as the same comma list (roadmap 43).
+            // preset by `on_change` as the same comma list.
             Field::pick_many(
                 "groups",
                 t(lang, K::SecurityGroups),
@@ -721,7 +730,7 @@ const VNIC_TYPES: &[(&str, K)] = &[
 /// off while port security is off). `groups_first` opens it on the second tab,
 /// as Horizon's *Edit Security Groups* does. Sends only what changed
 /// ([`PortSettings::changes`]). VNIC type needs `binding`, port security
-/// `port-security` (roadmap 44).
+/// `port-security`.
 pub fn edit_port_dialog(lang: Lang, port_id: &str, current: &PortSettings, groups_first: bool) -> Dialog {
     let (id, before) = (port_id.to_string(), current.clone());
     let caps = caps();
@@ -1129,7 +1138,7 @@ mod tests {
     fn associate_ip_picks_an_existing_ip_or_allocates_one() {
         let d = associate_ip_dialog(Lang::EnUs, "s1");
         let port = d.fields.iter().find(|f| f.name == "port").unwrap();
-        assert!(port.searchable, "search box however few ports (roadmap 110)");
+        assert!(port.searchable, "search box however few ports");
         let a = (d.build)(&vals(&[("allocate", "false"), ("ip", "f1"), ("port", "p1")])).unwrap();
         assert_eq!(
             a,

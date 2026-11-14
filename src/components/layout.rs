@@ -42,12 +42,19 @@ pub fn hard_reload(to: Option<&str>) {
     let _ = to;
 }
 
+/// Closes the `<details>` menu behind `r` (after a pick), if it is still mounted.
 fn close(r: NodeRef<Details>) {
     if let Some(d) = r.get_untracked() {
         d.set_open(false);
     }
 }
 
+/// The frame of every signed-in page, the parent route of the three dashboards (`app.rs`):
+/// header with dashboards, write badge, region, project and user menus, the panel nav, the
+/// session alerts (password expiry, region fallback), and the outlet. It provides the
+/// [`Dialogs`], [`Jobs`](crate::components::jobs::Jobs) and table-state contexts, and gates the
+/// outlet on the session's capabilities and roles, read from the session info so
+/// the server renders the same page as the browser.
 #[component]
 pub fn Layout() -> impl IntoView {
     let i18n = use_i18n();
@@ -84,7 +91,7 @@ pub fn Layout() -> impl IntoView {
                 </a>
                 <nav class="dashboards" aria-label="Dashboards">
                     <A href="/project" attr:class=move || if dash() == K::Project { "active" } else { "" }>{move || i18n.t(K::Project)}</A>
-                    // Horizon shows the Admin dashboard to admins only (roadmap 85).
+                    // Horizon shows the Admin dashboard to admins only.
                     // From `info`, not
                     // `dialogs.caps`: those were the fail-open defaults during SSR, so a
                     // non-admin saw *Admin* until hydration (after a project switch).
@@ -139,8 +146,8 @@ pub fn Layout() -> impl IntoView {
                     errors.get().into_iter().map(|(_, e)| e.to_string()).collect::<Vec<_>>().join("\n")
                 )/>
             }>
-                // A direct URL to a panel this region doesn't offer (roadmap 19), or
-                // one the user's roles don't allow (roadmap 85).
+                // A direct URL to a panel this region doesn't offer, or
+                // one the user's roles don't allow.
                 // Capabilities from `info`, not `dialogs.caps`: the effect above fills
                 // those only in the browser, so during SSR they were the defaults, where
                 // `Requires::Plugin` fails and every plugin page rendered *Service not
@@ -172,7 +179,7 @@ pub fn Layout() -> impl IntoView {
 }
 
 /// The read-only / dry-run badge (nothing when writes are on). At phone width
-/// only its eye shows (roadmap 101): it is a safety signal, never hidden.
+/// only its eye shows: it is a safety signal, never hidden.
 #[component]
 fn WriteBadge(mode: WriteMode) -> impl IntoView {
     let i18n = use_i18n();
@@ -205,7 +212,7 @@ fn place(path: &str) -> (K, Option<K>) {
     }
 }
 
-/// The header at phone width (roadmap 101): one slim bar with ☰ *Navigation*
+/// The header at phone width: one slim bar with ☰ *Navigation*
 /// (dashboards, then the current one's groups and panels), the project and the
 /// current place, the write badge's eye, and *Account* (region, project, the
 /// user menu). Always rendered, shown instead of the three bars by the
@@ -352,6 +359,8 @@ fn NavSheet(caps: crate::model::Capabilities) -> impl IntoView {
     }
 }
 
+/// The panel groups of the current dashboard (Horizon's left menu, here a bar of drop-downs),
+/// those the session's capabilities hide left out, with the active group and panel marked.
 #[component]
 fn PrimaryNav(info: Resource<Result<SessionInfo, AppError>>) -> impl IntoView {
     let i18n = use_i18n();
@@ -428,6 +437,8 @@ fn PrimaryNav(info: Resource<Result<SessionInfo, AppError>>) -> impl IntoView {
     }
 }
 
+/// The header's *Region* menu; `details` is shared through `RegionMenuRef` so an error page can
+/// open it to suggest another region.
 #[component]
 fn RegionMenu(info: SessionInfo, details: NodeRef<Details>) -> impl IntoView {
     let i18n = use_i18n();
@@ -478,6 +489,7 @@ fn RegionChoices(info: SessionInfo, #[prop(into)] on_pick: Callback<()>) -> impl
         .collect_view()
 }
 
+/// The header's project menu: the current project's name, and the projects to switch to.
 #[component]
 fn ProjectMenu(info: SessionInfo) -> impl IntoView {
     let i18n = use_i18n();
@@ -540,6 +552,7 @@ fn ProjectChoices(info: SessionInfo, #[prop(into)] on_pick: Callback<()>) -> imp
     }
 }
 
+/// A stand-alone language menu (the login page's header); signed in, the user menu has one.
 #[component]
 pub fn LanguageMenu() -> impl IntoView {
     let i18n = use_i18n();
@@ -674,6 +687,7 @@ pub fn ThemeMenu() -> impl IntoView {
     }
 }
 
+/// The header's user menu: the user name, their domain, then [`UserItems`].
 #[component]
 fn UserMenu(info: SessionInfo) -> impl IntoView {
     let i18n = use_i18n();
@@ -736,6 +750,7 @@ fn UserItems(info: SessionInfo, id: &'static str) -> impl IntoView {
     }
 }
 
+/// The ▾ after a menu's summary (decorative, `aria-hidden`).
 #[component]
 fn Caret() -> impl IntoView {
     view! {
@@ -756,6 +771,7 @@ pub fn MoonMark() -> impl IntoView {
     }
 }
 
+/// The eye of the dry-run [`WriteBadge`], the part that stays on narrow screens.
 #[component]
 fn EyeIcon() -> impl IntoView {
     view! {

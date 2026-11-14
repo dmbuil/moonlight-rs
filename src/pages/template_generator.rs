@@ -1,9 +1,9 @@
-//! Orchestration › *Template Generator* (Heat, roadmap 92): build a HOT
+//! Orchestration › *Template Generator* (Heat): build a HOT
 //! template from a palette of resource types, fill each resource's properties
 //! in a form generated from the type's schema, then copy, download or open it
 //! in *Launch Stack*. Reads only (resource types, template versions, a type's
 //! schema); the draft lives in this browser's `localStorage`. The model and the
-//! YAML are pure, in [`hot`](crate::components::hot).
+//! YAML are pure, in [`hot`].
 //!
 //! The resources are nodes on a canvas, as in Horizon: dragged from the
 //! palette, moved, and linked by dragging a node's handle onto another, which
@@ -36,6 +36,8 @@ const STORAGE_KEY: &str = "moonlight.template_generator.draft";
 /// Properties edited in a text area rather than a one-line input.
 const LONG_TEXT: &[&str] = &["user_data", "config", "script", "template", "content"];
 
+/// The draft saved in `localStorage`, if any parses. Browser only: the server renders without one
+/// so hydration matches, and the page loads it in an effect.
 fn load_draft() -> Option<Draft> {
     #[cfg(feature = "hydrate")]
     {
@@ -46,6 +48,7 @@ fn load_draft() -> Option<Draft> {
     None
 }
 
+/// Saves the draft to `localStorage`, best effort; a no-op on the server.
 fn save_draft(_d: &Draft) {
     #[cfg(feature = "hydrate")]
     if let Ok(Some(st)) = window().local_storage()
@@ -56,6 +59,7 @@ fn save_draft(_d: &Draft) {
     }
 }
 
+/// The browser's `confirm()` dialog; `false` on the server, where nothing calls it.
 fn confirm(_msg: &str) -> bool {
     #[cfg(feature = "hydrate")]
     {
@@ -82,7 +86,8 @@ fn glyph(kind: &str) -> AnyView {
     }
 }
 
-/// A resource type's icon at `size` px.
+/// A resource type's icon (`kind` is the Heat type, such as `OS::Nova::Server`) at `size` px,
+/// for the palette, the resource list and the editor.
 #[component]
 pub fn TypeIcon(#[prop(into)] kind: String, #[prop(default = 28.0)] size: f64) -> impl IntoView {
     view! {
@@ -288,6 +293,7 @@ fn palette_view(avail: Option<HashSet<String>>, add: impl Fn(String) + Copy + Se
 /// MIME type of a palette type dragged onto the canvas.
 const DRAG_MIME: &str = "application/x-moonlight-heat-type";
 
+/// Starts dragging a palette type: its name under [`DRAG_MIME`], as a copy.
 fn drag_type(ev: &leptos::ev::DragEvent, kind: &str) {
     if let Some(dt) = ev.data_transfer() {
         let _ = dt.set_data(DRAG_MIME, kind);
@@ -316,6 +322,7 @@ fn camel_breaks(s: &str) -> String {
 /// Version and description.
 #[component]
 fn TemplateCard(
+    /// The draft being edited, shared by every card.
     draft: RwSignal<Draft>,
     versions: LocalResource<Result<Timed<Vec<TemplateVersion>>, AppError>>,
 ) -> impl IntoView {
@@ -371,7 +378,9 @@ fn TemplateCard(
 #[component]
 fn ResourcesCard(
     draft: RwSignal<Draft>,
+    /// The name of the resource open in the editor.
     selected: RwSignal<Option<String>>,
+    /// Each resource type's schema, by type name, fetched once per type.
     schemas: RwSignal<HashMap<String, ResourceTypeDetail>>,
     problems: Memo<Vec<Problem>>,
 ) -> impl IntoView {
@@ -787,6 +796,7 @@ fn ResourceEditor(
     draft: RwSignal<Draft>,
     selected: RwSignal<Option<String>>,
     schemas: RwSignal<HashMap<String, ResourceTypeDetail>>,
+    /// The resource's name in the draft.
     name: String,
 ) -> impl IntoView {
     let i18n = use_i18n();
@@ -893,8 +903,11 @@ fn ResourceEditor(
 /// Where a property's value comes from, as the source select shows it.
 #[derive(Clone, Copy, PartialEq)]
 enum Source {
+    /// A literal typed in the field.
     Value,
+    /// A template parameter, by `get_param`.
     Param,
+    /// Another resource of the draft, by `get_resource`.
     Resource,
 }
 

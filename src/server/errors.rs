@@ -15,7 +15,7 @@ pub fn classify(context: &str, err: &str) -> AppError {
     let kind = if let Some(status) = http_status(err) {
         match status {
             // Aodh answers a policy refusal with 401 ("You are not authorized to
-            // create action: log://", roadmap 79); an expired token says
+            // create action: log://"); an expired token says
             // "requires authentication". Only the latter ends the session.
             401 if lower.contains("not authorized to") => ErrorKind::Forbidden,
             401 => ErrorKind::Unauthenticated,
@@ -51,7 +51,7 @@ pub fn classify(context: &str, err: &str) -> AppError {
     }
 }
 
-/// What the browser may see of a classified error (roadmap 50). Without
+/// What the browser may see of a classified error. Without
 /// `show_details`, `detail` becomes just the context (`"GET servers"`): the SDK
 /// text carries internal endpoint URIs. Kind, service and request ID stay, so
 /// the error page and a support ticket still have what they need.

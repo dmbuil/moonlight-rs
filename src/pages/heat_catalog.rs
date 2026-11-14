@@ -1,4 +1,4 @@
-//! Orchestration › Resource Types and Template Versions (Heat, roadmap 62):
+//! Orchestration › Resource Types and Template Versions (Heat):
 //! what the cloud's Heat accepts in templates. Read-only, GETs only; the type
 //! names and versions are the detail pages' path segments.
 
@@ -13,6 +13,7 @@ use crate::components::widgets::{PageHeader, Skeleton, dash, render};
 use crate::i18n::{K, use_i18n};
 use crate::model::*;
 
+/// Columns of Resource Types: the type name, linked to its schema page, and its description.
 fn type_columns() -> Vec<Col<ResourceTypeRow>> {
     vec![
         col(K::Type, |x: &ResourceTypeRow, _| {
@@ -47,6 +48,9 @@ pub fn ResourceTypesPage() -> impl IntoView {
     }
 }
 
+/// Columns of a resource type's Properties table: name, type, required, update allowed (whether
+/// Heat can change it in place on a stack update rather than replacing the resource), default and
+/// constraints, one per line.
 fn property_columns() -> Vec<Col<TypeProperty>> {
     vec![
         col(K::Name, |p: &TypeProperty, _| mono(p.name.clone())).sort_text(|p| p.name.clone()),
@@ -76,6 +80,7 @@ fn property_columns() -> Vec<Col<TypeProperty>> {
     ]
 }
 
+/// Columns of a resource type's Attributes table: what `get_attr` can read from the resource.
 fn attribute_columns() -> Vec<Col<TypeAttribute>> {
     vec![
         col(K::Name, |a: &TypeAttribute, _| mono(a.name.clone())).sort_text(|a| a.name.clone()),
@@ -124,6 +129,8 @@ pub fn ResourceTypeDetailPage() -> impl IntoView {
     }
 }
 
+/// Columns of Template Versions: the version, linked to its functions, its type (HOT or CFN, in
+/// upper case as Horizon shows it) and its aliases.
 fn version_columns() -> Vec<Col<TemplateVersion>> {
     vec![
         col(K::Version, |v: &TemplateVersion, _| {
@@ -158,6 +165,7 @@ pub fn TemplateVersionsPage() -> impl IntoView {
     }
 }
 
+/// Columns of a template version's functions (`get_param`, `str_replace`, …).
 fn function_columns() -> Vec<Col<TemplateFunction>> {
     vec![
         col(K::Function, |f: &TemplateFunction, _| mono(f.name.clone())).sort_text(|f| f.name.clone()),

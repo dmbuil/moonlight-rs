@@ -1,4 +1,4 @@
-//! Browser side of *Create Image* › *File* (roadmap 45): the picked file, its disk format
+//! Browser side of *Create Image* › *File*: the picked file, its disk format
 //! guessed from the name, and the `PUT` with progress and cancel.
 //!
 //! The dialog's values are strings, so the picked [`web_sys::File`] lives in a thread-local
@@ -59,6 +59,7 @@ pub fn remember(file: Option<web_sys::File>) {
 /// An upload in progress; [`Upload::abort`] cancels it.
 #[derive(Clone, Default)]
 pub struct Upload {
+    /// The request sending the file; `None` when it could not start, and on the server.
     xhr: Option<web_sys::XmlHttpRequest>,
 }
 

@@ -1,4 +1,4 @@
-//! *Create Image* › *File* (roadmap 45): the one write that is streamed, so it cannot go
+//! *Create Image* › *File*: the one write that is streamed, so it cannot go
 //! through [`super::actions::Exec`] (the SDK's bodies are whole `Vec<u8>`s). The record is
 //! created by `OsAction::ImageCreate`; the data follows here, in one of two modes
 //! (`[images] upload`):

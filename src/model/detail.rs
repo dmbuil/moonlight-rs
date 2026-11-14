@@ -125,7 +125,7 @@ pub struct VolumeDetail {
     pub messages: Vec<VolumeMessage>,
 }
 
-/// A row of Volumes › Groups: a Cinder generic volume group (roadmap 5).
+/// A row of Volumes › Groups: a Cinder generic volume group.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VolumeGroupRow {
     pub id: String,
@@ -150,7 +150,7 @@ pub struct VolumeGroupDetail {
     pub snapshots: Vec<GroupSnapshotRow>,
 }
 
-/// A row of Volumes › Group Snapshots (roadmap 5).
+/// A row of Volumes › Group Snapshots.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GroupSnapshotRow {
     pub id: String,
@@ -189,6 +189,7 @@ pub struct ImageDetail {
     pub owner: Option<String>,
     pub checksum: Option<String>,
     pub container_format: Option<String>,
+    /// Bytes the disk takes once expanded (qcow2 and the like); `None` when Glance doesn't know.
     #[serde(default)]
     pub virtual_size: Option<u64>,
     #[serde(default)]
@@ -230,12 +231,12 @@ pub struct Credentials {
     #[serde(default)]
     pub profile: Option<String>,
     /// The downloads, rendered on the server from `[api_access]` templates
-    /// (`server::downloads`, roadmap 57).
+    /// (`server::downloads`).
     #[serde(default)]
     pub openrc: String,
     #[serde(default)]
     pub clouds_yaml: String,
-    /// Signed in through WebSSO (roadmap 80): the user has no Keystone
+    /// Signed in through WebSSO: the user has no Keystone
     /// password, so `clouds.yaml` uses `v3websso` and the page says `openrc`
     /// won't work.
     #[serde(default)]
@@ -248,9 +249,11 @@ pub struct Credentials {
     pub protocol: Option<String>,
 }
 
+/// Serde default of [`Credentials::interface`], for session info written before the field.
 fn public() -> String {
     "public".into()
 }
+/// Serde default of [`Credentials::cloud_name`].
 fn openstack() -> String {
     "openstack".into()
 }

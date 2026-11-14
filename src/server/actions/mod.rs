@@ -2,19 +2,9 @@
 //! `openstack_sdk` endpoints and handed to an [`Exec`], which according to the
 //! configured [`WriteMode`]:
 //!
-//! * `Off`     → rejects the action before building anything;
-//! * `DryRun`  → builds each request (method, path, JSON body) and returns it
-//!   **without sending anything**;
-//! * `On`      → sends the requests.
-//!
-//! Because dry-run never touches the network, the tests below exercise every
-//! action exactly as production would build it.
-
-//! Mutating operations. Every [`OsAction`] is translated into one or more typed
-//! `openstack_sdk` endpoints and handed to an [`Exec`], which according to the
-//! configured [`WriteMode`]:
-//!
-//! * `Off`     → rejects the action before building anything;
+//! * `Off`     → [`apply`] refuses the action up front; other callers (logout's
+//!   revocation, AGENTS.md §1.3's read-only POSTs) fail at their first request, before
+//!   anything is sent;
 //! * `DryRun`  → builds each request (method, path, JSON body) and returns it
 //!   **without sending anything**;
 //! * `On`      → sends the requests.
@@ -29,15 +19,22 @@ use openstack_sdk::api::{QueryAsync, RestEndpoint, ignore};
 use serde_json::{Value, json};
 use std::borrow::Cow;
 
+/// Every write helper's result.
 type R<T> = Result<T, AppError>;
 
 /// Runs requests under `[writes] mode`: rejects them when `off`, only records a
 /// preview in `dry-run`, sends them when `on`. Every write goes through one (AGENTS.md §1).
 pub struct Exec<'a> {
+    /// `[writes] mode` (or `MOONLIGHT_WRITES`), fixed for the executor's life.
     mode: WriteMode,
+    /// The scoped connection; `None` is fine in `off` and `dry-run`, which never send.
     os: Option<&'a AsyncOpenStack>,
+    /// One preview per request built, in order, whatever the mode.
     requests: Vec<RequestPreview>,
+    /// A file the user must save now (a generated private key, an application
+    /// credential's secret): returned once in the outcome, never logged or stored.
     secret: Option<Secret>,
+    /// Per-item outcomes of a batch or a multi-instance launch.
     results: Vec<ItemResult>,
     /// The ID `create` returned last.
     created: Option<String>,
@@ -62,14 +59,20 @@ pub fn preview<E: RestEndpoint>(ep: &E) -> R<RequestPreview> {
     })
 }
 
-/// A JSON request the SDK cannot build correctly (port forwarding: its builder
-/// types ports as `f32` and ranges as numbers). Still one `RestEndpoint`, so it
-/// goes through `Exec` (dry-run, preview) like every typed one.
+/// A JSON request the SDK cannot build, or builds wrongly: services it has no API for
+/// (Barbican, Heat, Aodh), Octavia bodies, and port forwarding (its builder types ports
+/// as `f32` and ranges as numbers). Still one `RestEndpoint`, so it goes through `Exec`
+/// (dry-run, preview) like every typed one.
 pub struct JsonRequest {
+    /// The HTTP method.
     pub method: http::Method,
+    /// Relative to the service's catalog endpoint (after version discovery, if run).
     pub path: String,
+    /// The catalog service it is sent to.
     pub service: openstack_sdk::types::ServiceType,
+    /// The JSON body, if any; secrets in it are wiped on drop.
     pub body: Option<Value>,
+    /// Query parameters, in order.
     pub query: Vec<(&'static str, String)>,
     /// Extra headers (Barbican's payload `Accept`); they replace the SDK's
     /// default `Accept: application/json`.
@@ -93,7 +96,7 @@ impl JsonRequest {
             headers: None,
         }
     }
-    /// A Barbican request (roadmap 55). The SDK has no Key Manager API, and
+    /// A Barbican request. The SDK has no Key Manager API, and
     /// catalogs list Barbican unversioned (`https://…:9311`), so paths carry
     /// `v1/` themselves; discovery is not run for it.
     pub fn key_manager(method: http::Method, path: impl std::fmt::Display, body: Option<Value>) -> Self {
@@ -104,7 +107,7 @@ impl JsonRequest {
             body,
         )
     }
-    /// A Heat request (roadmap 62). The SDK has no Orchestration API. Heat's
+    /// A Heat request. The SDK has no Orchestration API. Heat's
     /// catalog URL is versioned and project-scoped (`…/v1/<project_id>`), and
     /// the SDK appends relative paths after it, so paths are plain `stacks`.
     pub fn orchestration(method: http::Method, path: impl Into<String>, body: Option<Value>) -> Self {
@@ -115,7 +118,7 @@ impl JsonRequest {
             body,
         )
     }
-    /// An Aodh request (roadmap 79). The SDK has no Alarming API, and catalogs
+    /// An Aodh request. The SDK has no Alarming API, and catalogs
     /// list Aodh unversioned (`https://…:8042`), so paths carry `v2/` themselves;
     /// discovery is not run for it.
     pub fn alarming(method: http::Method, path: impl std::fmt::Display, body: Option<Value>) -> Self {
@@ -183,6 +186,7 @@ fn enum_of<T: serde::de::DeserializeOwned>(v: &str, what: &str) -> R<T> {
     serde_json::from_value(Value::String(v.to_string())).map_err(|_| AppError::invalid(format!("unknown {what}: {v}")))
 }
 
+/// An Octavia request with a JSON body (`path` already carries `v2/lbaas/…`).
 fn octavia(method: http::Method, path: String, body: Value) -> JsonRequest {
     JsonRequest::new(
         method,
@@ -193,9 +197,9 @@ fn octavia(method: http::Method, path: String, body: Value) -> JsonRequest {
 }
 
 /// Keys whose values never appear in a preview (they reach the browser and logs);
-/// `secret` is an application credential's (roadmap 57), `payload` a Barbican
-/// secret's (roadmap 55).
-// `passphrase`: an RSA key pair order's private key passphrase (roadmap 58).
+/// `secret` is an application credential's, `payload` a Barbican
+/// secret's, `passphrase` an RSA key pair order's private key
+/// passphrase.
 const SECRET_KEYS: [&str; 5] = ["adminPass", "password", "secret", "payload", "passphrase"];
 
 /// Calls `f` on every string value under one of [`SECRET_KEYS`], at any depth.
@@ -231,6 +235,7 @@ fn with_query<E: RestEndpoint>(ep: &E) -> String {
     }
 }
 
+/// An SDK builder's error (a missing required field) as a validation error.
 fn build_err<E: std::fmt::Display>(e: E) -> AppError {
     AppError::invalid(format!("invalid request: {e}"))
 }
@@ -288,11 +293,12 @@ impl<'a> Exec<'a> {
         *body = serde_json::to_string_pretty(&v).unwrap_or_default();
     }
 
+    /// The connection to send with; an internal error if `on` was built without one.
     fn client(&self) -> R<&'a AsyncOpenStack> {
         self.os.ok_or_else(|| AppError::internal("no OpenStack connection"))
     }
 
-    /// Records the upload that follows *Create Image* › *File* (roadmap 45): a streamed `PUT`
+    /// Records the upload that follows *Create Image* › *File*: a streamed `PUT`
     /// the browser makes (or Moonlight forwards), outside the SDK, so it is only previewed
     /// here. The preview lets dry-run show what would happen, as for every other write.
     fn note_upload(&mut self, image_id: &str, bytes: u64) {
@@ -362,8 +368,8 @@ impl<'a> Exec<'a> {
 }
 
 /// The new resource's ID in a create response. Barbican answers with a ref URL,
-/// not an ID (roadmap 55; `order_ref` for orders, roadmap 58); Heat with `{"stack": {"id", "links"}}` (roadmap 62);
-/// Aodh with the alarm, whose ID is `alarm_id` (roadmap 79: without it, a
+/// not an ID (`order_ref` for orders); Heat with `{"stack": {"id", "links"}}`;
+/// Aodh with the alarm, whose ID is `alarm_id` (without it, a
 /// created alarm was reported as a failure).
 fn created_id(v: &Value) -> Option<String> {
     v.get("id")
@@ -379,10 +385,13 @@ fn created_id(v: &Value) -> Option<String> {
         })
 }
 
+/// Metadata pairs trimmed, sorted and checked by `validate_metadata` (empty or repeated
+/// keys, the 255-character limit), as a validation error.
 fn checked_metadata(pairs: &[(String, String)]) -> R<Vec<(String, String)>> {
     validate_metadata(pairs).map_err(AppError::invalid)
 }
 
+/// An optional form field, trimmed; blank counts as unset.
 fn opt(s: &Option<String>) -> Option<&str> {
     s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
@@ -404,6 +413,7 @@ fn positive(n: i64, field: &str) -> R<i32> {
         .ok_or_else(|| AppError::invalid(format!("{field} must be at least 1")))
 }
 
+/// A required form field, trimmed; blank is a validation error naming `field`.
 fn non_empty<'s>(s: &'s str, field: &str) -> R<&'s str> {
     let t = s.trim();
     if t.is_empty() {
@@ -910,7 +920,7 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
         } => octavia::listener_create(x, loadbalancer_id, spec, default_pool_id).await?,
         // JSON: a cleared default pool must be sent as `null`, which the SDK cannot express.
         // Cleared options likewise: `null` timeouts, `{}` headers and `[]` CIDRs are
-        // Octavia's "back to the default" (roadmap 54).
+        // Octavia's "back to the default".
         ListenerUpdate {
             id,
             name,
@@ -1082,7 +1092,7 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
     Ok(())
 }
 
-/// Keystone revocation of the session's token on logout (roadmap 49):
+/// Keystone revocation of the session's token on logout:
 /// `DELETE /v3/auth/tokens` with the token in `X-Subject-Token`. A write, so it
 /// goes through `Exec` (sent only with `[writes] mode = on`) although it isn't
 /// an `OsAction`: the browser must never be able to name a token. The preview
@@ -1129,9 +1139,9 @@ mod tests {
     use super::testing::*;
     use super::*;
 
-    /// Roadmap 67: `assert_paths_checked` covers the actions the tests dry-run,
+    /// `assert_paths_checked` covers the actions the tests dry-run,
     /// so every variant must appear in the `mod tests` of one of this
-    /// directory's files (roadmap 106 split them by service; every `.rs` file is
+    /// directory's files (one per service; every `.rs` file is
     /// read, so a new one needs no list either). The variant list comes from
     /// serde's error for an unknown variant: a new variant needs no list to be
     /// updated.

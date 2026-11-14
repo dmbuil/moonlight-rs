@@ -65,12 +65,12 @@ pub enum ChoiceSet {
     /// Load balancer members: each fixed IP of an instance port, value `ip@subnet_id`;
     /// cells `[instance, ip, subnet name]`
     LbMemberTargets,
-    /// The scoped token's roles, for an application credential's roles (roadmap 57)
+    /// The scoped token's roles, for an application credential's roles
     TokenRoles,
     /// The domain new projects, users and groups go to (one choice: value ID,
     /// label name), shown read-only in their create dialogs like Horizon
     OperationDomain,
-    /// Identity admin pickers (roadmap 57): every role (value ID, label name)
+    /// Identity admin pickers: every role (value ID, label name)
     IdentityRoles,
     /// Users visible to an admin (value ID, label name)
     IdentityUsers,
@@ -84,11 +84,11 @@ pub enum ChoiceSet {
     /// Octavia flavors that are enabled
     LbFlavors,
     /// Subnets a load balancer's VIP can be on: the project's own and shared
-    /// networks' (roadmap 54, like Horizon)
+    /// networks' (like Horizon)
     LbVipSubnets,
     /// Octavia availability zones that are enabled
     LbAvailabilityZones,
-    /// Certificates a `TERMINATED_HTTPS` listener can use (Barbican URLs, roadmap 54);
+    /// Certificates a `TERMINATED_HTTPS` listener can use (Barbican URLs);
     /// first cell = expiry, `""` when it never expires
     LbCertificates,
     /// Every instance port; first cell = instance ID, second = its security group IDs
@@ -101,7 +101,7 @@ pub enum ChoiceSet {
     InstanceSnapshots,
     /// Launch wizard: project ports not attached to anything
     FreePorts,
-    /// Barbican secrets for a container (roadmap 55): value `secret_ref`, label
+    /// Barbican secrets for a container: value `secret_ref`, label
     /// the name; cells `[type]`
     Secrets,
     /// Cinder group types (value ID, label name), for *Create Group*
@@ -112,7 +112,7 @@ pub enum ChoiceSet {
     /// take (no group, one of its volume types, `available` or `in-use`); a
     /// volume appears once per group, first cell = the group's ID (`Source::Of`)
     GroupVolumes,
-    /// Firewall rules the project can use: its own and shared ones (roadmap 93);
+    /// Firewall rules the project can use: its own and shared ones;
     /// cells `[action, protocol]`
     FirewallRules,
     /// Firewall policies the project can use: its own and shared ones
@@ -150,7 +150,7 @@ impl Choice {
 /// The `Source::Of` key of a [`ChoiceSet::AllAssociablePorts`] choice: the
 /// port's project and a floating IP pool (external network ID) that reaches it.
 /// Neutron associates only within one project and through a router with its
-/// gateway on the pool (roadmap 89).
+/// gateway on the pool.
 pub fn associable_port_key(project_id: &str, pool_id: &str) -> String {
     format!("{project_id} {pool_id}")
 }

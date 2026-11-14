@@ -1,4 +1,4 @@
-//! Key Manager (Barbican, roadmap 55): secret, container and order (roadmap 58)
+//! Key Manager (Barbican): secret, container and order
 //! detail pages, and
 //! the expiration cell the lists share. The lists are in `lists.rs`. Secret
 //! payloads are only fetched on *Show Payload* (`[key_manager] allow_payload`)
@@ -43,6 +43,8 @@ pub fn cipher(x: &SecretRow) -> String {
     }
 }
 
+/// A secret's *Consumers*: the services Barbican's consumers API says use it (service,
+/// resource type and ID).
 fn secret_consumer_columns() -> Vec<Col<SecretConsumer>> {
     vec![
         col(K::Service, |c: &SecretConsumer, _| c.service.clone()).sort_text(|c| c.service.clone()),
@@ -51,6 +53,8 @@ fn secret_consumer_columns() -> Vec<Col<SecretConsumer>> {
     ]
 }
 
+/// A container's *Secrets*: each secret's role in the container (`certificate`,
+/// `private_key`…) and the secret, linked.
 fn container_secret_columns() -> Vec<Col<ContainerSecret>> {
     vec![
         col(K::Role, |s: &ContainerSecret, l| key_manager_term(l, &s.role)).sort_text(|s| s.role.clone()),
@@ -61,6 +65,7 @@ fn container_secret_columns() -> Vec<Col<ContainerSecret>> {
     ]
 }
 
+/// A container's *Consumers*: Barbican's registered consumers (name and URL).
 fn container_consumer_columns() -> Vec<Col<ContainerConsumer>> {
     vec![
         col(K::Name, |k: &ContainerConsumer, _| k.name.clone()).sort_text(|k| k.name.clone()),
@@ -68,6 +73,8 @@ fn container_consumer_columns() -> Vec<Col<ContainerConsumer>> {
     ]
 }
 
+/// Key Manager › Secrets › a secret: its cards, the payload card when `[key_manager]
+/// allow_payload` is on, its consumers and the load balancers using it.
 #[component]
 pub fn SecretDetailPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -132,7 +139,7 @@ fn SecretCards(d: SecretDetail) -> AnyView {
 }
 
 /// *Project members can read it* (with a *Private* badge when not) and the users
-/// with read access, by name where Keystone allowed it, else by ID (roadmap 75).
+/// with read access, by name where Keystone allowed it, else by ID.
 #[component]
 fn AclRows(acl: KmAcl) -> impl IntoView {
     let i18n = use_i18n();
@@ -161,6 +168,7 @@ fn AclRows(acl: KmAcl) -> impl IntoView {
     }
 }
 
+/// *Yes* / *No*, or `-` when the ACL could not be read.
 fn yes_no(l: Lang, v: Option<bool>) -> &'static str {
     match v {
         Some(true) => t(l, K::Yes),
@@ -185,6 +193,8 @@ fn SecretConsumers(consumers: Option<Vec<SecretConsumer>>, octavia: bool) -> Any
     }
 }
 
+/// The load balancers' table; *Via container* only when some use goes through a container
+/// (`via`).
 fn octavia_columns(via: bool) -> Vec<Col<OctaviaUse>> {
     let mut cols = vec![
         col(K::LoadBalancer, |u: &OctaviaUse, _| match &u.lb_id {
@@ -207,7 +217,7 @@ fn octavia_columns(via: bool) -> Vec<Col<OctaviaUse>> {
     cols
 }
 
-/// The Octavia listeners and pools using a secret or container (roadmap 75);
+/// The Octavia listeners and pools using a secret or container;
 /// nothing when there are none. Barbican's consumer list misses them: Octavia
 /// never registers there.
 #[component]
@@ -227,11 +237,15 @@ fn OctaviaUses(uses: Vec<OctaviaUse>) -> AnyView {
 /// Where *Show Payload* stands.
 #[derive(Clone)]
 enum Reveal {
+    /// Only the *Show Payload* button.
     Closed,
     /// The confirmation modal is open.
     Confirm,
+    /// Fetching; the button is disabled.
     Loading,
+    /// The payload, until *Hide Payload* drops it.
     Shown(SecretPayload),
+    /// Barbican or the server's gate refused; the error replaces the button.
     Failed(AppError),
 }
 
@@ -316,6 +330,8 @@ fn payload_view(p: SecretPayload, hide: impl Fn() + Copy + Send + Sync + 'static
     .into_any()
 }
 
+/// Key Manager › Containers › a container: its cards, access, secrets by role, consumers and
+/// the load balancers using it.
 #[component]
 pub fn ContainerDetailPage() -> impl IntoView {
     let i18n = use_i18n();
@@ -338,7 +354,7 @@ pub fn ContainerDetailPage() -> impl IntoView {
     }
 }
 
-/// The container's cards (with its access, roadmap 75), its secrets by role and
+/// The container's cards (with its access), its secrets by role and
 /// its consumers.
 #[component]
 fn ContainerCards(c: ContainerRow, acl: KmAcl) -> AnyView {
@@ -381,7 +397,7 @@ fn ContainerCards(c: ContainerRow, acl: KmAcl) -> AnyView {
     .into_any()
 }
 
-/// An order's page (roadmap 58): what was asked, its status (refetched while
+/// An order's page: what was asked, its status (refetched while
 /// Barbican processes it), the secret or container it generated, or why it failed.
 #[component]
 pub fn OrderDetailPage() -> impl IntoView {
@@ -408,6 +424,8 @@ pub fn OrderDetailPage() -> impl IntoView {
     }
 }
 
+/// An order's *Information* and *Specs* cards, with Barbican's error above them when the
+/// order failed and a note while it is still pending.
 #[component]
 fn OrderCards(o: OrderRow) -> AnyView {
     let i18n = use_i18n();

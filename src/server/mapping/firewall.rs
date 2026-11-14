@@ -1,4 +1,4 @@
-//! Neutron FWaaS v2 (roadmap 93).
+//! Neutron FWaaS v2.
 
 use super::*;
 

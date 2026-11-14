@@ -1,4 +1,4 @@
-//! Pure model of Orchestration › *Template Generator* (roadmap 92): a draft
+//! Pure model of Orchestration › *Template Generator*: a draft
 //! template (parameters, resources with their properties, outputs), what it
 //! turns into as HOT YAML, and what is wrong with it. No DOM and no I/O, so it
 //! is unit-tested; the page is `pages/template_generator.rs`.
@@ -92,7 +92,7 @@ pub struct DraftResource {
     pub props: Vec<DraftProp>,
     /// Explicit `depends_on`; a `get_resource` already implies one.
     pub depends_on: Vec<String>,
-    /// Where the node sits on the canvas (slice 2); `None` until placed.
+    /// Where the node sits on the canvas; `None` until placed.
     pub pos: Option<(f64, f64)>,
 }
 
@@ -206,10 +206,12 @@ impl Draft {
         name
     }
 
+    /// The resource called `name`, if the draft has one.
     pub fn resource(&self, name: &str) -> Option<&DraftResource> {
         self.resources.iter().find(|r| r.name == name)
     }
 
+    /// The resource called `name`, to edit in place.
     pub fn resource_mut(&mut self, name: &str) -> Option<&mut DraftResource> {
         self.resources.iter_mut().find(|r| r.name == name)
     }
@@ -779,7 +781,11 @@ pub fn edge_place(seg: ((f64, f64), (f64, f64)), reverse: bool) -> EdgePlace {
 /// SVG `text-anchor`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EdgePlace {
+    /// From and to: the segment given, shifted [`EDGE_GAP`] to its right when the edge has a
+    /// reverse twin, so the two don't overlap.
     pub line: ((f64, f64), (f64, f64)),
+    /// Where the label's text anchor sits: above the middle of the line, or beside it, away from
+    /// the twin, for a shifted one.
     pub label: (f64, f64),
     pub anchor: &'static str,
 }
@@ -845,6 +851,8 @@ pub const GRID: f64 = 130.0;
 /// Grid cells per row.
 pub const GRID_COLS: usize = 6;
 
+/// The first grid cell, row by row, with no point of `taken` within half a cell of it (see
+/// [`Draft::free_spot`]).
 fn free_cell(taken: &[(f64, f64)]) -> (f64, f64) {
     (0..)
         .map(|i| {
@@ -937,6 +945,7 @@ impl DraftProp {
 }
 
 impl DraftResource {
+    /// The value of property `name`; `None` when it is unset (Heat's default applies).
     pub fn prop(&self, name: &str) -> Option<&PropValue> {
         self.props.iter().find(|p| p.name == name).map(|p| &p.value)
     }
@@ -1050,10 +1059,14 @@ enum Y {
     S(String),
     /// Written as is: numbers, booleans, the version date.
     Raw(String),
+    /// A list, flow style (`[a, b]`) when short and flat, else one `- ` item per line.
     L(Vec<Y>),
+    /// A map, keys in the order given.
     M(Vec<(String, Y)>),
 }
 
+/// A JSON value as a YAML node: strings stay strings (quoted only if needed), numbers and
+/// booleans are written as they are.
 fn from_json(v: &Value) -> Y {
     match v {
         Value::String(s) => Y::S(s.clone()),
@@ -1086,6 +1099,7 @@ fn plain(s: &str) -> bool {
         )
 }
 
+/// `s` as a YAML scalar: plain when [`plain`] allows it, else a JSON string (valid YAML).
 fn scalar(s: &str) -> String {
     if plain(s) {
         s.to_string()
@@ -1139,6 +1153,7 @@ fn literal(s: &str, indent: usize) -> Option<String> {
     Some(out)
 }
 
+/// Appends the entries of `m` at `indent` spaces, one `key:` per line.
 fn write_map(m: &[(String, Y)], indent: usize, out: &mut String) {
     for (k, v) in m {
         out.push_str(&" ".repeat(indent));
@@ -1148,6 +1163,8 @@ fn write_map(m: &[(String, Y)], indent: usize, out: &mut String) {
     }
 }
 
+/// Appends what follows a `key:` (or a `-`): a block literal for multi-line text, flow style for
+/// intrinsic functions and short lists, else a nested block two spaces in.
 fn write_value(v: &Y, indent: usize, out: &mut String) {
     match v {
         Y::S(s) if s.contains('\n') => {

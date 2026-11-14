@@ -109,7 +109,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 94 | Admin › Network › Firewall: every project's firewall groups, policies and rules ([#16]) | P3 | M | 93, 85 |
 | 95 | *Create Image* › *File* (`direct`): a token that can only upload, not the session's ([#17]) | P3 | M | 45, 57 |
 | 96 | ✅ Tab bars show a pointless scroll control | — | XS | — |
-| 97 | Inline documentation: doc comments on every module and function, rustdoc clean | P3 | M | — |
+| 97 | ✅ Inline documentation: doc comments on every module and function, rustdoc clean | — | M | — |
 | 98 | ✅ Subtle CSS motion on tabs, nav bars, menus and dialogs | — | S | 96 |
 | 99 | ✅ 🐞 FIX: the VNC console doesn't fit its frame; the last lines are cut off | — | S | 31 |
 | 100 | ✅ Network Topology: a note instead of the drawing when the project sees too many networks | — | S | 20, 29 |
@@ -149,7 +149,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113, 114**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
+114, 97**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -6198,6 +6199,48 @@ System Information and Defaults…) and the instance tabs in `pages/instance_det
   light and dark theme, on Firewall, a volume detail and an instance detail.
 
 ## 97. Inline documentation: doc comments on every module and function, rustdoc clean
+
+> ✅ **Done** (2026-11-14). Every module, function, method, type, constant, macro and static has
+> a doc comment; rustdoc is clean in both builds and CI checks it. Comments only: no code line
+> changed (`cargo fmt` reflowed `OsAction`'s struct variants to one line each and the documented
+> `#[prop]` attributes to their own line).
+>
+> - **Rustdoc clean**, both builds: `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+>   --document-private-items --features ssr` (and `--lib --features hydrate --target
+>   wasm32-unknown-unknown`). It had 14 warnings: 11 public docs linking to private items, now
+>   allowed in `Cargo.toml` `[lints.rustdoc] private_intra_doc_links` (an application, its docs
+>   include private items), and 3 stale links fixed. New `doc` job in CI runs both; AGENTS.md §2
+>   lists the command and the step.
+> - **Module headers**: the ten files without `//!` have one.
+> - **`server/`** (slice 1): about 330 items, naming the `OsAction` and the method and path it
+>   sends, microversions and extensions.
+> - **`components/`** (slice 2): about 160 docs, private components included (`DialogView`,
+>   `DataTable`, the nav menus…); the dialog engine's fields and variants (`Source`, `Kind`,
+>   `Field.required`/`default`, hooks, `Phase`); each op names the `OsAction` it builds.
+> - **`pages/`** (slice 3): every column set, search and key helper, page and tab component,
+>   including the pages that `admin_list!`, `list_page!` and `paged_page!` generate.
+> - **`model/` and the crate root** (slice 4): the 93 undocumented `OsAction` variants now name
+>   their Horizon dialog and the method and path they send; about 35 fields where a reader would
+>   ask (units, `None` as *any*, names vs IDs: `LaunchSpec`, `RuleSpec`, `QosRuleSpec`,
+>   `LbMonitorSpec`, `Image.size` in bytes…); `i18n.rs`, `prefs.rs`, `app.rs`, `lib.rs`.
+> - **Drift fixed**: the `Exec` *Off* mode, `console.rs` claiming the only read-only POSTs,
+>   comments stacked on the wrong item (`flavor_access`, `keymgr::secret_body`, `NODE_R`/`STACK_R`,
+>   a stray line on `ops::Op`, an L7 section header used as `L7PolicyCreate`'s doc), `Vals`
+>   claiming the choice lists, `ratio` for a limit of 0, `Fault`'s nonexistent date,
+>   `PoolSetMembers`' path without `/v2`, `lib.rs` calling the crate read-only.
+> - **Measured after** (`cargo clippy --features ssr --lib -- -W missing_docs
+>   -W clippy::missing_docs_in_private_items`): 1,850 items lack a doc (2,642 before), all of
+>   them struct fields and enum variants (self-explanatory row fields, server fn arguments);
+>   functions and types: 0.
+> - **No roadmap numbers in the code** (user's call): the ~730 `roadmap N` / `item N` / `slice N`
+>   references in `src/` comments and rustdoc, the 23 in test assertion messages and the
+>   `[log] keep` warning, and those in `Cargo.toml`, `deny.toml`, `rustfmt.toml`, `ci.yml` and
+>   `style/main.css`, are gone; where the number carried the reason, the sentence now says it.
+>   AGENTS.md (comments section) says not to cite them.
+> - **Lint question settled**: no `missing_docs` lint, since it would demand those 1,850 fields;
+>   AGENTS.md (comments section) says so and asks review to keep functions and types documented.
+> - Verified: `cargo fmt`, both clippy variants and both `cargo doc` variants clean; 609 tests
+>   pass. Not in the browser: nothing visible changed.
 
 **Goal.** A contributor (or a fresh session) can read any module or function and learn what it
 is for, its contract and its gotchas from its doc comment, without reverse-engineering the code.

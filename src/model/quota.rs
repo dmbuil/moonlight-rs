@@ -1,4 +1,4 @@
-//! Project quotas (roadmap 82).
+//! Project quotas.
 
 use super::*;
 
@@ -56,7 +56,7 @@ pub struct QuotaSection {
     pub error: Option<String>,
 }
 
-/// A service with quotas: one card each on Project › Quotas (roadmap 82).
+/// A service with quotas: one card each on Project › Quotas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QuotaService {
     Compute,
@@ -156,7 +156,7 @@ pub struct QuotaCard {
     pub error: Option<String>,
 }
 
-/// Identity › Projects › *Modify Quotas* (roadmap 82): another project's
+/// Identity › Projects › *Modify Quotas*: another project's
 /// quota cards, with its name (the ID when Keystone didn't say).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectQuotas {

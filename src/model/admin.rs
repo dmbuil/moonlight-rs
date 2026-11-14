@@ -1,9 +1,9 @@
-//! The Admin dashboard (roadmap 85): system info, hypervisors, providers, flavors, volume types, RBAC.
+//! The Admin dashboard: system info, hypervisors, providers, flavors, volume types, RBAC.
 
 use super::*;
 
 // ---------------------------------------------------------------------------
-// Admin dashboard (roadmap 85)
+// Admin dashboard
 // ---------------------------------------------------------------------------
 
 /// Admin › System › System Information: Horizon's four tabs. Each list that
@@ -98,12 +98,12 @@ pub struct MetadefNamespace {
     pub public: bool,
     pub protected: bool,
     /// The associations that have a `prefix` (`OS::Nova::Flavor` → `hw:`), for
-    /// *Update Associations* (roadmap 89).
+    /// *Update Associations*.
     #[serde(default)]
     pub prefixes: Vec<(String, String)>,
 }
 
-/// Admin › Metadata Definitions › a namespace (roadmap 89): Glance's
+/// Admin › Metadata Definitions › a namespace: Glance's
 /// `GET metadefs/namespaces/{namespace}`, shown as Horizon's *Overview* and
 /// *Contents* tabs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -155,7 +155,7 @@ pub struct MetadefObject {
 }
 
 /// How a catalog property is typed (Glance metadef `type`): picks the value input of the
-/// *Update Metadata* picker (roadmap 25). Arrays and objects fall back to `Text`.
+/// *Update Metadata* picker. Arrays and objects fall back to `Text`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MetadataKind {
     Text,
@@ -188,7 +188,7 @@ pub struct MetadataOption {
 pub const GLANCE_PROPERTY_PREFIX: &str = "os_glance_";
 
 /// Whether the image metadata editors hide this key and the server refuses to write it:
-/// Glance's own `os_glance_*`, or one of `[images] reserved_properties` (roadmap 25).
+/// Glance's own `os_glance_*`, or one of `[images] reserved_properties`.
 pub fn is_reserved_image_key(key: &str, reserved: &[String]) -> bool {
     key.starts_with(GLANCE_PROPERTY_PREFIX) || reserved.iter().any(|r| r == key)
 }
@@ -309,6 +309,8 @@ pub fn provider_tree(rows: Vec<ResourceProviderRow>) -> Vec<ResourceProviderRow>
         .partition(|r| r.parent.as_ref().is_none_or(|p| !known.contains(p)));
     roots.sort_by_key(|r| r.name.to_lowercase());
     let mut out = Vec::new();
+    /// Pushes `node` then its children, depth first; `host` is the compute node's (UUID, name)
+    /// that each descendant records and loses from its name.
     fn add(
         node: ResourceProviderRow,
         depth: u8,
@@ -439,6 +441,7 @@ pub struct Aggregates {
     pub zones: Fallible<ZoneRow>,
 }
 
+/// One host aggregate (`os-aggregates`): its hosts and metadata.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AggregateRow {
     pub id: String,
@@ -487,6 +490,7 @@ pub struct VolumeTypes {
     pub qos: Fallible<QosSpecRow>,
 }
 
+/// One Cinder volume type (`types`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VolumeTypeRow {
     pub id: String,
@@ -517,6 +521,7 @@ pub struct EncryptionSpec {
     pub key_size: Option<u32>,
 }
 
+/// One Cinder QoS spec (`qos-specs`), its key/value specs sorted by key.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct QosSpecRow {
     pub id: String,

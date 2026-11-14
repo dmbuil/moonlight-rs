@@ -1,4 +1,4 @@
-//! The Identity dashboard (roadmap 57): projects, users, groups, roles and
+//! The Identity dashboard: projects, users, groups, roles and
 //! application credentials, with their detail pages and, for admins, Horizon's
 //! actions (`ops::identity_*`). What each list holds follows the token's role
 //! like Horizon (see `api::list_identity_*`); which panels show is
@@ -20,6 +20,7 @@ use crate::components::widgets::{PageHeader, Skeleton, dash, render, utc_time};
 use crate::i18n::{K, Lang, t, use_i18n};
 use crate::model::*;
 
+/// *Yes* / *No* in the user's language (same as `details::yes_no`).
 fn yes_no(l: Lang, b: bool) -> &'static str {
     t(l, if b { K::Yes } else { K::No })
 }
@@ -35,6 +36,9 @@ fn project_items(l: Lang, p: &IdentityProject) -> Vec<MenuItem> {
     })]
 }
 
+/// Identity › Projects' columns: the name links to the project's page only when Keystone
+/// lets the user read it (Horizon's `identity:get_project`: admins, or the current project),
+/// then description, ID, domain, enabled and each row's menu.
 fn project_columns() -> Vec<Col<IdentityProject>> {
     vec![
         // Horizon links the name when `identity:get_project` passes: admins, or
@@ -101,6 +105,8 @@ pub fn IdentityProjectsPage() -> impl IntoView {
     }
 }
 
+/// Identity › Users' columns: name (linked), description, email, ID, enabled, domain and
+/// each row's menu.
 fn user_columns() -> Vec<Col<IdentityUser>> {
     vec![
         col(K::UserName, |u: &IdentityUser, _| {
@@ -162,6 +168,7 @@ pub fn IdentityUsersPage() -> impl IntoView {
     }
 }
 
+/// Identity › Groups' columns: name (linked), description, ID, domain and each row's menu.
 fn group_list_columns() -> Vec<Col<IdentityGroup>> {
     vec![
         col(K::Name, |g: &IdentityGroup, _| {
@@ -209,6 +216,7 @@ pub fn IdentityGroupsPage() -> impl IntoView {
     }
 }
 
+/// Identity › Roles' columns: name, ID, the roles it implies and each row's menu.
 fn role_columns() -> Vec<Col<IdentityRole>> {
     vec![
         col(
@@ -259,6 +267,8 @@ pub fn IdentityRolesPage() -> impl IntoView {
     }
 }
 
+/// Identity › Application Credentials' columns: name (linked), project, description,
+/// expiration (*Never* without one), ID, roles and each row's menu.
 fn app_credential_columns() -> Vec<Col<AppCredential>> {
     vec![
         col(K::Name, |a: &AppCredential, _| {
@@ -384,7 +394,7 @@ fn project_overview(d: &IdentityProjectDetail) -> AnyView {
                 <Kv label=K::EnabledCol>{move || yes_no(use_i18n().lang(), enabled)}</Kv>
                 <Kv label=K::Description>{dash(p.description.clone())}</Kv>
                 // The current project's quotas are on Project › Quotas; another's, for
-                // admins, on its own Quotas page (roadmap 82).
+                // admins, on its own Quotas page.
                 {quotas_href.map(|href| view! { <Kv label=K::Quotas><a href=href>{move || use_i18n().t(K::ViewQuotas)}</a></Kv> })}
             </Card>
         </div>
@@ -392,6 +402,8 @@ fn project_overview(d: &IdentityProjectDetail) -> AnyView {
     .into_any()
 }
 
+/// A project's *Users* tab: each member with their direct roles and the roles they get
+/// through groups.
 fn member_columns() -> Vec<Col<ProjectMember>> {
     vec![
         col(K::UserName, |m: &ProjectMember, _| {
@@ -415,6 +427,7 @@ fn member_columns() -> Vec<Col<ProjectMember>> {
     ]
 }
 
+/// A project's *Groups* tab: each group with a role on the project, and its roles.
 fn group_columns() -> Vec<Col<ProjectGroup>> {
     vec![
         col(
@@ -504,6 +517,8 @@ fn user_overview(d: &IdentityUserDetail) -> AnyView {
     .into_any()
 }
 
+/// A user's *Role Assignments* tab: scope (project, domain or system, the project linked),
+/// role, and whether it is inherited (`OS-INHERIT`).
 fn assignment_columns() -> Vec<Col<RoleAssignmentRow>> {
     vec![
         col(K::ProjectOrDomain, |a: &RoleAssignmentRow, l| {
@@ -527,6 +542,7 @@ fn assignment_columns() -> Vec<Col<RoleAssignmentRow>> {
     ]
 }
 
+/// A user's *Groups* tab: each group linked, with its ID.
 fn ref_group_columns() -> Vec<Col<Ref>> {
     vec![
         col(K::Name, |g: &Ref, _| {
@@ -575,6 +591,7 @@ pub fn IdentityGroupDetailPage() -> impl IntoView {
     }
 }
 
+/// A group's *Members* table: name (linked), email, ID and enabled.
 fn group_member_columns() -> Vec<Col<IdentityUser>> {
     vec![
         col(K::UserName, |u: &IdentityUser, _| {
@@ -629,6 +646,7 @@ pub fn AppCredentialDetailPage() -> impl IntoView {
     }
 }
 
+/// An application credential's *Access Rules*: service, HTTP method and path it may call.
 fn access_rule_columns() -> Vec<Col<AccessRule>> {
     vec![
         col(K::Service, |r: &AccessRule, _| r.service.clone()),
@@ -643,6 +661,8 @@ fn access_rule_columns() -> Vec<Col<AccessRule>> {
     ]
 }
 
+/// Identity › Domains' columns: the context domain's name in bold, description, ID, enabled
+/// and each row's *Set Domain Context*.
 fn domain_columns() -> Vec<Col<IdentityDomain>> {
     vec![
         col(

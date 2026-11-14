@@ -1,4 +1,4 @@
-//! Admin › Compute (roadmap 85): flavors, aggregates, services, migration.
+//! Admin › Compute: flavors, aggregates, services, migration.
 
 use super::*;
 
@@ -13,7 +13,7 @@ pub fn create_flavor_dialog(lang: Lang) -> Dialog {
     flavor_form(lang, None)
 }
 
-/// *Edit Flavor* (`[admin] flavor_edit`, roadmap 89), Horizon's `UpdateFlavor`:
+/// *Edit Flavor* (`[admin] flavor_edit`), Horizon's `UpdateFlavor`:
 /// the same steps, prefilled, without the ID; saving deletes the flavor and
 /// creates it again with the same ID, extra specs and access.
 fn edit_flavor_dialog(lang: Lang, f: &FlavorRow) -> Dialog {
