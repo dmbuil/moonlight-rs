@@ -514,7 +514,9 @@ pub fn associate_ip_dialog(lang: Lang, server_id: &str) -> Dialog {
                 t(lang, K::PortToAssociate),
                 Source::Of(ChoiceSet::AssociablePorts, server_id.to_string()),
             )
-            .required(),
+            .required()
+            // Search box however few ports there are (roadmap 110).
+            .searchable(),
         ],
         move |v| {
             let port_id = req(v, "port", K::PortToAssociate, lang)?;
@@ -1126,6 +1128,8 @@ mod tests {
     #[test]
     fn associate_ip_picks_an_existing_ip_or_allocates_one() {
         let d = associate_ip_dialog(Lang::EnUs, "s1");
+        let port = d.fields.iter().find(|f| f.name == "port").unwrap();
+        assert!(port.searchable, "search box however few ports (roadmap 110)");
         let a = (d.build)(&vals(&[("allocate", "false"), ("ip", "f1"), ("port", "p1")])).unwrap();
         assert_eq!(
             a,

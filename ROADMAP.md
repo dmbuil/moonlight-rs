@@ -121,9 +121,9 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 106 | ✅ Split the four giant files: `model.rs`, `ops.rs`, `actions::apply`, and the test modules | — | M | 105 |
 | 107 | ✅ 🔒 HTTPS listener: `[server] tls_cert_file` / `tls_key_file`, reloaded on renewal | — | M | 3, 49 |
 | 108 | Graceful shutdown on `SIGTERM`: stop accepting, drain open requests, flush the log | P2 | S | 81, 107 |
-| 109 | Admin › Flavors: *Metadata* column says *Yes* / *No*; the specs in a popover on the name | P3 | S | 9, 85 |
-| 110 | *Associate Floating IP*: a filter box in the port dropdown, whatever the list's length | P2 | XS | 4 |
-| 111 | *Create Application Credential*: *Expiration Date* and *Expiration Time* on one row | P3 | XS | 57 |
+| 109 | ✅ Admin › Flavors: *Metadata* column says *Yes* / *No*; the specs in a popover on the *Yes* | — | S | 9, 85 |
+| 110 | ✅ *Associate Floating IP*: a filter box in the port dropdown, whatever the list's length | — | XS | 4 |
+| 111 | ✅ *Create Application Credential*: *Expiration Date* and *Expiration Time* on one row | — | XS | 57 |
 | 112 | Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit = all / admin / off`) | P2 | S | 82, 29 |
 | 113 | Project › Quotas: readable labels for the firewall quotas (not `firewall_group`) | P3 | XS | 82, 93 |
 
@@ -148,7 +148,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -7066,15 +7066,35 @@ returns in about a second with `shutting down` and `Moonlight stopped` in `podma
 not a setting; make it one (`[server] shutdown_timeout`) only if long uploads behind a longer
 grace period ever need it.
 
-## 109. Admin › Flavors: *Metadata* as *Yes* / *No*, the extra specs in a popover on the name
+## 109. Admin › Flavors: *Metadata* as *Yes* / *No*, the extra specs in a popover on the *Yes*
+
+> ✅ **Done** (2026-11-13). `pages/admin.rs::flavor_columns`: *Metadata* shows *Yes* / *No*
+> (`has_metadata`, sortable) and *Flavor Name* renders the new `widgets::SpecsPopover` (title
+> *Metadata: name*, a `dl.kv.mini.specs` of `key` / `value` in mono; a plain name when there are no
+> specs). `specs_cell` is unchanged for the other admin tables. The placement of `FlavorPopover`
+> moved into `widgets::popover_style` (pure, tested) and `place_popover` (now `try_set`), shared by
+> both; `InfoTip` keeps its own (it opens to the right). CSS: `.kv.mini.specs` lets long keys wrap.
+> `flavor_search` still matches the specs. Tests `flavor_metadata_is_yes_no_and_still_searchable`
+> and `popovers_open_below_or_above_and_stay_on_screen`. **Browser** (ttcp-dev, admin2, dark,
+> English): 213 flavors, 210 *Yes* each with a card and 3 *No* without one, no mismatch; rows
+> 63 px at most; the filter `CUSTOM_NVIDIA_H100` finds the 4 GPU flavors by a hidden spec;
+> hovering `GH3.16-128.c4g` shows its 11 specs. Not checked: Spanish, light mode.
+>
+> **Changed after review** (2026-11-13, the user): the card opens from the *Yes* in *Metadata*, not
+> from the name (`SpecsPopover` takes a `label` and the flavor `name` for the title; the name is
+> plain text again), and is wider: `.popover.specs-card` 300–460 px (the flavor card stays at
+> 360). `popover_style` takes the card's width (`POPOVER_W`, `SPECS_POPOVER_W`) so a card near the
+> right edge is pulled back by its own width. Checked in the browser: 210 cards on *Metadata*, 0
+> on the names; the `GH3.16-128.c4g` card opens below its *Yes*, inside the window, with the
+> longest key and its value on one line.
 
 **Goal.** Admin › Compute › Flavors lists every extra spec of a flavor in the *Metadata* column,
 one `key=value` per line, so flavors with many specs (`hw:*`, `aggregate_instance_extra_specs:*`,
 `quota:*`) make their rows tall and the table hard to scan. Horizon's *Metadata* column only says
 *Yes* or *No*. Do the same: the cell shows *Yes* when the flavor has extra specs and *No* when it
-has none. When it has some, hovering (or focusing) the flavor's name opens a popover, like the
+has none. When it has some, hovering (or focusing) the *Yes* opens a popover, like the
 flavor popover on the Instances list (item 9), titled with the flavor's name and listing its
-extra specs as `key = value` pairs. Flavors without extra specs show a plain name, with no dotted
+extra specs as `key = value` pairs. Flavors without extra specs show a plain *No*, with no dotted
 underline and no popover.
 
 **Implementation.**
@@ -7082,16 +7102,16 @@ underline and no popover.
 - `src/pages/admin.rs::flavor_columns`: the `K::Metadata` column renders `K::Yes` / `K::No`
   from `f.extra_specs.is_empty()` (sortable, so flavors with specs can be grouped). Do not
   change `specs_cell`: group types, host aggregates, volume types and QoS specs keep listing
-  their specs. The `K::FlavorName` column renders the popover when `extra_specs` is non-empty,
-  else the name as today; `sort_text` stays on the name. `flavor_search` keeps matching on the
+  their specs. The *Yes* itself is the popover's trigger; the name stays plain text.
+  `flavor_search` keeps matching on the
   specs, so filtering by `hw:cpu_policy` still finds the rows even though the specs are hidden.
 - `src/components/widgets.rs`: `FlavorPopover` and `InfoTip` each copy the same
   `position: fixed` placement (`place` closure, flip upwards near the bottom of the viewport).
   Extract it into a small helper or a generic `Popover { label, title, body }` component and
   build `FlavorPopover` on it, then add the admin one (`SpecsPopover`, or the generic component
   called from `admin.rs` with a `dl.kv.mini` of the specs). Key and value in `mono small`; long
-  values wrap (the card is `max-width: 360px`). The ID for `aria-describedby` from the flavor ID
-  (`flv-specs-{id}`), unique per row.
+  values wrap (the card is wider than the flavor card, up to 460 px). The ID for
+  `aria-describedby` from the flavor ID (`specs-{id}`), unique per row.
 - CSS (`style/`): reuse `.popover-host`, `.popover`, `.popover-title`, `.kv.mini`; nothing new
   is expected beyond, perhaps, `word-break` on long spec values.
 - i18n: `K::Yes`, `K::No`, `K::Metadata` (also the popover title, e.g. *Metadata:
@@ -7108,6 +7128,22 @@ underline and no popover.
 this item only changes the Admin table.
 
 ## 110. *Associate Floating IP*: a filter box in the port dropdown
+
+> ✅ **Done** (2026-11-13), as a search box (the reading in *Open questions*; listing fewer
+> ports was not asked for). `select.rs::Combo` has a `search` prop (`shows_search(search, len)`:
+> always, else from `SEARCH_FROM`); `dialog::Field::searchable()` passes it from `Kind::Select`.
+> Set on the three port pickers: `floating_ip_items`, `admin_floating_ip_items` and
+> `associate_ip_dialog`. Not on *Floating IP* nor the network-name label (left as ideas). Tests:
+> `short_lists_get_a_search_box_only_when_asked` and asserts in the two dialog tests.
+> **Browser** (ttcp-dev, Admin › Floating IPs, nothing submitted): an owner with a single port shows
+> *Filter…*, focused; `qaimage` and `10.10.0` keep it, `zzz` gives *No matching items*, Esc closes.
+> Project › Floating IPs and the instance menu not seen: project admin2 has no floating IPs nor
+> instances (same `Field` flag, covered by the tests).
+>
+> **Port forwarding too** (2026-11-13, asked by the user): the *Internal IP Address* picker of
+> *Add / Edit Rule* (`port_forwarding_dialog`, `ChoiceSet::ForwardablePorts`) is `.searchable()`;
+> test `port_forwarding_port_picker_has_a_search_box`. Not seen in the browser: admin2 has no
+> floating IP to open the *Port Forwarding* tab of.
 
 **Goal.** Associating a floating IP means finding one port among the project's instance ports:
 *Project › Floating IPs › Associate*, the instance menu's *Associate Floating IP* and Admin ›
@@ -7149,6 +7185,12 @@ admin dialog already does through `owned_port_choices`), the project dialogs nee
 `AllAssociablePorts`-style per-pool keys for the project's own ports. Confirm with the user.
 
 ## 111. *Create Application Credential*: *Expiration Date* and *Expiration Time* on one row
+
+> ✅ **Done** (2026-11-13). `.half()` on both fields in `ops/identity.rs::create_app_credential_dialog`
+> and `ops/key_manager.rs::store_secret_dialog`; the help stays under the time (it read well
+> there). Test `expiration_date_and_time_share_a_line` (both dialogs). **Browser** (ttcp-dev,
+> dark): both dialogs put the two fields on one row (283 px each); the calendar and the time
+> picker open inside the dialog; at 490 px wide they stack. Not checked: Spanish.
 
 **Goal.** In Identity › Application Credentials › *Create Application Credential*, *Expiration
 Date* and *Expiration Time* take a full row each, although they are one value (the expiry, in

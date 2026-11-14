@@ -154,6 +154,9 @@ pub struct Field {
     /// Hidden once its choices load empty (Horizon drops *Availability Zone
     /// Hints* when Neutron reports no zones of that kind).
     pub hide_empty: bool,
+    /// A [`Field::select`] whose dropdown always has a search box, however few
+    /// choices it has (the floating IP port pickers, roadmap 110).
+    pub searchable: bool,
     /// A [`Field::key_values`] only: the Glance metadata catalog resource type
     /// (`OS::Nova::Server`…) whose properties it suggests (roadmap 25).
     pub catalog: Option<&'static str>,
@@ -185,6 +188,7 @@ impl Field {
             hide_empty: false,
             catalog: None,
             catalog_skip: &[],
+            searchable: false,
         }
     }
     /// One-line text.
@@ -291,6 +295,11 @@ impl Field {
     /// Lines a text area shows (default 4): short descriptions don't need more.
     pub fn rows(mut self, n: u8) -> Self {
         self.rows = Some(n);
+        self
+    }
+    /// Gives a [`Field::select`] a search box even on a short list.
+    pub fn searchable(mut self) -> Self {
+        self.searchable = true;
         self
     }
     /// Lays the field out at half the row, beside the half field next to it.
@@ -1478,7 +1487,7 @@ fn FieldView(
             let options = Signal::derive(move || resolve(&src, values, choices));
             view! {
                 <Combo id=id.clone() options=options value=Signal::derive(get) required=req empty_label=field.empty_label.clone()
-                    on_change=Callback::new(move |v: String| put(v))/>
+                    search=field.searchable on_change=Callback::new(move |v: String| put(v))/>
             }.into_any()
         }
         Kind::Pick { src, multi } => {

@@ -407,6 +407,76 @@ pub fn LockIcon(locked: bool) -> impl IntoView {
     }
 }
 
+/// Widest a [`FlavorPopover`] card gets (`.popover`'s `max-width`), px.
+const POPOVER_W: f64 = 360.0;
+/// Widest a [`SpecsPopover`] card gets (`.popover.specs-card`), px: long spec
+/// keys need more room than the flavor card (roadmap 109).
+const SPECS_POPOVER_W: f64 = 460.0;
+
+/// The `style` of a hover card (`.popover`, `position: fixed`) at most `card_w`
+/// px wide, for a trigger at `left`, `top`, `bottom` (viewport px) in a `vw` ×
+/// `vh` viewport: under the trigger, or above it when fewer than 280 px are
+/// left below, and kept inside the right edge. Fixed, so scrolling table
+/// wrappers don't clip it (AGENTS.md §6).
+pub fn popover_style(left: f64, top: f64, bottom: f64, vw: f64, vh: f64, card_w: f64) -> String {
+    let left = left.min(vw - card_w - 20.0).max(8.0);
+    if bottom + 280.0 > vh {
+        format!("left:{left}px;top:{top}px;transform:translateY(calc(-100% - 8px))")
+    } else {
+        format!("left:{left}px;top:{}px", bottom + 8.0)
+    }
+}
+
+/// Sets `pos` to [`popover_style`] for `host`'s current rect (a no-op on the server).
+fn place_popover(host: NodeRef<leptos::html::Span>, pos: RwSignal<String>, card_w: f64) {
+    #[cfg(feature = "hydrate")]
+    if let Some(el) = host.get_untracked() {
+        let r = el.get_bounding_client_rect();
+        let vh = window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0);
+        let vw = window().inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1200.0);
+        // `try_set`: a hover can arrive after navigating away disposed the signal (AGENTS.md §6).
+        let _ = pos.try_set(popover_style(r.left(), r.top(), r.bottom(), vw, vh, card_w));
+    }
+    #[cfg(not(feature = "hydrate"))]
+    let _ = (host, pos, card_w);
+}
+
+/// `label` (Admin › Flavors' *Yes* in the *Metadata* column, roadmap 109) that
+/// shows `specs` as `key` / `value` pairs in a card on hover and keyboard
+/// focus, titled *title: name*. `key` makes the card's ID unique on the page.
+/// With no `specs` it is the plain `label`, with no card.
+#[component]
+pub fn SpecsPopover(
+    #[prop(into)] label: String,
+    #[prop(into)] name: String,
+    specs: Vec<(String, String)>,
+    title: K,
+    #[prop(into)] key: String,
+) -> impl IntoView {
+    let i18n = crate::i18n::use_i18n();
+    if specs.is_empty() {
+        return label.into_any();
+    }
+    let id = format!("specs-{key}");
+    let host = NodeRef::<leptos::html::Span>::new();
+    let pos = RwSignal::new(String::new());
+    let place = move || place_popover(host, pos, SPECS_POPOVER_W);
+    let host_id = id.clone();
+    view! {
+        <span class="popover-host" tabindex="0" aria-describedby=host_id node_ref=host
+            on:mouseenter=move |_| place() on:focusin=move |_| place()>
+            <span>{label}</span>
+            <span class="popover specs-card" role="tooltip" id=id style=move || pos.get()>
+                <strong class="popover-title">{move || i18n.t(title)}": "{name.clone()}</strong>
+                <dl class="kv mini specs">
+                    {specs.into_iter().map(|(k, v)| view! { <dt class="mono small">{k}</dt><dd class="mono small">{v}</dd> }).collect_view()}
+                </dl>
+            </span>
+        </span>
+    }
+    .into_any()
+}
+
 /// Flavor name with a details card shown on hover and keyboard focus.
 #[component]
 pub fn FlavorPopover(flavor: crate::model::FlavorInfo, #[prop(into)] key: String) -> impl IntoView {
@@ -419,26 +489,9 @@ pub fn FlavorPopover(flavor: crate::model::FlavorInfo, #[prop(into)] key: String
         .map(|m| crate::i18n::bytes(m.max(0) as u64 * 1024 * 1024))
         .unwrap_or_else(|| "-".into());
     let row = move |k: K, v: String| view! { <dt>{move || i18n.t(k)}</dt><dd>{v}</dd> };
-    // Fixed positioning so the card is not clipped by scrolling table wrappers.
     let host = NodeRef::<leptos::html::Span>::new();
     let pos = RwSignal::new(String::new());
-    let place = move || {
-        #[cfg(feature = "hydrate")]
-        if let Some(el) = host.get_untracked() {
-            let r = el.get_bounding_client_rect();
-            let vh = window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0);
-            let vw = window().inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1200.0);
-            let left = r.left().min(vw - 380.0).max(8.0);
-            pos.set(if r.bottom() + 280.0 > vh {
-                format!(
-                    "left:{left}px;top:{}px;transform:translateY(calc(-100% - 8px))",
-                    r.top()
-                )
-            } else {
-                format!("left:{left}px;top:{}px", r.bottom() + 8.0)
-            });
-        }
-    };
+    let place = move || place_popover(host, pos, POPOVER_W);
     let host_id = id.clone();
     view! {
         <span class="popover-host" tabindex="0" aria-describedby=host_id node_ref=host
@@ -775,6 +828,24 @@ pub fn InfoTip(#[prop(into)] text: String, #[prop(into)] label: String, #[prop(i
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn popovers_open_below_or_above_and_stay_on_screen() {
+        // Room below: under the trigger, 8 px down.
+        assert_eq!(
+            popover_style(100.0, 50.0, 70.0, 1200.0, 800.0, POPOVER_W),
+            "left:100px;top:78px"
+        );
+        // Near the bottom: above it.
+        assert_eq!(
+            popover_style(100.0, 600.0, 620.0, 1200.0, 800.0, POPOVER_W),
+            "left:100px;top:600px;transform:translateY(calc(-100% - 8px))"
+        );
+        // Near the right edge: pulled back by the card's width plus 20 px; never off the left edge.
+        assert!(popover_style(1100.0, 50.0, 70.0, 1200.0, 800.0, POPOVER_W).starts_with("left:820px;"));
+        assert!(popover_style(1100.0, 50.0, 70.0, 1200.0, 800.0, SPECS_POPOVER_W).starts_with("left:720px;"));
+        assert!(popover_style(-20.0, 50.0, 70.0, 300.0, 800.0, POPOVER_W).starts_with("left:8px;"));
+    }
 
     #[test]
     fn images_poll_until_their_data_is_in_and_stop_on_final_states() {

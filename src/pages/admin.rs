@@ -24,10 +24,10 @@ use crate::components::pager::{
     with_server_keys,
 };
 use crate::components::table::{Col, DataTable, Select, TimingChip, available, col};
-use crate::components::widgets::FlavorPopover;
 use crate::components::widgets::{
     AzPill, AzPills, ErrorBox, LockIcon, PageHeader, Pill, Skeleton, Tone, age_cell_since, dash, render, short_time,
 };
+use crate::components::widgets::{FlavorPopover, SpecsPopover};
 use crate::i18n::decimal;
 use crate::i18n::{K, Lang, t, use_i18n};
 use crate::i18n::{image_visibility, power_state, server_status};
@@ -758,7 +758,15 @@ fn flavor_columns() -> Vec<Col<FlavorRow>> {
                 })}
             }
         }).sort_num(|f| f.public as i64),
-        col(K::Metadata, |f: &FlavorRow, l| specs_cell(l, &f.extra_specs)),
+        // Horizon's *Metadata* column: whether there are any, with the specs in
+        // a card on the *Yes* (roadmap 109).
+        col(K::Metadata, |f: &FlavorRow, l| {
+            view! {
+                <SpecsPopover label=yes_no(l, has_metadata(f)) name=f.name.clone()
+                    specs=f.extra_specs.clone() title=K::Metadata key=f.id.clone()/>
+            }
+        })
+        .sort_text(|f| has_metadata(f).to_string()),
     ];
     cols.push(
         col(
@@ -770,7 +778,13 @@ fn flavor_columns() -> Vec<Col<FlavorRow>> {
     cols
 }
 
-/// Search text: name, ID and the extra specs.
+/// Whether a flavor has extra specs (Admin › Flavors' *Metadata* column).
+fn has_metadata(f: &FlavorRow) -> bool {
+    !f.extra_specs.is_empty()
+}
+
+/// Name, ID and every `key=value` extra spec, so the search still finds a
+/// flavor by a spec the row no longer shows (roadmap 109).
 fn flavor_search(f: &FlavorRow) -> String {
     let specs = f
         .extra_specs
@@ -1868,6 +1882,28 @@ mod tests {
             rows: vec![],
             error: None,
         })
+    }
+
+    #[test]
+    fn flavor_metadata_is_yes_no_and_still_searchable() {
+        let mut f = FlavorRow {
+            id: "f1".into(),
+            name: "m1.large".into(),
+            vcpus: 4,
+            ram_mb: 8192,
+            disk_gb: 40,
+            ephemeral_gb: 0,
+            swap_mb: 0,
+            rxtx_factor: None,
+            public: true,
+            extra_specs: vec![],
+            access: vec![],
+        };
+        assert!(!has_metadata(&f));
+        f.extra_specs = vec![("hw:cpu_policy".into(), "dedicated".into())];
+        assert!(has_metadata(&f));
+        // The row no longer lists the specs, but the search box still finds them.
+        assert!(flavor_search(&f).contains("hw:cpu_policy=dedicated"));
     }
 
     fn info(compute: bool, volume: bool, agents: bool) -> SystemInfo {

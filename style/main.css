@@ -748,6 +748,11 @@ small.over { color: var(--danger-ink); }
 }
 .popover-title { display: block; margin-bottom: 6px; font-size: 13px; }
 .kv.mini { grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12.5px; }
+/* Extra specs (roadmap 109): long keys such as `aggregate_instance_extra_specs:…` wrap inside the card. */
+.kv.mini.specs { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
+/* Wider than the flavor card; `widgets::SPECS_POPOVER_W` must match the max-width. */
+.popover.specs-card { max-width: 460px; min-width: 300px; }
+.kv.mini.specs > * { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .popover { transition: none; } }
 /* (i) beside a form label (Field::tip, roadmap 79): a round icon, not the dotted underline. */
 .field-head { display: flex; align-items: center; gap: 6px; }

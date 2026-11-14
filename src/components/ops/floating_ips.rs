@@ -86,7 +86,9 @@ pub fn admin_floating_ip_items(lang: Lang, f: &FloatingIpRow, project_id: Option
                         t(lang, K::PortToAssociate),
                         Source::Of(ChoiceSet::AllAssociablePorts, owner.clone()),
                     )
-                    .required(),
+                    .required()
+                    // Search box however few ports there are (roadmap 110).
+                    .searchable(),
                 ],
                 move |v| {
                     Ok(OsAction::FloatingIpAssociate {
@@ -130,7 +132,9 @@ pub fn port_forwarding_dialog(lang: Lang, floating_ip_id: &str, rule: Option<&Po
             rule.map(|r| format!("{}/{}", r.internal_port_id, r.internal_ip))
                 .unwrap_or_default(),
         )
-        .required(),
+        .required()
+        // Search box however few ports there are, as Associate (roadmap 110).
+        .searchable(),
         Field::text("internal_port", tr(K::InternalPort))
             .value(rule.map(|r| r.internal.clone()).unwrap_or_default())
             .help(port_help.clone())
@@ -222,7 +226,9 @@ pub fn floating_ip_items(lang: Lang, f: &FloatingIpRow) -> Vec<MenuItem> {
                         t(lang, K::PortToAssociate),
                         Source::Set(ChoiceSet::AssociablePorts),
                     )
-                    .required(),
+                    .required()
+                    // Search box however few ports there are (roadmap 110).
+                    .searchable(),
                 ],
                 move |v| {
                     Ok(OsAction::FloatingIpAssociate {
@@ -305,6 +311,12 @@ mod tests {
             matches!(&d.fields[0].kind, Kind::Select(Source::Of(ChoiceSet::AllAssociablePorts, p)) if p == "p9 net-public"),
             "the owner's ports its pool reaches, not the session's"
         );
+        assert!(
+            d.fields[0].searchable,
+            "port picker always has a search box (roadmap 110)"
+        );
+        let d = dialog_of(&floating_ip_items(Lang::EnUs, &row), "Associate");
+        assert!(d.fields[0].searchable, "project port picker too (roadmap 110)");
         assert_eq!(
             admin_floating_ip_items(Lang::EnUs, &row, None).len(),
             1,
@@ -315,6 +327,14 @@ mod tests {
             ["Disassociate", "Release Floating IP"],
             "Horizon's admin menu"
         );
+    }
+
+    #[test]
+    fn port_forwarding_port_picker_has_a_search_box() {
+        // As the Associate pickers (roadmap 110), even with a single instance port.
+        let d = port_forwarding_dialog(Lang::EnUs, "f1", None);
+        let f = d.fields.iter().find(|f| f.name == "internal").unwrap();
+        assert!(f.searchable);
     }
 
     #[test]

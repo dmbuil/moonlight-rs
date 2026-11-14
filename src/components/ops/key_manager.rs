@@ -53,8 +53,11 @@ pub fn store_secret_dialog(lang: Lang) -> Dialog {
         Field::text("algorithm", tr(K::Algorithm)).help(tr(K::AlgorithmHelp)),
         Field::number("bit_length", tr(K::BitLength), 1).help(tr(K::BitLengthHelp)),
         Field::text("mode", tr(K::CipherMode)).help(tr(K::CipherModeHelp)),
-        Field::date("expiration_date", tr(K::ExpirationDate), true),
-        Field::time("expiration_time", tr(K::ExpirationTime)).help(tr(K::SecretExpirationHelp)),
+        // One value, so on one line: date left, time right (roadmap 111).
+        Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
+        Field::time("expiration_time", tr(K::ExpirationTime))
+            .half()
+            .help(tr(K::SecretExpirationHelp)),
     ];
     Dialog::form(tr(K::StoreSecret), tr(K::StoreSecret), fields, move |v| {
         let now = chrono::Utc::now().naive_utc();

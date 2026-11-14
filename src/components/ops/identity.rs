@@ -14,8 +14,9 @@ pub fn create_app_credential_dialog(lang: Lang) -> Dialog {
         Field::text("name", tr(K::Name)).required(),
         Field::text("description", tr(K::Description)),
         Field::password("secret", tr(K::Secret)).help(tr(K::SecretHelp)),
-        Field::date("expiration_date", tr(K::ExpirationDate), true),
-        Field::time("expiration_time", tr(K::ExpirationTime)).help(tr(K::ExpirationHelp)),
+        // One value, so on one line: date left, time right (roadmap 111).
+        Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
+        Field::time("expiration_time", tr(K::ExpirationTime)).half().help(tr(K::ExpirationHelp)),
         Field::multi("roles", tr(K::Roles), Source::Set(ChoiceSet::TokenRoles)).help(tr(K::AppCredRolesHelp)),
         // Horizon's examples, in both of the formats it accepts.
         Field::area("access_rules", tr(K::AccessRules)).help(tr(K::AccessRulesHelp)).help_code(
@@ -464,6 +465,18 @@ pub fn group_menu(lang: Lang, g: &IdentityGroup) -> Vec<MenuItem> {
 mod tests {
     use super::*;
     use crate::components::dialog::Kind;
+
+    #[test]
+    fn expiration_date_and_time_share_a_line() {
+        // Roadmap 111: the two halves of one value, side by side (Store Secret too).
+        for d in [
+            create_app_credential_dialog(Lang::EnUs),
+            super::super::store_secret_dialog(Lang::EnUs),
+        ] {
+            let f = |n| d.fields.iter().find(|f| f.name == n).unwrap();
+            assert!(f("expiration_date").half && f("expiration_time").half, "{}", d.title);
+        }
+    }
 
     #[test]
     fn modify_quotas_is_for_admins_and_follows_edit_project() {

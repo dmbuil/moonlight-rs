@@ -11,6 +11,13 @@ use crate::model::Choice;
 /// Lists at least this long get a search box.
 const SEARCH_FROM: usize = 8;
 
+/// Whether a combo of `len` options (with *None*) shows its search box: from
+/// [`SEARCH_FROM`] options, or always when the caller asks (`search`: the
+/// floating IP port pickers, roadmap 110).
+pub fn shows_search(search: bool, len: usize) -> bool {
+    search || len >= SEARCH_FROM
+}
+
 /// Options whose label contains every term of `query` (case-insensitive).
 pub fn filter_choices(list: &[Choice], query: &str) -> Vec<Choice> {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
@@ -73,6 +80,9 @@ pub fn Combo(
     /// properties at once). Closing any other way drops the ticks.
     #[prop(optional)]
     multi: bool,
+    /// Always show the search box, however short the list (else from [`SEARCH_FROM`]).
+    #[prop(optional)]
+    search: bool,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let empty_label = StoredValue::new(empty_label);
@@ -81,6 +91,7 @@ pub fn Combo(
     let active: RwSignal<Option<usize>> = RwSignal::new(None);
     let pos = RwSignal::new(String::new());
     let trigger: NodeRef<leptos::html::Button> = NodeRef::new();
+    let force_search = search;
     let search: NodeRef<leptos::html::Input> = NodeRef::new();
     // Copy handles, so the nested `<Show>` closures stay `Fn`.
     let base = StoredValue::new(id.clone());
@@ -99,7 +110,7 @@ pub fn Combo(
             l
         })
     };
-    let searchable = move || all().is_some_and(|l| l.len() >= SEARCH_FROM);
+    let searchable = move || all().is_some_and(|l| shows_search(force_search, l.len()));
     let shown = move || all().map(|l| filter_choices(&l, &query.get())).unwrap_or_default();
     let label = move || match all() {
         None => i18n.t(K::LoadingChoices).to_string(),
@@ -320,6 +331,14 @@ fn scroll_into_view(_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_lists_get_a_search_box_only_when_asked() {
+        assert!(!shows_search(false, 3));
+        assert!(shows_search(false, SEARCH_FROM));
+        assert!(shows_search(true, 1));
+        assert!(shows_search(true, 0));
+    }
 
     fn list(labels: &[&str]) -> Vec<Choice> {
         labels.iter().map(|l| Choice::new(*l, *l)).collect()
