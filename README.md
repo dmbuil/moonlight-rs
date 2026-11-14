@@ -18,32 +18,34 @@
 *Leaving Horizon behind:* a fast, stateless OpenStack dashboard that keeps Horizon's layout
 and modernises its controls.
 
-| [**Quick start**](#quick-start)
-| [**Configuration**](CONFIGURATION.md)
-| [**Container**](#container-image-podman)
-| [**Architecture**](ARCHITECTURE.md)
-| [**Roadmap**](ROADMAP.md)
-| [**License**](LICENSE.md) |
+| 🚀 [**Quick start**](#quick-start)
+| ⚙️ [**Configuration**](CONFIGURATION.md)
+| 🐳 [**Container**](#container-image-podman)
+| 🏗️ [**Architecture**](ARCHITECTURE.md)
+| 🗺️ [**Roadmap**](ROADMAP.md)
+| 📄 [**License**](LICENSE.md) |
 
 </div>
 
-Moonlight is a fast OpenStack dashboard written in Rust:
+Moonlight is a *fast* OpenStack dashboard written in Rust:
 [Leptos](https://leptos.dev) (server-side rendering + WASM hydration) on Axum, talking to
-OpenStack through gtema's [`openstack_sdk`](https://github.com/gtema/openstack).
+OpenStack through [`openstack_sdk`](https://github.com/gtema/openstack).
 
-It is a **proof of concept** that replicates Horizon's *Project* dashboard — same structure,
-same look and feel as the corporate Horizon theme — with modern controls, English/Spanish UI
+It is a **proof of concept** that replicates Horizon's *Project* dashboard: same structure,
+same look and feel as the corporate Horizon theme,  with modern controls, English/Spanish UI
 and a server-enforced safety switch for every write.
 
 - [Quick start](#quick-start)
 - [Running the test server](#running-the-test-server)
-- [Configuration](#configuration) (full reference: [CONFIGURATION.md](CONFIGURATION.md))
-- [Writes: off / dry-run / on](#writes-off--dry-run--on)
+- [Container image (Podman)](#container-image-podman)
+- [Configuration](#configuration)
 - [Features](#features)
-- [Architecture](#architecture) (details: [ARCHITECTURE.md](ARCHITECTURE.md))
+- [Browser support](#browser-support)
+- [Architecture](#architecture)
 - [Tests](#tests)
 - [Troubleshooting](#troubleshooting)
 - [Status and roadmap](#status-and-roadmap)
+- [License](#license)
 
 ## Quick start
 
@@ -55,7 +57,7 @@ cargo install cargo-leptos --locked
 
 cp moonlight.conf.example moonlight.conf   # git-ignored
 # edit it: [keystone] url and [session] cookie_key (see CONFIGURATION.md)
-openssl rand -base64 64 | tr -d '\n'   # → paste as cookie_key
+openssl rand -base64 64 | tr -d '\n'       # → paste as cookie_key
 
 cargo leptos watch -- --config-file moonlight.conf
 ```
@@ -89,7 +91,8 @@ To build once without watching: `cargo leptos build` then `cargo leptos serve`.
 
 ### 2. Release build (closer to production)
 
-> [!WARNING] Stop `cargo leptos watch` first
+> [!WARNING]
+> **Stop `cargo leptos watch` first**  
 > Both commands write the front-end bundle to the
 > same `target/site/pkg/`. A release `.wasm` cannot hydrate the HTML of the debug server
 > (it carries hot-reload markers), so the page renders but **stops responding to clicks**.
@@ -205,10 +208,12 @@ shows whether the build produced it.
 
 Moonlight reads TOML files named `moonlight.conf`, layered the way oslo.config layers Nova's and
 Neutron's; `MOONLIGHT_*` environment variables override them. Only `[keystone] url` is
-required. [CONFIGURATION.md](CONFIGURATION.md) lists every setting with its default and its
+required.
+
+[CONFIGURATION.md](CONFIGURATION.md) lists every setting with its default and its
 Horizon equivalent; [`moonlight.conf.example`](moonlight.conf.example) is a ready-to-copy file.
 
-## Writes: off / dry-run / on
+### Writes: off / dry-run / on
 
 Every mutating action goes through one server function (`run_action`) and one executor
 (`src/server/actions/`). The mode is **enforced on the server**; the UI only reflects it.
@@ -266,11 +271,11 @@ Reading works in any browser that can render the HTML; sorting, filtering, dialo
 need WebAssembly and JavaScript modules. The floor is set by one CSS function the theme is built
 on, `light-dark()`, which gives every colour token its light and dark value:
 
-| Browser | Minimum version |
-| --- | --- |
-| Chrome, Edge, Chrome for Android | 123 (March 2024) |
-| Firefox, Firefox for Android | 120 (November 2023) |
-| Safari, iOS Safari | 17.5 (May 2024) |
+| Browser                          | Minimum version     |
+| -------------------------------- | ------------------- |
+| Chrome, Edge, Chrome for Android | 123 (March 2024)    |
+| Firefox, Firefox for Android     | 120 (November 2023) |
+| Safari, iOS Safari               | 17.5 (May 2024)     |
 
 Everything else the app uses has been supported for longer: WebAssembly with the features Rust
 enables by default (bulk memory, reference types, sign extension, non-trapping float
@@ -317,12 +322,12 @@ check list (both clippy targets, Markdown lint) is in [AGENTS.md](AGENTS.md#2-co
 | `ERROR openstack_sdk… No catalog information` at login              | Harmless: logged by the SDK for the unscoped token.                                                                                     |
 | Cannot type in dialog fields                                        | A password-manager extension (e.g. 1Password) overlays inputs on `127.0.0.1`; disable it for the site.                                  |
 | Page renders but clicks do nothing (links, menus, project switcher) | The served WASM does not match the server build (e.g. a `--release` build ran while `watch` was serving). Restart `cargo leptos watch`. |
-| Sent back to the login page after ~1 hour                           | The Keystone token expired (default lifetime 1 h). Sign in again; token renewal via OIDC refresh tokens is on the roadmap.              |
+| Sent back to the login page after ~1 hour                           | The Keystone token expired (default lifetime 1 h). Sign in again.                                                                       |
 | Port 3000/3001 already in use                                       | Change `site-addr` / `reload-port` in `Cargo.toml`.                                                                                     |
 
 ## Status and roadmap
 
-**PoC.** Verified against a production RHOSO cloud in read mode and in dry-run for writes;
+Verified against a production RHOSO cloud in read mode and in dry-run for writes;
 real writes have only been validated by tests, not against a live cloud.
 
 Next steps:
