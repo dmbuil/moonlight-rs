@@ -285,4 +285,20 @@ mod quota_tests {
         );
         assert!(!OsAction::ServerStart { id: "x".into() }.other_projects_quotas("mine"));
     }
+
+    #[test]
+    fn own_quotas_are_the_session_projects_only() {
+        let q = |p: &str| OsAction::QuotaUpdate {
+            service: QuotaService::Network,
+            project_id: p.into(),
+            values: Default::default(),
+        };
+        assert!(q("mine").own_quotas("mine"));
+        assert!(!q("other").own_quotas("mine"), "another project: the admin rule");
+        assert!(
+            OsAction::Batch(vec![("a".into(), q("other")), ("b".into(), q("mine"))]).own_quotas("mine"),
+            "inside a batch too"
+        );
+        assert!(!OsAction::ServerStart { id: "x".into() }.own_quotas("mine"));
+    }
 }

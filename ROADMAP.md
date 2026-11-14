@@ -124,8 +124,9 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 109 | ✅ Admin › Flavors: *Metadata* column says *Yes* / *No*; the specs in a popover on the *Yes* | — | S | 9, 85 |
 | 110 | ✅ *Associate Floating IP*: a filter box in the port dropdown, whatever the list's length | — | XS | 4 |
 | 111 | ✅ *Create Application Credential*: *Expiration Date* and *Expiration Time* on one row | — | XS | 57 |
-| 112 | Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit = all / admin / off`) | P2 | S | 82, 29 |
-| 113 | Project › Quotas: readable labels for the firewall quotas (not `firewall_group`) | P3 | XS | 82, 93 |
+| 112 | ✅ Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit = all / admin / off`) | — | S | 82, 29 |
+| 113 | ✅ Project › Quotas: readable labels for the firewall quotas (not `firewall_group`) | — | XS | 82, 93 |
+| 114 | ✅ Login page: a background image per theme (`public/background-{light,dark}.jpeg`) instead of the two-colour band | — | XS | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -148,7 +149,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
-85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58**.
+85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113, 114**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -4318,10 +4319,11 @@ setting is wanted now or later.
 > (`health_monitor` is the current name: ttcp-dev returns only that), editable keys first
 > (`QuotaService::keys`), then Cinder's per-type keys grouped by type. Labels in
 > `ops::quota_label` (unknown keys show the API name). *Edit Quotas* per card
-> (`ops::edit_quotas_dialog`, everyone sees it) sends `OsAction::QuotaUpdate { service,
-> project_id, values }` with only the changed keys (`model::quota_changes`, refusing a limit below
-> usage unless `-1`); `actions::quota_update` sends a JSON `PUT` (`os-quota-sets/{p}` for Nova and
-> Cinder, `quotas/{p}`, `lbaas/quotas/{p}`) and refuses keys outside `keys()`. A 403 shows
+> (`ops::edit_quotas_dialog`, everyone sees it unless `[ui] quota_edit` says otherwise, item
+> 112) sends `OsAction::QuotaUpdate { service, project_id, values }` with only the changed keys
+> (`model::quota_changes`, refusing a limit below usage unless `-1`); `actions::quota_update`
+> sends a JSON `PUT` (`os-quota-sets/{p}` for Nova and Cinder, `quotas/{p}`,
+> `lbaas/quotas/{p}`) and refuses keys outside `keys()`. A 403 shows
 > *You have no permission to edit quotas* through the new `Dialog::forbidden`. Identity's
 > project page links *Quotas* here. Tests: mapper shapes of the four services, `quota_changes`,
 > units, dialog fields and build, labels for every key, bar percentages, the dry-run of each
@@ -7256,6 +7258,21 @@ layout.
 
 ## 112. Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit`)
 
+> ✅ **Done** (2026-11-14). **Built:** `prefs::QuotaEdit { All, Admin, Off }` (default `All`)
+> in `Prefs.quota_edit`, read from `[ui] quota_edit` by `server/settings.rs` (any other value
+> refused at start-up). `QuotaEdit::allows(is_admin)` decides; `pages/quotas.rs::ServiceCard`
+> shows *Edit Quotas* when the card has editable keys and, for the session's project only
+> (`QuotaCards own`), `allows(needs::ADMIN.met(&caps()))`. The server: `OsAction::own_quotas`
+> (also inside a `Batch`) and `api::quota_edit_gate` in `run_action`: `off` refuses with
+> `AppError::invalid` before anything else, `admin` adds `require_admin` (the token's role, also
+> in dry-run), `all` leaves it to the policy. Open questions settled as proposed: the setting
+> is in `[ui]`, and Identity › Projects › *Quotas* (always admins) and Admin › *Defaults* are
+> not affected. Docs: `CONFIGURATION.md`, `moonlight.conf.example`, `SECURITY.md`
+> (Authorization), item 82's note. Tests: `quota_edit_is_all_admin_or_off` (settings, bad
+> value), `quota_edit_allows_by_setting_and_role`, `own_quotas_are_the_session_projects_only`,
+> `quota_edit_gates_the_own_projects_quota_updates` (all three values, a batch, another
+> project, a non-quota action).
+
 **Goal.** Project › Quotas (item 82) shows *Edit Quotas* on every card to everyone, and leaves
 the decision to each service's policy: on most clouds a member opens the dialog, changes a limit
 and only then reads *You have no permission to edit quotas*. Horizon never offers it in the
@@ -7304,6 +7321,14 @@ rule, so a crafted request cannot get past a hidden button.
 
 ## 113. Project › Quotas: readable labels for the firewall quotas
 
+> ✅ **Done** (2026-11-14). The test cloud's Neutron details report `firewall_group`,
+> `firewall_policy` and `firewall_rule` (singular, as neutron-fwaas registers them; checked on
+> Project › Quotas' *Network* card); `ops::quota_label` maps them to the Firewall panel's
+> `K::FirewallGroups`, `K::FirewallPolicies`, `K::FirewallRules`. No other Neutron key was
+> shown raw. Labels only, as proposed: they stay read-only rows (not in
+> `QuotaService::Network.keys()`, as in Horizon). Test: `quota_labels_cover_per_type_and_unknown_keys`
+> gains the three keys in both languages.
+
 **Goal.** With FWaaS v2 on the cloud (item 93), Neutron's quota details also report the firewall
 quotas, and Project › Quotas' *Network* card (item 82) shows them under their API names
 (`firewall_group`, `firewall_policy`, `firewall_rule`) where every other row reads *Networks*,
@@ -7331,6 +7356,72 @@ Quotas* (same `QuotaCards`) and in *Edit Quotas* if the keys become editable (be
   Spanish.
 
 **Open questions.** Editable as well as labelled? Proposed: labels only (see above).
+
+## 114. Login page: a background image instead of the two-colour band
+
+> ✅ **Done.** `style/main.css` `.login-page` paints the theme's image (`center / cover
+> no-repeat`) instead of the gradient. The user then asked for one
+> image per theme: `public/background-light.jpeg` (wooden discs on grey-brown) and
+> `public/background-dark.jpeg` (blue glass petals on navy), both 2560×1440. `light-dark()` takes
+> only colours, so the light image is `.login-page`'s own background and the dark one a
+> `.login-page::before` layer over it (`isolation: isolate`, `z-index: -1`, so it stays behind the
+> card). `--login-dark-layer` is that layer's opacity, switched like `color-scheme`: 0 by default, 1
+> under `prefers-color-scheme: dark` unless `data-theme="light"`, and always under
+> `data-theme="dark"`. The opacity eases over `calc(var(--motion) * 3)`, so a theme switch
+> crossfades instead of cutting (about 480 ms; 0 under reduced motion). Both images load whatever
+> the theme, which keeps the switch instant. `--login-bg-light` / `--login-bg-dark` (`#4c4242`,
+> `#041934`) are each image's own backdrop (sampled from its corner), shown while it loads.
+> Checked against the dev server (`moonlight.conf`), signed out in an
+> isolated context: both images answer 200 `image/jpeg` (129 252 and 102 099 bytes); the computed
+> image and colour are right in all six cases (OS light / dark × no `data-theme` / `light` /
+> `dark`); light at 1440×900 and dark at 390×844 keep the subject in view with `center`, the card
+> and the white *Theme* / *Language* menus stay readable; no horizontal scroll at 390 px, no console
+> errors or warnings. The first image, `public/background.jpeg`, was then deleted (the plan below
+> still describes it).
+>
+> Also asked by the user: switching *Authenticate using* between *Keystone Credentials* and a
+> federated choice no longer jumps. `pages/login.rs` no longer sets `display: none` on
+> `.login-fields`; it gives it `class:collapsed` and `inert` (out of the tab order and the
+> accessibility tree, as before), with a new `.login-fields-inner` inside. In `main.css` the
+> wrapper is a one-row grid whose row eases from `1fr` to `0fr` (with opacity, `var(--motion)`, so
+> `prefers-reduced-motion` turns it off); a `-14px` bottom margin takes back the form's gap. Works
+> in every current browser, unlike transitions to `height: auto`. Measured frame by frame: the card
+> goes 323 → 481 px and back in about 160 ms, ending exactly at the old heights; the button
+> switches between `<a>` and `<button>` as before; the focus ring is not clipped; no console
+> messages.
+>
+> Theme crossfade checked through the real *Theme* menu: the layer's opacity goes 0 → 1 and back in
+> about 480 ms; the card stays on top; *Automatic* with the OS in dark gives 1; with
+> `prefers-reduced-motion: reduce` the duration is `0s`; no console messages. The two new
+> images still have to be added to git with the commit.
+
+**Goal.** The login page (`pages/login.rs`, `.login-page`) paints a flat band: `--utility`
+(`#2b3447`) over the top 38 % of the viewport, `--bg-soft` below. Show the image the user added
+instead, `public/background.jpeg` (2560×1440, 75 KB, dark navy with blue and teal rings in the
+lower half), covering the whole page behind the card, in light and dark theme alike. The card,
+the *Theme* / *Language* menus at the top right (white text, `.login-top`) and the login
+message stay as they are and stay readable. Horizon shows a plain login page (themes can set
+an image through `login.html`); nothing to copy from it.
+
+**Implementation.**
+
+- `public/` is Leptos' `assets-dir` (`Cargo.toml`), copied to `target/site/` and served from
+  `/` by `leptos_axum::file_and_error_handler` (as `/favicon.svg`), and the `Dockerfile` ships
+  `target/site`: the image is reachable as `/background.jpeg` with no code change. It is
+  untracked today (`git add public/background.jpeg` with the item).
+- `style/main.css` `.login-page`: replace the `linear-gradient(…)` with
+  `background: var(--utility) url("/background.jpeg") center / cover no-repeat;` (the colour
+  shows while it loads or if it is missing). Keep `min-height: 100vh`. Check at phone width
+  that `cover` keeps the rings in view (`center bottom` if they crop away) and that the card's
+  shadow (`--shadow-strong`) still separates it on the dark image; the white `.login-top`
+  summaries now sit on navy, which suits them better than before.
+- No hex colour in the rule (AGENTS.md §7): the fallback is the `--utility` token.
+- Tests: none in Rust (CSS only). Browser check: `/login` signed out, light and dark theme,
+  desktop and a 390 px wide viewport; `GET /background.jpeg` answers 200 `image/jpeg`; no
+  console errors. The browser may keep the old `moonlight.css` (AGENTS.md §6: swap the `href`).
+
+**Decided** (2026-11-14, the user): the image is fixed (no setting; `[login] background_url` is
+a follow-up if another deployment asks), and it may be committed to the public repository.
 
 ## Also pending (from the PoC)
 

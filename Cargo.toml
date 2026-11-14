@@ -1,6 +1,6 @@
 [package]
 name = "moonlight"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
 description = "Moonlight: a fast, read-only OpenStack dashboard (Horizon replacement PoC) in Rust + Leptos"
 license = "Apache-2.0"

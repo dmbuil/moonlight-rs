@@ -1,18 +1,20 @@
 //! Project › Quotas (roadmap 82): every quota each service reports for the
 //! current project, with usage, and *Edit Quotas* per service. Unlike Horizon
 //! (Overview charts plus Identity › Projects › *Modify Quotas*), it is one
-//! panel for every user; the cloud's policy decides who may save. The same
-//! cards serve Identity › Projects › *Modify Quotas* for any project (admins).
+//! panel for every user; the cloud's policy decides who may save, unless
+//! `[ui] quota_edit` (roadmap 112) hides *Edit Quotas* from members or everyone.
+//! The same cards serve Identity › Projects › *Modify Quotas* for any project
+//! (admins), where that setting does not apply.
 
 use leptos::prelude::*;
 
 use crate::api::{list_project_quotas, list_quotas};
-use crate::components::dialog::{data_version, use_dialogs};
+use crate::components::dialog::{caps, data_version, prefs_tracked, use_dialogs};
 use crate::components::ops::{edit_quotas_dialog, quota_label, quota_service_label};
 use crate::components::table::TimingChip;
 use crate::components::widgets::{ErrorBox, PageHeader, Skeleton, render};
 use crate::i18n::{K, use_i18n};
-use crate::model::{QuotaCard, QuotaRow, QuotaService};
+use crate::model::{QuotaCard, QuotaRow, QuotaService, needs};
 use crate::pages::details::param;
 use crate::pages::overview::fmt_amount;
 use leptos_meta::Title;
@@ -48,7 +50,7 @@ pub fn QuotasPage() -> impl IntoView {
             </Transition>
         </PageHeader>
         <Transition fallback=|| view! { <Skeleton rows=4/> }>
-            {move || render(data.get(), |t| view! { <QuotaCards cards=t.data/> })}
+            {move || render(data.get(), |t| view! { <QuotaCards cards=t.data own=true/> })}
         </Transition>
     }
 }
@@ -83,31 +85,35 @@ pub fn IdentityProjectQuotasPage() -> impl IntoView {
                         <h1><span class="muted">{move || format!("{}: ", i18n.t(K::Quotas))}</span>{name}</h1>
                         <div class="page-actions"><TimingChip millis=t.millis calls=t.calls/></div>
                     </div>
-                    <QuotaCards cards=p.cards/>
+                    <QuotaCards cards=p.cards own=false/>
                 }
             })}
         </Transition>
     }
 }
 
-/// One card per service.
+/// One card per service. `own`: the session's project (Project › Quotas), whose
+/// *Edit Quotas* follows `[ui] quota_edit`; another project's are for admins,
+/// whom the menu and the server already check.
 #[component]
-fn QuotaCards(cards: Vec<QuotaCard>) -> impl IntoView {
+fn QuotaCards(cards: Vec<QuotaCard>, own: bool) -> impl IntoView {
     view! {
         <div class="quota-cards">
-            {cards.into_iter().map(|c| view! { <ServiceCard card=c/> }).collect_view()}
+            {cards.into_iter().map(|c| view! { <ServiceCard card=c own=own/> }).collect_view()}
         </div>
     }
 }
 
 #[component]
-fn ServiceCard(card: QuotaCard) -> impl IntoView {
+fn ServiceCard(card: QuotaCard, own: bool) -> impl IntoView {
     let i18n = use_i18n();
     let dialogs = use_dialogs();
     let service = card.service;
     let title = quota_service_label(service);
     let reserved = card.rows.iter().any(|r| r.reserved.is_some_and(|n| n != 0));
-    let editable = card.rows.iter().any(|r| service.keys().contains(&r.key.as_str()));
+    // The server refuses the same (`api::quota_edit_gate`): hiding is only for the eye.
+    let allowed = move || !own || prefs_tracked().quota_edit.allows(needs::ADMIN.met(&caps()));
+    let has_keys = card.rows.iter().any(|r| service.keys().contains(&r.key.as_str()));
     let error = card.error.clone();
     let rows = card.rows.clone();
     // Barbican reports no usage: `fetch::quotas` counts the lists, which skip
@@ -127,7 +133,7 @@ fn ServiceCard(card: QuotaCard) -> impl IntoView {
         <section class="card quota-card">
             <header class="quota-card-head">
                 <h2>{move || i18n.t(title)}</h2>
-                {editable.then(|| view! { <button type="button" class="btn" on:click=edit>{move || i18n.t(K::EditQuotas)}</button> })}
+                {move || (has_keys && allowed()).then(|| view! { <button type="button" class="btn" on:click=edit>{move || i18n.t(K::EditQuotas)}</button> })}
             </header>
             {error.map(|e| view! { <ErrorBox message=e/> })}
             <div class="table-wrap">

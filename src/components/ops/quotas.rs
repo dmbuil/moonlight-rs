@@ -45,6 +45,10 @@ pub fn quota_label(lang: Lang, s: QuotaService, key: &str) -> String {
         (Network, "security_group_rule") => K::SecurityGroupRules,
         (Network, "rbac_policy") => K::QRbacPolicies,
         (Network, "trunk") => K::Trunks,
+        // neutron-fwaas v2 (roadmap 93, 113): read-only rows, not in `keys()`.
+        (Network, "firewall_group") => K::FirewallGroups,
+        (Network, "firewall_policy") => K::FirewallPolicies,
+        (Network, "firewall_rule") => K::FirewallRules,
         (LoadBalancer, "load_balancer") => K::LoadBalancers,
         (LoadBalancer, "listener") => K::Listeners,
         (LoadBalancer, "pool") => K::Pools,
@@ -74,9 +78,9 @@ pub fn quota_label(lang: Lang, s: QuotaService, key: &str) -> String {
 }
 
 /// *Edit Quotas* of one service: a number per editable quota the service
-/// reported, sending only what changed. Shown to everyone: whether the user may
-/// is the cloud's policy, unknown beforehand (item 35), so a 403 gets its own
-/// message instead.
+/// reported, sending only what changed. Shown as `[ui] quota_edit` says (to
+/// everyone by default, roadmap 112): whether the user may is then the cloud's
+/// policy, unknown beforehand (item 35), so a 403 gets its own message instead.
 pub fn edit_quotas_dialog(lang: Lang, card: &QuotaCard) -> Dialog {
     let project_id = card.project_id.clone();
     let title = format!(
@@ -270,6 +274,18 @@ mod tests {
             "Volúmenes (ssd)"
         );
         assert_eq!(quota_label(Lang::EnUs, QuotaService::Network, "new_thing"), "new_thing");
+        assert_eq!(
+            quota_label(Lang::EnUs, QuotaService::Network, "firewall_group"),
+            "Firewall Groups"
+        );
+        assert_eq!(
+            quota_label(Lang::EsEs, QuotaService::Network, "firewall_policy"),
+            "Políticas de cortafuegos"
+        );
+        assert_eq!(
+            quota_label(Lang::EnUs, QuotaService::Network, "firewall_rule"),
+            "Firewall Rules"
+        );
         for s in [
             QuotaService::Compute,
             QuotaService::Volume,

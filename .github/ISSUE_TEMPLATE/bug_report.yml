@@ -91,7 +91,7 @@ body:
     attributes:
       label: Moonlight version or commit
       description: "`git rev-parse --short HEAD`, or the container image tag."
-      placeholder: "0.1.0 / 55ba928"
+      placeholder: "0.4.0 / 55ba928"
     validations:
       required: true
 

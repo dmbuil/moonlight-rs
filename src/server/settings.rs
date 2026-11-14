@@ -13,8 +13,8 @@ use toml::Table;
 use crate::i18n::Lang;
 use crate::model::{Plugin, WriteMode};
 use crate::prefs::{
-    AdminPrefs, ConsolePrefs, ImagePrefs, LaunchPrefs, LoginPrefs, NetworkPrefs, PagedLists, Prefs, SsoChoice,
-    VISIBILITIES,
+    AdminPrefs, ConsolePrefs, ImagePrefs, LaunchPrefs, LoginPrefs, NetworkPrefs, PagedLists, Prefs, QuotaEdit,
+    SsoChoice, VISIBILITIES,
 };
 use crate::server::config::Config;
 use crate::theme::Theme;
@@ -264,6 +264,9 @@ pub struct Ui {
     pub page_size: u32,
     /// `admin` (default) or `all`: which lists are paged (roadmap 88).
     pub paged_lists: String,
+    /// `all` (default), `admin` or `off`: who sees *Edit Quotas* on Project ›
+    /// Quotas (roadmap 112).
+    pub quota_edit: String,
     /// Most rows a full list may have before the page fails instead of showing a cut list
     /// (roadmap 104); `0` = no cap.
     pub max_list_items: u32,
@@ -283,6 +286,7 @@ impl Default for Ui {
             background_batch_from: Prefs::default().background_batch_from,
             page_size: Prefs::default().page_size,
             paged_lists: "admin".into(),
+            quota_edit: "all".into(),
             max_list_items: DEFAULT_MAX_LIST_ITEMS,
         }
     }
@@ -843,6 +847,12 @@ impl Settings {
             "all" => PagedLists::All,
             other => return Err(format!("[ui] paged_lists must be admin or all (got {other:?})")),
         };
+        let quota_edit = match self.ui.quota_edit.trim() {
+            "all" => QuotaEdit::All,
+            "admin" => QuotaEdit::Admin,
+            "off" => QuotaEdit::Off,
+            other => return Err(format!("[ui] quota_edit must be all, admin or off (got {other:?})")),
+        };
         if self.launch.sources().is_empty() {
             return Err("[launch] at least one boot source must stay enabled".into());
         }
@@ -975,6 +985,7 @@ impl Settings {
                 background_batch_from: self.ui.background_batch_from,
                 page_size: self.ui.page_size,
                 paged_lists,
+                quota_edit,
                 launch: self.launch.clone(),
                 network: NetworkPrefs {
                     default_dns_nameservers: net
@@ -1329,6 +1340,26 @@ mod tests {
         );
         let all = parse("[ui]\npaged_lists = \"all\"").unwrap().prefs;
         assert_eq!(all.page_size_for(false), Some(100));
+    }
+
+    #[test]
+    fn quota_edit_is_all_admin_or_off() {
+        assert_eq!(parse("").unwrap().prefs.quota_edit, QuotaEdit::All, "today's behaviour");
+        for (v, want) in [
+            ("all", QuotaEdit::All),
+            ("admin", QuotaEdit::Admin),
+            ("off", QuotaEdit::Off),
+        ] {
+            assert_eq!(
+                parse(&format!("[ui]\nquota_edit = \"{v}\"")).unwrap().prefs.quota_edit,
+                want
+            );
+        }
+        assert!(
+            parse("[ui]\nquota_edit = \"members\"")
+                .unwrap_err()
+                .contains("quota_edit")
+        );
     }
 
     #[test]

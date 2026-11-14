@@ -695,9 +695,9 @@ fn UserMenu(info: SessionInfo) -> impl IntoView {
     }
 }
 
-/// The user menu's items after the domain: *Theme*, *Language*, the links and
-/// *Sign Out*. Shared by the user menu and the phone's *Account* sheet; `id`
-/// names the theme heading, which must be unique in the page.
+/// The user menu's items after the domain: *Theme*, *Language*, the links,
+/// *Sign Out* and the Moonlight version. Shared by the user menu and the phone's
+/// *Account* sheet; `id` names the theme heading, which must be unique in the page.
 #[component]
 fn UserItems(info: SessionInfo, id: &'static str) -> impl IntoView {
     let i18n = use_i18n();
@@ -730,6 +730,9 @@ fn UserItems(info: SessionInfo, id: &'static str) -> impl IntoView {
                 <ActionForm action=action>
                     <button type="submit" class="menu-item">{move || i18n.t(K::SignOut)}</button>
                 </ActionForm>
+                // The running build, from `Cargo.toml` (the same in the server and the WASM).
+                <div class="menu-sep" role="separator"></div>
+                <div class="menu-version">{concat!("Moonlight ", env!("CARGO_PKG_VERSION"))}</div>
     }
 }
 

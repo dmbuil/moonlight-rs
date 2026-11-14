@@ -27,6 +27,8 @@ pub struct Prefs {
     pub page_size: u32,
     /// `[ui] paged_lists` (roadmap 88): which lists are paged.
     pub paged_lists: PagedLists,
+    /// `[ui] quota_edit` (roadmap 112): who sees *Edit Quotas* on Project › Quotas.
+    pub quota_edit: QuotaEdit,
     pub launch: LaunchPrefs,
     pub network: NetworkPrefs,
     pub images: ImagePrefs,
@@ -55,6 +57,33 @@ pub enum PagedLists {
     All,
 }
 
+/// Who may edit the session's own project quotas from Project › Quotas
+/// (roadmap 112). Another project's quotas (Identity › Projects › *Modify
+/// Quotas*) always need the `admin` role, whatever this says; Admin ›
+/// *Defaults* is not affected either.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QuotaEdit {
+    /// Everyone sees *Edit Quotas*; the services' policy decides (the default,
+    /// the behaviour before the setting).
+    #[default]
+    All,
+    /// Only tokens with the `admin` role (`needs::ADMIN`).
+    Admin,
+    /// Nobody: Project › Quotas is read-only, as Horizon's project dashboard.
+    Off,
+}
+
+impl QuotaEdit {
+    /// Whether a user, an admin or not, may edit their own project's quotas.
+    pub fn allows(self, is_admin: bool) -> bool {
+        match self {
+            QuotaEdit::All => true,
+            QuotaEdit::Admin => is_admin,
+            QuotaEdit::Off => false,
+        }
+    }
+}
+
 impl Prefs {
     /// Rows per page for a list, `None` = load them all: `page_size` is `0`, or
     /// the list is a Project panel and `paged_lists` is `admin`.
@@ -72,6 +101,7 @@ impl Default for Prefs {
             background_batch_from: 10,
             page_size: 100,
             paged_lists: PagedLists::Admin,
+            quota_edit: QuotaEdit::All,
             launch: LaunchPrefs::default(),
             network: NetworkPrefs::default(),
             images: ImagePrefs::default(),
@@ -502,6 +532,14 @@ impl Cidr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quota_edit_allows_by_setting_and_role() {
+        assert!(QuotaEdit::All.allows(false) && QuotaEdit::All.allows(true));
+        assert!(!QuotaEdit::Admin.allows(false), "a member, with `admin`");
+        assert!(QuotaEdit::Admin.allows(true));
+        assert!(!QuotaEdit::Off.allows(true), "`off` hides it from admins too");
+    }
 
     #[test]
     fn missing_values_get_the_defaults() {

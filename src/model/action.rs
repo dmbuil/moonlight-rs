@@ -1427,6 +1427,16 @@ impl OsAction {
         }
     }
 
+    /// Whether this is (or a batch holds) a quota update of the session's own
+    /// project (Project › Quotas), which `[ui] quota_edit` gates (roadmap 112).
+    pub fn own_quotas(&self, session_project: &str) -> bool {
+        match self {
+            OsAction::QuotaUpdate { project_id, .. } => project_id == session_project,
+            OsAction::Batch(items) => items.iter().any(|(_, a)| a.own_quotas(session_project)),
+            _ => false,
+        }
+    }
+
     /// Writes of the Admin dashboard (roadmap 85): `run_action` refuses them
     /// without the `admin` role on the token, before any request.
     pub fn admin_only(&self) -> bool {

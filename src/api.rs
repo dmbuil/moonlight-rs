@@ -558,7 +558,10 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
     // Admin-dashboard writes (roadmap 85) and another project's quotas (roadmap
     // 82): the token's role, not only the menu or the services' policy. A
     // rescope, so also in dry-run.
-    if action.admin_only() || action.other_projects_quotas(&s.project_id) {
+    // `[ui] quota_edit` (roadmap 112) for the session's own quotas: `off` refuses
+    // them, `admin` needs the role as above.
+    let own_quotas_need_admin = quota_edit_gate(&action, &s.project_id, cfg().prefs.quota_edit)?;
+    if action.admin_only() || action.other_projects_quotas(&s.project_id) || own_quotas_need_admin {
         require_admin(&os::scoped(&s).await?)?;
     }
     // Glance's own properties and `[images] reserved_properties`, whatever the dialog allowed.
@@ -1141,6 +1144,25 @@ async fn is_admin(s: &session::Session, c: &openstack_sdk::AsyncOpenStack) -> bo
     os::capabilities(s, c).await.roles.iter().any(|r| r == "admin")
 }
 
+/// `[ui] quota_edit` (roadmap 112) on a write: whether it holds a quota update of
+/// the session's own project that needs the `admin` role (`admin`), or an error
+/// when such updates are off (`off`), whatever the button showed. Other actions,
+/// and another project's quotas (always admins), pass with `false`.
+#[cfg(feature = "ssr")]
+fn quota_edit_gate(action: &OsAction, session_project: &str, edit: crate::prefs::QuotaEdit) -> Result<bool, AppError> {
+    use crate::prefs::QuotaEdit;
+    if !action.own_quotas(session_project) {
+        return Ok(false);
+    }
+    match edit {
+        QuotaEdit::All => Ok(false),
+        QuotaEdit::Admin => Ok(true),
+        QuotaEdit::Off => Err(AppError::invalid(
+            "quota edits are off on this dashboard ([ui] quota_edit)",
+        )),
+    }
+}
+
 /// The Admin dashboard's gate (roadmap 85): the scoped token must carry the
 /// `admin` role, read from the token itself (`needs::ADMIN` only hides the
 /// menu, and capability detection fails open). Before any OpenStack call.
@@ -1718,8 +1740,41 @@ pub async fn get_keypair(name: String) -> Result<Timed<KeyPairDetail>, AppError>
 
 #[cfg(test)]
 mod tests {
-    use super::login_domain;
-    use crate::prefs::LoginPrefs;
+    use super::{login_domain, quota_edit_gate};
+    use crate::model::{OsAction, QuotaService};
+    use crate::prefs::{LoginPrefs, QuotaEdit};
+
+    #[test]
+    fn quota_edit_gates_the_own_projects_quota_updates() {
+        let q = |p: &str| OsAction::QuotaUpdate {
+            service: QuotaService::Compute,
+            project_id: p.into(),
+            values: [("cores".to_string(), 40)].into(),
+        };
+        assert!(
+            !quota_edit_gate(&q("mine"), "mine", QuotaEdit::All).unwrap(),
+            "the policy decides"
+        );
+        assert!(
+            quota_edit_gate(&q("mine"), "mine", QuotaEdit::Admin).unwrap(),
+            "`admin`: require_admin runs before the request is built, also in dry-run"
+        );
+        assert!(
+            quota_edit_gate(&q("mine"), "mine", QuotaEdit::Off).is_err(),
+            "`off`: refused whatever the role"
+        );
+        let batch = OsAction::Batch(vec![("a".into(), q("mine"))]);
+        assert!(
+            quota_edit_gate(&batch, "mine", QuotaEdit::Off).is_err(),
+            "inside a batch too"
+        );
+        assert!(
+            !quota_edit_gate(&q("other"), "mine", QuotaEdit::Off).unwrap(),
+            "another project's quotas keep their own rule (admins only)"
+        );
+        let start = OsAction::ServerStart { id: "x".into() };
+        assert!(!quota_edit_gate(&start, "mine", QuotaEdit::Off).unwrap());
+    }
 
     #[test]
     fn login_domain_follows_the_login_settings() {

@@ -139,7 +139,10 @@ fn LoginForm(action: ServerAction<Login>, prefs: LoginPrefs) -> impl IntoView {
         {prefs.message.clone().map(|m| view! { <div class="alert alert-info login-message" role="note">{m}</div> })}
         <ActionForm action=action attr:class="login-form">
             {method}
-            <div class="login-fields" style:display=move || federated().then_some("none")>
+            // Collapsed rather than `display: none`, so the card eases to its new height;
+            // `inert` keeps the folded fields out of the tab order and the accessibility tree.
+            <div class="login-fields" class:collapsed=federated inert=federated>
+                <div class="login-fields-inner">
                 {domain}
                 <label>
                     <span>{move || i18n.t(K::Username)}</span>
@@ -158,6 +161,7 @@ fn LoginForm(action: ServerAction<Login>, prefs: LoginPrefs) -> impl IntoView {
                         })}
                     </span>
                 </label>
+                </div>
             </div>
             {move || if federated() {
                 // `rel="external"`: a server route, not a page. Without it the

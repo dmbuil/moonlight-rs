@@ -18,6 +18,13 @@
   --utility: #2b3447;
   --utility-ink: #d6dbe6;
   --utility-line: light-dark(transparent, #3b4557);
+  /* Login page (roadmap 114): one image per theme. `light-dark()` only takes colours, so the dark
+     image is a layer over the light one and the rules below set its opacity (0 light, 1 dark);
+     the opacity eases, so a theme switch crossfades. Each colour is its image's own backdrop,
+     shown while it loads. */
+  --login-bg-light: #4c4242;
+  --login-bg-dark: #041934;
+  --login-dark-layer: 0;
   --primary: #0066ff;
   --primary-dark: #0050c8;
   --primary-ink: #ffffff;
@@ -68,6 +75,10 @@
 @media (prefers-reduced-motion: reduce) { :root { --motion-fast: 0ms; --motion: 0ms; } }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --login-dark-layer: 1; }
+}
+:root[data-theme="dark"] { --login-dark-layer: 1; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -164,6 +175,8 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
 .submenu > ul { list-style: none; margin: 0 0 4px; padding: 0 0 0 12px; }
 .menu-sep { margin: 4px 0; border-top: 1px solid var(--line); }
 .menu-meta { padding: 6px 10px 8px; color: var(--ink-3); font-size: 12.5px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+/* The running version, last in the user menu: quiet, not an item. */
+.menu-version { padding: 4px 10px 2px; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .primary-bar {
   display: flex; flex-wrap: wrap; align-items: stretch; gap: 0;
@@ -370,7 +383,15 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 /* ---------- Login ---------- */
 .login-page {
   min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 24px 16px; background: linear-gradient(180deg, var(--utility) 0 38vh, var(--bg-soft) 38vh);
+  padding: 24px 16px; background: var(--login-bg-light) url("/background-light.jpeg") center / cover no-repeat;
+  position: relative; isolation: isolate;
+}
+/* The dark image, behind the card (`isolation` keeps the negative z-index inside the page). Slower
+   than other motion: a full-page fade at 160 ms still reads as a flash; 0 under reduced motion. */
+.login-page::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: var(--login-bg-dark) url("/background-dark.jpeg") center / cover no-repeat;
+  opacity: var(--login-dark-layer); transition: opacity calc(var(--motion) * 3) var(--ease);
 }
 .login-top { position: fixed; top: 10px; right: 14px; display: flex; gap: 4px; }
 .login-top .menu > summary { color: #fff; }
@@ -388,8 +409,17 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .login-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 .login-form .btn { min-height: 42px; margin-top: 4px; }
 .login-form .combo-trigger { min-height: 40px; }
-/* Wraps the credentials so a WebSSO choice can hide them (roadmap 80); its children stay flex items of the form. */
-.login-fields { display: contents; }
+/* Wraps the credentials so a WebSSO choice can hide them (roadmap 80). A federated choice folds
+   them (roadmap 114): the row eases from 1fr to 0fr, so the card shrinks to its new height instead
+   of jumping, and the negative margin takes back the form's gap the empty row would leave. */
+.login-fields {
+  display: grid; grid-template-rows: 1fr;
+  transition: grid-template-rows var(--motion) var(--ease), opacity var(--motion) var(--ease), margin-bottom var(--motion) var(--ease);
+}
+.login-fields.collapsed { grid-template-rows: 0fr; opacity: 0; margin-bottom: -14px; }
+/* `min-height: 0` lets the row shrink below the content; `overflow: hidden` clips it meanwhile (the
+   padding keeps the inputs' focus ring inside the clip). */
+.login-fields-inner { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: hidden; padding: 3px; margin: -3px; }
 .login-form a.btn { text-decoration: none; }
 
 /* ---------- Phone header (roadmap 101) ----------

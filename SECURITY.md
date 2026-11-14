@@ -172,6 +172,7 @@ mode including dry-run, so a hidden menu is never the only thing in the way.
 | Measure | Detail |
 | --- | --- |
 | Admin dashboard | `require_admin` reads the `admin` role from the scoped token itself (`token_is_admin`), before any call. Admin lists, admin-only writes (`OsAction::admin_only`) and another project's quotas need it. Capability detection, which fails open for the UI, is never used for this. |
+| Own quotas | `[ui] quota_edit` (`quota_edit_gate`): a quota update of the session's own project (`OsAction::own_quotas`, also inside a batch) is refused with `off` and needs the `admin` role with `admin`, whatever the page showed. With `all` (the default) each service's policy decides. |
 | Plugins | Panels Horizon gets from plugins are opt-in (`[plugins] enabled`). Their server functions and their actions (`OsAction::plugins`) refuse when the plugin is off. |
 | Own application credentials | `set_user` overwrites the user ID in application credential actions with the session's, so nobody manages another user's. |
 | Domain of new identity objects | `set_domain` puts new projects, users and groups in the domain context or the user's own domain, never Keystone's default. |
