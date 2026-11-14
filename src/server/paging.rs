@@ -441,6 +441,17 @@ mod tests {
         assert!(params_in(PagedList::Instances, Some(pid), &q("project", "x"), 11).is_err());
         assert!(params_in(PagedList::Volumes, Some(pid), &q("host", "c1"), 11).is_err());
         assert!(params_in(PagedList::Volumes, None, &q("host", "c1"), 11).is_ok());
+        assert_eq!(
+            get(
+                &params(PagedList::Networks, &q("type", "vlan"), 11).unwrap(),
+                "provider:network_type"
+            ),
+            Some("vlan")
+        );
+        assert!(
+            params_in(PagedList::Networks, Some(pid), &q("type", "vlan"), 11).is_err(),
+            "provider:network_type is an admin's filter"
+        );
         assert!(
             params_in(PagedList::Routers, Some("a/b"), &ListQuery::default(), 11).is_err(),
             "the project goes into the query: an ID only"

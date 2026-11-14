@@ -871,6 +871,12 @@ fn admin_network_columns() -> Vec<Col<Owned<NetworkRow>>> {
             })
             .sort_text(|n| n.name.clone()),
         ),
+        // `provider:network_type` comes only to admins; Neutron can't sort by it, so the
+        // header has no server key and the column sorts the page.
+        lift(
+            col(K::NetworkType, |n: &NetworkRow, _| dash(network_type(n)))
+                .sort_text(|n| network_type(n).unwrap_or_default()),
+        ),
         lift(col(
             K::Subnets,
             |n: &NetworkRow, _| view! { <ul class="plain">{n.subnets.iter().map(|s| view! { <li class="mono">{s.clone()}</li> }).collect_view()}</ul> },
@@ -912,9 +918,24 @@ fn drop_empty_dhcp_col(cols: Vec<Col<Owned<NetworkRow>>>, rows: &[Owned<NetworkR
     cols.into_iter().filter(|c| c.header != K::DhcpAgents).collect()
 }
 
-/// Search text: project, host and the row's own fields.
+/// A network's `provider:network_type` (`vlan`, `vxlan`…), `None` when Neutron sent none.
+fn network_type(n: &NetworkRow) -> Option<String> {
+    n.provider.as_ref().map(|p| p.network_type.clone())
+}
+
+/// Search text: project, host and the row's own fields, with the network type so `vlan`
+/// filters.
 fn admin_network_search(o: &Owned<NetworkRow>) -> String {
-    owned_search(o, format!("{} {} {}", o.row.name, o.row.id, o.row.subnets.join(" ")))
+    owned_search(
+        o,
+        format!(
+            "{} {} {} {}",
+            o.row.name,
+            o.row.id,
+            o.row.subnets.join(" "),
+            network_type(&o.row).unwrap_or_default()
+        ),
+    )
 }
 
 /// Every network can be picked for the bulk delete (Admin: any project's).
@@ -2033,5 +2054,44 @@ mod tests {
             "OVN has no DHCP agent: no column of dashes"
         );
         assert!(!has(&[]), "an empty page has nothing to count");
+    }
+
+    #[test]
+    fn network_type_is_a_column_and_searchable() {
+        let mut o = Owned {
+            project: "alpha".into(),
+            host: None,
+            project_id: None,
+            row: NetworkRow {
+                id: "n1".into(),
+                name: "ext".into(),
+                subnets: vec![],
+                shared: false,
+                external: true,
+                status: "ACTIVE".into(),
+                admin_up: true,
+                availability_zones: vec![],
+                owned: false,
+                dhcp_agents: None,
+                provider: Some(crate::model::ProviderNetwork {
+                    network_type: "vlan".into(),
+                    physical_network: Some("physnet1".into()),
+                    segmentation_id: Some(120),
+                }),
+            },
+        };
+        let headers: Vec<K> = admin_network_columns().iter().map(|c| c.header).collect();
+        assert_eq!(
+            headers[..3],
+            [K::Project, K::Name, K::NetworkType],
+            "the type follows the name"
+        );
+        assert!(
+            crate::components::pager::server_key(K::NetworkType).is_none(),
+            "Neutron doesn't sort by provider:network_type: the column sorts the page"
+        );
+        assert!(admin_network_search(&o).contains("vlan"));
+        o.row.provider = None;
+        assert_eq!(network_type(&o.row), None, "no provider attributes: a dash");
     }
 }

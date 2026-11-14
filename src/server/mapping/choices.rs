@@ -55,6 +55,7 @@ pub fn image_choices(raw: &[Value], snapshots: bool) -> Vec<Choice> {
                         min_ram_mb: i(im, "min_ram"),
                         ..Default::default()
                     },
+                    hint: None,
                 })
             })
             .collect(),
@@ -90,6 +91,7 @@ pub fn flavor_choices(raw: &[Value], sort: crate::prefs::FlavorSort, reverse: bo
                     disk_gb: disk,
                     ..Default::default()
                 },
+                hint: None,
             })
         })
         .collect();
@@ -131,6 +133,7 @@ pub fn volume_choices(raw: &[Value]) -> Vec<Choice> {
                         min_disk_gb: i(v, "size"),
                         ..Default::default()
                     },
+                    hint: None,
                 })
             })
             .collect(),
@@ -156,6 +159,7 @@ pub fn snapshot_choices(raw: &[Value]) -> Vec<Choice> {
                         min_disk_gb: i(v, "size"),
                         ..Default::default()
                     },
+                    hint: None,
                 })
             })
             .collect(),

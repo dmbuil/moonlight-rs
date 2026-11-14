@@ -521,6 +521,7 @@ translations! {
     MtuHelp => "Maximum transmission unit in bytes; empty uses the physical network's.", "Unidad máxima de transmisión en bytes; vacío usa la de la red física.";
     ProviderNetworkTypeHelp => "The physical mechanism by which the virtual network is implemented.", "El mecanismo físico con el que se implementa la red virtual.";
     PhysicalNetwork => "Physical Network", "Red física";
+    NetworkType => "Network Type", "Tipo de red";
     SegmentationIdHelp => "VLAN 1–4094, VXLAN and Geneve 1–16777215; empty lets Neutron choose.", "VLAN 1–4094, VXLAN y Geneve 1–16777215; vacío deja que Neutron lo elija.";
     AdminNetworkStepHelp => "Create a network for any project, on a provider network; you can add its first subnet in the next steps.", "Cree una red para cualquier proyecto, sobre una red del proveedor; puede añadir su primera subred en los pasos siguientes.";
     FlavorAccess => "Projects that can use this flavor", "Proyectos que pueden usar este sabor";

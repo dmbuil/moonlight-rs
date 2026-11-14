@@ -320,6 +320,7 @@ pub fn FilterBar(list: PagedList, #[prop(optional)] scope: ListScope) -> impl In
         "router" => K::FilterRouterId,
         "shared" => K::Shared,
         "external" => K::External,
+        "type" => K::NetworkType,
         "visibility" => K::Visibility,
         "disk_format" => K::DiskFormat,
         "port" => K::FilterPortId,

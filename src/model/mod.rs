@@ -668,7 +668,8 @@ const FLOATING_IP_FILTERS: &[FilterDef] = &[
     filter("status", "status", FilterKind::Choice(&["ACTIVE", "DOWN", "ERROR"])),
 ];
 
-/// Neutron matches whole values (a name too); `shared` and `external` take `true` / `false`.
+/// Neutron matches whole values (a name too); `shared` and `external` take `true` / `false`;
+/// `type` is `provider:network_type`, which only admins see (an admin-only filter).
 const NETWORK_FILTERS: &[FilterDef] = &[
     filter("name", "name", FilterKind::Exact),
     filter("project", "project_id", FilterKind::Pick(ChoiceSet::AllProjects)),
@@ -679,7 +680,11 @@ const NETWORK_FILTERS: &[FilterDef] = &[
     ),
     filter("shared", "shared", FilterKind::Choice(&["true", "false"])),
     filter("external", "router:external", FilterKind::Choice(&["true", "false"])),
+    filter("type", "provider:network_type", FilterKind::Choice(NETWORK_TYPES)),
 ];
+
+/// The *Network Type* filter's choices: [`PROVIDER_NETWORK_TYPES`]' names, most used first.
+const NETWORK_TYPES: &[&str] = &["vlan", "vxlan", "geneve", "flat", "gre", "local"];
 
 /// Neutron matches whole values; `status` is one of a router's four.
 const ROUTER_FILTERS: &[FilterDef] = &[
@@ -828,9 +833,10 @@ pub enum ListScope {
     Project,
 }
 
-/// Filters that only make sense across projects: the project itself, and the host,
-/// which Nova and Cinder show only to admins.
-const ADMIN_ONLY_FILTERS: &[&str] = &["project", "host"];
+/// Filters that only make sense across projects: the project itself, the host, which Nova
+/// and Cinder show only to admins, and a network's `type`, a `provider:*` attribute that
+/// Neutron's policy shows only to admins.
+const ADMIN_ONLY_FILTERS: &[&str] = &["project", "host", "type"];
 
 impl PagedList {
     /// [`Self::filters`] offered in `scope`: a Project panel drops the
@@ -1027,6 +1033,27 @@ pub fn check_id(v: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod check_id_tests {
     use super::*;
+
+    #[test]
+    fn the_network_type_filter_offers_every_provider_type() {
+        let mut offered = NETWORK_TYPES.to_vec();
+        let mut known: Vec<&str> = PROVIDER_NETWORK_TYPES.iter().map(|(t, _)| *t).collect();
+        offered.sort_unstable();
+        known.sort_unstable();
+        assert_eq!(offered, known);
+        let keys = |scope| {
+            PagedList::Networks
+                .filters_in(scope)
+                .iter()
+                .map(|d| d.key)
+                .collect::<Vec<_>>()
+        };
+        assert!(keys(ListScope::Admin).contains(&"type"));
+        assert!(
+            !keys(ListScope::Project).contains(&"type"),
+            "members don't see provider:*"
+        );
+    }
 
     #[test]
     fn ids_that_would_change_the_path_are_refused() {

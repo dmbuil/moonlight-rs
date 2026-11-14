@@ -756,11 +756,22 @@ pub fn qos_policies(raw: &[Value], project_id: &str) -> Vec<QosPolicyRow> {
 
 /// QoS policies as choices, by name.
 pub fn qos_policy_choices(raw: &[Value]) -> Vec<Choice> {
-    sorted(
-        raw.iter()
-            .filter_map(|p| Some(Choice::new(s(p, "id")?, name_or_id(p))))
-            .collect(),
-    )
+    let mut list: Vec<Choice> = raw
+        .iter()
+        .filter_map(|p| Some(Choice::new(s(p, "id")?, name_or_id(p))))
+        .collect();
+    // Neutron doesn't make policy names unique (the project's own and a shared one can match):
+    // only then the ID tells them apart. An unnamed policy's label is already its ID.
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for c in &list {
+        *seen.entry(c.label.clone()).or_default() += 1;
+    }
+    for c in &mut list {
+        if c.label != c.value && seen.get(&c.label).is_some_and(|&n| n > 1) {
+            c.hint = Some(c.value.clone());
+        }
+    }
+    sorted(list)
 }
 
 #[cfg(test)]
@@ -768,6 +779,25 @@ mod tests {
     use super::super::fixtures::*;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn qos_policies_hint_the_id_only_on_duplicated_names() {
+        let raw = vec![
+            json!({"id": "q1", "name": "gold"}),
+            json!({"id": "q2", "name": "gold"}),
+            json!({"id": "q3", "name": "silver"}),
+            json!({"id": "q4", "name": ""}),
+        ];
+        let hints: Vec<(String, Option<String>)> = qos_policy_choices(&raw)
+            .into_iter()
+            .map(|c| (c.value, c.hint))
+            .collect();
+        let hint = |id: &str| hints.iter().find(|(v, _)| v == id).and_then(|(_, h)| h.clone());
+        assert_eq!(hint("q1").as_deref(), Some("q1"), "a duplicated name shows its ID");
+        assert_eq!(hint("q2").as_deref(), Some("q2"));
+        assert_eq!(hint("q3"), None, "a unique name shows the name alone");
+        assert_eq!(hint("q4"), None, "an unnamed policy already shows its ID as its label");
+    }
 
     #[test]
     fn trunks_name_their_parent_and_subports() {
@@ -1156,6 +1186,32 @@ mod tests {
         assert_eq!(d.subnets[0].allocation_pools, vec!["10.0.0.2 – 10.0.0.254"]);
         assert_eq!(d.subnets[0].network_name.as_deref(), Some("net"));
         assert_eq!(d.mtu, Some(1450));
+    }
+
+    #[test]
+    fn network_detail_carries_the_provider_attributes() {
+        let net = json!({"id": "n1", "name": "ext", "project_id": "p", "subnets": [],
+            "provider:network_type": "vxlan", "provider:physical_network": null, "provider:segmentation_id": 4711});
+        let p = network_detail(&net, &[], vec![], "p").row.provider;
+        assert_eq!(
+            p,
+            Some(ProviderNetwork {
+                network_type: "vxlan".into(),
+                physical_network: None,
+                segmentation_id: Some(4711)
+            }),
+            "vxlan: no physical network"
+        );
+    }
+
+    #[test]
+    fn multi_segment_networks_have_no_single_provider() {
+        // With the `multi-provider` extension and several segments, Neutron returns a
+        // `segments` list instead of `provider:*`: there is no one type to show (yet).
+        let net = json!({"id": "n1", "name": "multi", "project_id": "p", "subnets": [], "segments": [
+            {"provider:network_type": "vlan", "provider:physical_network": "physnet1", "provider:segmentation_id": 10},
+            {"provider:network_type": "vxlan", "provider:physical_network": null, "provider:segmentation_id": 20}]});
+        assert_eq!(network_detail(&net, &[], vec![], "p").row.provider, None);
     }
 
     #[test]

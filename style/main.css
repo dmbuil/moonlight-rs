@@ -619,6 +619,8 @@ form.modal-body > .wizard-pane { overflow-y: auto; min-height: 0; flex: 1 1 auto
 .combo-trigger:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 .combo-trigger[aria-expanded=true] { border-color: var(--accent); }
 .combo-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Secondary text after an option's label: the ID of a policy whose name another one shares. */
+.combo-hint { color: var(--ink-3); font-weight: 400; margin-left: 6px; }
 .combo-veil { position: fixed; inset: 0; z-index: 60; }
 /* Date and time pickers: a text input and a button opening a themed popup. */
 .picker { display: flex; gap: 6px; align-items: stretch; }
@@ -1068,6 +1070,10 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 details[open] .menu-list, .combo-pop { animation: motion-drop var(--motion) var(--ease); }
 .modal-backdrop { animation: motion-fade var(--motion) var(--ease); }
 .modal { animation: motion-rise var(--motion) var(--ease); }
+/* Size changes (another step, a field shown, the result) ease instead of jumping: the width by
+   `max-width` (the result opens at least medium), the height by `components/resize.rs`, which
+   pins the old height and moves it to the new one. */
+.modal { transition: height var(--motion) var(--ease), max-width var(--motion) var(--ease); }
 @keyframes motion-fade { from { opacity: 0; } }
 @keyframes motion-drop { from { opacity: 0; transform: translateY(-4px); } }
 @keyframes motion-rise { from { opacity: 0; transform: scale(.98); } }

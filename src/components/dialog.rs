@@ -1093,11 +1093,14 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
     let ack = RwSignal::new(!danger);
     let fields = dialog.fields.clone();
     let block = dialog.block.clone();
+    // Steps, shown fields and the result change the box's height: ease it rather than jump.
+    let modal_ref = NodeRef::<leptos::html::Div>::new();
+    crate::components::resize::ease_height(modal_ref);
 
     view! {
         <div class="modal-backdrop" on:click=move |_| close()>
             // The request preview needs room, so results open at least medium.
-            <div class=move || if matches!(phase.get(), Phase::Done(_)) { size.max(DialogSize::Medium) } else { size }.class()
+            <div node_ref=modal_ref class=move || if matches!(phase.get(), Phase::Done(_)) { size.max(DialogSize::Medium) } else { size }.class()
                 role="dialog" aria-modal="true" aria-label=title.clone()
                 on:click=|ev| ev.stop_propagation()
                 on:keydown=move |ev| if ev.key() == "Escape" { close() }>

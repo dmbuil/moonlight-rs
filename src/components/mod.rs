@@ -16,6 +16,7 @@ pub mod nav;
 pub mod ops;
 pub mod pager;
 pub mod pick;
+pub mod resize;
 pub mod select;
 pub mod stack_graph;
 pub mod table;

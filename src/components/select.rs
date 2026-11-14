@@ -18,12 +18,16 @@ pub fn shows_search(search: bool, len: usize) -> bool {
     search || len >= SEARCH_FROM
 }
 
-/// Options whose label contains every term of `query` (case-insensitive).
+/// Options whose label (or hint, e.g. part of an ID) contains every term of
+/// `query` (case-insensitive).
 pub fn filter_choices(list: &[Choice], query: &str) -> Vec<Choice> {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     list.iter()
         .filter(|c| {
-            let l = c.label.to_lowercase();
+            let l = match &c.hint {
+                Some(h) => format!("{} {}", c.label, h).to_lowercase(),
+                None => c.label.to_lowercase(),
+            };
             terms.iter().all(|t| l.contains(t))
         })
         .cloned()
@@ -114,8 +118,9 @@ pub fn Combo(
     };
     let searchable = move || all().is_some_and(|l| shows_search(force_search, l.len()));
     let shown = move || all().map(|l| filter_choices(&l, &query.get())).unwrap_or_default();
+    // The picked option's label and hint.
     let label = move || match all() {
-        None => i18n.t(K::LoadingChoices).to_string(),
+        None => (i18n.t(K::LoadingChoices).to_string(), None),
         Some(l) => {
             let v = value.get();
             // Nothing picked: the empty label, else *— Select —* on required ones
@@ -123,8 +128,13 @@ pub fn Combo(
             let fallback = if required { K::SelectChoice } else { K::NoneOption };
             l.iter()
                 .find(|c| c.value == v)
-                .map(|c| c.label.clone())
-                .unwrap_or_else(|| empty_label.get_value().unwrap_or_else(|| i18n.t(fallback).to_string()))
+                .map(|c| (c.label.clone(), c.hint.clone()))
+                .unwrap_or_else(|| {
+                    (
+                        empty_label.get_value().unwrap_or_else(|| i18n.t(fallback).to_string()),
+                        None,
+                    )
+                })
         }
     };
 
@@ -239,7 +249,12 @@ pub fn Combo(
                 aria-label=move || aria_label.map(|l| l.get())
                 on:click=move |_| if open.get_untracked() { close(true) } else { show() }
                 on:keydown=key>
-                <span class="combo-label">{label}</span>
+                <span class="combo-label">
+                    {move || {
+                        let (l, h) = label();
+                        view! { {l}{h.map(|h| view! { <span class="combo-hint mono">{h}</span> })} }
+                    }}
+                </span>
                 <svg aria-hidden="true" viewBox="0 0 10 6" width="10" height="6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
             </button>
             <Show when=move || open.get()>
@@ -275,6 +290,7 @@ pub fn Combo(
                                             on:mousemove=move |_| active.set(Some(i))
                                             on:mousedown=move |ev| { ev.prevent_default(); pick(c2.clone()) }>
                                             {c.label}
+                                            {c.hint.map(|h| view! { <span class="combo-hint mono">{h}</span> })}
                                         </li>
                                     }
                                 }).collect_view().into_any()
@@ -352,6 +368,16 @@ mod tests {
         let l = list(&["ADM-RHEL9.7-ES", "Debian 12", "debian-13"]);
         assert_eq!(filter_choices(&l, "deb 13").len(), 1);
         assert_eq!(filter_choices(&l, "  ").len(), 3);
+    }
+
+    #[test]
+    fn filter_finds_an_option_by_its_hint() {
+        let mut l = list(&["gold", "gold"]);
+        l[0].hint = Some("1f0c-aa".into());
+        l[1].hint = Some("77e2-bb".into());
+        let found = filter_choices(&l, "gold 77e2");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].hint.as_deref(), Some("77e2-bb"));
     }
 
     #[test]

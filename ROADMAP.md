@@ -127,6 +127,9 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 112 | ✅ Project › Quotas: who sees *Edit Quotas* (`[ui] quota_edit = all / admin / off`) | — | S | 82, 29 |
 | 113 | ✅ Project › Quotas: readable labels for the firewall quotas (not `firewall_group`) | — | XS | 82, 93 |
 | 114 | ✅ Login page: a background image per theme (`public/background-{light,dark}.jpeg`) instead of the two-colour band | — | XS | — |
+| 115 | ✅ Admin › Networks: the network type (`flat`, `vlan`, `vxlan`, `geneve`…) in the list and the detail page | — | XS | 85 |
+| 116 | ✅ *QoS Policy* selects: two policies with the same name show their IDs, greyed, after the name | — | S | 5 |
+| 117 | ✅ Dialogs: animate the size change when a wizard's content grows or shrinks (step, shown fields, result) | — | S | 98 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -150,7 +153,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97**.
+114, 97, 115, 116, 117**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -7465,6 +7468,161 @@ an image through `login.html`); nothing to copy from it.
 
 **Decided** (2026-11-14, the user): the image is fixed (no setting; `[login] background_url` is
 a follow-up if another deployment asks), and it may be committed to the public repository.
+
+## 115. Admin › Networks: the network type in the list and the detail page
+
+> ✅ **Done** (2026-11-14). Admin › Network › Networks has a *Network Type* column after
+> *Name* (`K::NetworkType`, "Network Type" / "Tipo de red"; `pages::admin::network_type`, `-`
+> without provider attributes), sorted on the page: the header has no `pager::server_key`, so
+> the paged list never asks Neutron to sort by it. `admin_network_search` includes the type, so
+> typing `vlan` filters the page. The filter bar has a *Network Type* filter
+> (`type` → `provider:network_type`, a choice of `vlan`, `vxlan`, `geneve`, `flat`, `gre`,
+> `local`; `model::NETWORK_FILTERS`, label in `pager::filter_bar`), so Neutron filters every
+> page; it is in `ADMIN_ONLY_FILTERS`, so a Project panel neither offers nor accepts it. The
+> network detail's *Information* card shows *Network Type*, *Physical Network* and
+> *Segmentation ID* after *External* only when `row.provider` is `Some`
+> (`pages::details::network_overview`): members see nothing new. No new API calls.
+> Tests: `network_type_is_a_column_and_searchable` (column order, no server key, search),
+> `network_detail_carries_the_provider_attributes` (`vxlan`, null physical network),
+> `multi_segment_networks_have_no_single_provider`,
+> `the_network_type_filter_offers_every_provider_type` and the `paging` case for `type`.
+> Both clippy variants clean, rustdoc (ssr) clean, 613/613 tests. Not checked in the browser
+> (the DevTools tunnel was down).
+> Still open: multi-segment networks (`segments` list) show `-`; showing their types joined
+> waits for a cloud that has one.
+
+**Goal.** Admin › Network › Networks shows each network's type (`provider:network_type`:
+`flat`, `vlan`, `vxlan`, `geneve`, `gre`, `local`) as a *Network Type* column, sortable, and
+the network detail page shows the type, physical network and segmentation ID in its
+*Information* card. Horizon shows *Provider Network* (type, physical network, segmentation ID)
+in the admin network detail only, not in the list; the list column is ours.
+
+**Implementation.** No extra API calls: Neutron already returns `provider:*` to admins in
+`GET /v2.0/networks` and `GET /v2.0/networks/{id}`, and `mapping::provider_network` already
+reads them into `NetworkRow::provider` (`Option<ProviderNetwork>`, `None` for members), for
+both `fetch::admin_networks` / `admin_networks_page` (no `fields=` filter, so the attributes
+come with the page) and `fetch::network_detail` (`mapping::network_detail` builds `row` from
+the same mapper). Today the value is used only by *Edit Network*'s read-only intro
+(`i18n::provider_summary`).
+
+- List: a column in `pages::admin::admin_network_columns`, after *Name*: `K::NetworkType`
+  (new key, "Network Type" / "Tipo de red"), value `n.provider.map(|p| p.network_type)` via
+  `dash`, `.sort_text(…)`. Client sort only; check whether the paged list's server sort
+  (`paging.rs`) needs the key excluded, as Neutron does not sort on `provider:network_type`.
+  Add it to `admin_network_search` too, so typing `vlan` filters.
+- Detail: in `pages::details::network_overview`, only when `d.row.provider` is `Some` (members
+  see nothing new): *Network Type*, *Physical Network* (`K::PhysicalNetwork` exists) and
+  *Segmentation ID* (`K::SegmentationId` exists), each `dash` when absent (`vxlan` has no
+  physical network, `flat` no segmentation ID).
+- Open question: multi-segment networks (`segments` extension, ML2 with several segments)
+  return a `segments` list instead of `provider:*`, so `provider_network` gives `None`. Showing
+  `segments[*].provider:network_type` joined (`vlan, vxlan`) would cover them; decide once a
+  cloud has one. A mapping test with a `segments` body either way.
+- Tests: the mapping already has `provider_attributes_are_read_when_admins_get_them`; add one
+  that the detail row carries `provider`. No writes.
+
+## 116. QoS Policy selects: the ID after a duplicated policy name
+
+> ✅ **Done** (2026-11-14). `model::Choice` has `hint: Option<String>` (`#[serde(default)]`,
+> `None` from `Choice::new`), shown after the label but not part of it.
+> `mapping::network::qos_policy_choices` sets it to the policy ID only on names that occur more
+> than once (an unnamed policy, whose label is already its ID, gets none).
+> `components::select::Combo` prints it as `<span class="combo-hint mono">` in each option and
+> in the closed combo's label (`.combo-hint`: `--ink-3`, weight 400, 6px gap);
+> `filter_choices` also matches the hint, so typing part of an ID finds the option. Tests:
+> `qos_policies_hint_the_id_only_on_duplicated_names` (two `gold`, one `silver`, one unnamed)
+> and `filter_finds_an_option_by_its_hint`. Browser (dry-run): *Allocate IP To Project* lists
+> the test cloud's four policies (unique names) without hints, as before. The duplicated case
+> was not seen in the browser (it would need a second policy of the same name, a write); the
+> unit tests cover it.
+
+**Goal.** The *QoS Policy* select (*Allocate IP To Project* and *Create Router*'s gateway
+policy) labels each policy by its name. Two policies with the same name (the project's own
+and one shared from another project, say) look identical, so the user can't tell which one
+they pick. It should not happen, but when it does, each of those options shows the policy's
+ID after the name, greyed and in the ID (monospace) style; unique names show the name alone,
+as now. The closed select shows the same for the picked one. Horizon shows the bare name.
+
+**Decided** (2026-11-14, the user): only when a name is duplicated; no other change to the QoS
+fields (no default policy setting, no field in *Set Gateway* or *Associate Floating IP*).
+
+**Implementation.**
+
+- `model::Choice` gains `hint: Option<String>` (`#[serde(default)]`, `None` from
+  `Choice::new`): a secondary text shown after the label, not part of it, so code that
+  matches or sorts by `label` is unaffected.
+- `server::mapping::network::qos_policy_choices` sets `hint` to the policy ID on the choices
+  whose `name_or_id` label occurs more than once in the list (counted after the own/shared
+  merge in `fetch::qos_policies_raw`). A policy without a name already shows its ID as its
+  label and gets no hint.
+- `components::select::Combo` renders the hint after the label in each option (the `<li>`
+  that prints `{c.label}`) and in the closed combo's `combo-label`, as
+  `<span class="combo-hint mono">`. CSS: a `--muted`-style colour token on `:root` with
+  `light-dark(…)`, no hex in the rule; small gap from the name. `filter_choices` matches the
+  hint too, so typing part of an ID finds it.
+- Tests: `qos_policy_choices` hints only the duplicated names (two `"gold"`, one `"silver"`,
+  one unnamed); `filter_choices` finds an option by its hint. No writes, no new API calls.
+- Browser (dry-run): open both dialogs and check that unique names look as before. A
+  duplicated name needs two policies of the same name; creating one is a write, so only on a
+  test cloud the user designates; otherwise the unit tests cover it, and say so.
+
+## 117. Dialogs: animate the size change of a wizard
+
+> ✅ **Done** (2026-11-14), option 2. `components/resize.rs::ease_height(NodeRef<Div>)`, called
+> by `DialogView` on the `.modal` box: a `ResizeObserver` (hydrate only; `web-sys` features
+> `ResizeObserver`, `TransitionEvent`) sees the new `offsetHeight` after layout and before
+> paint, pins the old height with `overflow: hidden`, flushes, sets the new one, and ignores
+> its own frames until `transitionend` / `transitioncancel` on `height` (the box's own, not a
+> bubbled one) clears the inline style; a change made meanwhile is eased after that. It
+> skips when the computed `transition-duration` is zero (`has_duration`, unit-tested), which
+> is reduced motion. The observer is disconnected in `on_cleanup` and its closures live in a
+> local `StoredValue`, so a dialog closed mid-animation leaves nothing behind. CSS (*Motion*
+> section): `.modal { transition: height var(--motion) var(--ease), max-width … }`; the width
+> change of the result (at least medium) eases with `max-width`. Browser (dry-run, *Create
+> Network*): *Next* eases 512 → 583 px in about 150 ms and *Back* 583 → 512 px, the inline
+> height cleared afterwards; under emulated reduced motion `transition-duration` is
+> `0s, 0s` and the step change is instant. Not checked: a combo popup open while the box
+> resizes keeps its first position (it is placed on open), and Firefox and Safari were not
+> tried (the observer is standard there).
+
+**Goal.** A wizard dialog (*Launch Instance*, *Create Network*, *Create Volume*…) jumps to its
+new size whenever its content changes: going to another step (the panes have different
+heights), a field that appears or disappears (`.when`, `show_if`), a choice list that loads,
+and the result, which opens at least `DialogSize::Medium` (wider). The change should ease over
+about the dialog motion of item 98 (`--motion`, 160ms, `--ease`) instead, height and width, so
+the eye follows it. Under `prefers-reduced-motion: reduce` it stays instant (the tokens are
+already `0ms` there). Simple forms and confirmations get it too if it comes for free.
+
+**Implementation.**
+
+- The box is the `.modal` `<div>` in `components/dialog.rs` (the `DialogSize::class()` one,
+  around the `modal-backdrop`); the step's fields are in `.wizard-pane` (`form.modal-body`
+  scrolls them, the footer stays). `max-height` is capped to the window, so the animation must
+  stop at the cap.
+- Height is `auto`, and CSS cannot transition `auto` except with
+  `interpolate-size: allow-keywords` (Chromium 129+ only: Firefox and Safari would just jump).
+  Two options (option 2 chosen, see *Decided* below):
+  1. CSS only: `:root { interpolate-size: allow-keywords; }` and a `height`/`width`
+     transition on `.modal` (`style/main.css`, *Motion* section). Trivial; only Chromium
+     animates, the others behave as today.
+  2. Everywhere: a `ResizeObserver` (`web-sys` feature `ResizeObserver`, hydrate only) on the
+     dialog's content that, on a change, sets the old height explicitly, then the new one on
+     the next frame (`request_animation_frame`), with `transition: height var(--motion)
+     var(--ease)` and `overflow: hidden` during it, and clears the explicit height on
+     `transitionend`. Mind AGENTS.md §6: the observer's callback must use `try_*` on signals
+     (the dialog may close mid-animation) and be disconnected on cleanup.
+- Width: `DialogSize` changes `max-width` (Small → Medium on the result); a `max-width`
+  transition on `.modal` covers it with either option.
+- Check that nothing else breaks: focus stays in the dialog, the combo popups
+  (`position: fixed` from the trigger's rect) don't open at a stale position mid-animation,
+  and `form.modal-body`'s scroll still works when the content exceeds the cap.
+- Tests: CSS and DOM behaviour, so no unit test beyond a pure helper if option 2 has one.
+  Browser (dry-run, open dialogs only): *Launch Instance* across steps, *Create Network*'s
+  subnet step, a field shown by a checkbox; computed `transition` on `.modal`; no animation
+  under emulated reduced motion.
+
+**Decided** (2026-11-14, the user): option 2, the `ResizeObserver` in Rust, so every browser
+animates.
 
 ## Also pending (from the PoC)
 

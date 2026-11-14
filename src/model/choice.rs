@@ -134,6 +134,11 @@ pub struct Choice {
     pub cells: Vec<String>,
     #[serde(default)]
     pub facts: Facts,
+    /// Secondary text shown greyed after the label (e.g. the ID of a policy
+    /// whose name another one shares); not part of `label`, so matching and
+    /// sorting by label ignore it. `None`: the label alone.
+    #[serde(default)]
+    pub hint: Option<String>,
 }
 
 impl Choice {

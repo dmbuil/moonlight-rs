@@ -213,6 +213,14 @@ pub fn NetworkDetailPage() -> impl IntoView {
 fn network_overview(d: NetworkDetail) -> impl IntoView {
     let i18n = use_i18n();
     let status = d.row.status.clone();
+    // Only admins get `provider:*`; members see no provider rows rather than three dashes.
+    let provider = d.row.provider.clone().map(|p| {
+        view! {
+            <Kv label=K::NetworkType>{p.network_type}</Kv>
+            <Kv label=K::PhysicalNetwork>{dash(p.physical_network)}</Kv>
+            <Kv label=K::SegmentationId>{dash(p.segmentation_id.map(|v| v.to_string()))}</Kv>
+        }
+    });
     view! {
         <div class="cards">
             <Card title=K::Information>
@@ -224,6 +232,7 @@ fn network_overview(d: NetworkDetail) -> impl IntoView {
                 <Kv label=K::AdminState>{move || admin_state(i18n.lang(), d.row.admin_up)}</Kv>
                 <Kv label=K::Shared>{move || yes_no(i18n.lang(), d.row.shared)}</Kv>
                 <Kv label=K::External>{move || yes_no(i18n.lang(), d.row.external)}</Kv>
+                {provider}
                 <Kv label=K::Mtu>{d.mtu.map(|m| m.to_string()).unwrap_or_else(|| "-".into())}</Kv>
                 <Kv label=K::PortSecurity>{move || yes_no(i18n.lang(), d.port_security)}</Kv>
                 <Kv label=K::AvailabilityZone>{dash(Some(d.row.availability_zones.join(", ")))}</Kv>
