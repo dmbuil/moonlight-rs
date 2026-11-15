@@ -132,6 +132,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 117 | ✅ Dialogs: animate the size change when a wizard's content grows or shrinks (step, shown fields, result) | — | S | 98 |
 | 118 | ✅ *Launch Instance*: choosing a flavor raises the new volume's size to its root disk, never lowers it | — | XS | 2 |
 | 119 | ✅ Admin › Volume › Storage Pools: each Cinder backend pool's capacity (total, free, allocated, provisioned) and volume count | — | S | — |
+| 120 | Load testing: Goose scenarios against a fake OpenStack, the same against the test cloud, `criterion` on the mappers | P3 | L | — |
+| 121 | *Your session has expired* dialog: one *Sign In* button, no *Close* that leads to the login page anyway | P3 | XS | 76 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -7764,6 +7766,113 @@ the canonical capabilities (NetApp reports many) is shown too, on the pool's det
 - Tests: the mapping (numbers, strings, `infinite`, missing `capabilities`), the per-pool volume
   count, and the totals. Browser on the dev server: the panel against the test cloud's pools,
   numbers compared with `openstack volume backend pool list --long`.
+
+## 120. Load testing: a fake OpenStack, user scenarios, and mapper benchmarks
+
+**Goal.** Know how much load one Moonlight replica takes and catch performance regressions,
+emulating real users rather than hammering one URL. Moonlight calls OpenStack with each user's
+own token on every page, so load against a real cloud mostly measures Keystone, Nova and
+Neutron. The work therefore has three levels, each answering a different question:
+
+1. **Moonlight alone** (the main one): Moonlight in front of a fake OpenStack that answers
+   instantly (or with a set delay), loaded with scripted users. Measures Moonlight's own
+   throughput, p50 / p95 / p99 latency, CPU and memory (SSR, server functions, mapping, caches,
+   cookie decryption).
+2. **Real journeys on the test cloud**: the same scenarios against ttcp-dev at low concurrency
+   (5–20 users), GETs only, never writes. Measures what a user feels and how many OpenStack
+   calls Moonlight sends per page.
+3. **Micro-benchmarks**: `criterion` on the pure mappers with large inputs (1000 servers…),
+   cheap enough for CI and to compare before / after a change.
+
+Horizon has no equivalent; this is tooling, not a panel.
+
+**Implementation.**
+
+- Tool: [Goose](https://book.goose.rs) (Rust load tester: scenarios as code, ramp-up, per-request
+  p50 / p95 / p99, HTML report), chosen over k6 (JavaScript) so the scenarios live in the repo
+  in the same language. A separate crate `loadtest/` with its own `Cargo.toml` (Moonlight is a
+  single crate, not a workspace; keep the load tester and its dependencies out of the server and
+  WASM builds). Two binaries: `fake-openstack` and `scenarios`.
+- **Fake OpenStack** (`loadtest/src/bin/fake_openstack.rs`, axum): enough of the APIs for the
+  scenarios to run. Keystone: version discovery at `/` and `/v3`, `POST /v3/auth/tokens`
+  (password; returns `X-Subject-Token` and a catalog whose endpoints all point back at the stub),
+  `GET /v3/auth/projects`, `GET /v3/users/{id}/projects`, rescoping. Then the GETs that
+  `fetch::instances` sends (servers detail, flavors, images, volumes, all in parallel through
+  `tokio::join!`), plus volumes, networks, ports, floating IPs and the Overview's limits / quotas.
+  Payload sizes are configurable (N servers, N volumes…), built from the shapes of
+  `server/mapping/fixtures.rs` (move or copy the generators; `fixtures` is `pub(super)` and
+  test-only). Options: `--delay-ms` per call, plus a jitter, to emulate a slow cloud and exercise
+  the parallel fetches and `os::REQUEST_TIMEOUT` (20 s). Writes answer 405: the scenarios are
+  read-only. A `moonlight.loadtest.conf` points `[keystone] url` at the stub; use it only for
+  this, never instead of `moonlight.conf` for the dev server.
+- **Scenarios** (`loadtest/src/bin/scenarios.rs`): each Goose user signs in **once** (the login
+  form POST, which keeps the `ml_session` cookie) and then loops a weighted journey with think
+  times, for example Overview → Instances → an instance's detail → Volumes → Networks → idle 5–30 s.
+  Each step sends both the SSR page `GET /project/…` and the server-function calls the hydrated
+  page makes (`POST /api/list_instances…`, `api.rs`; record the exact names and bodies from the
+  browser's network tab), so it matches what a browser really sends. Signing in on every request
+  would mostly measure Keystone token issuance and trip `[login] max_failures` (per process,
+  `server/throttle.rs`).
+- Cache realism: the moka connection and lookup caches are keyed by a hash of token, project and
+  region (`server/os.rs`, `[cache] lookup_seconds`). With one shared user, every request hits a
+  warm cache. The stub hands each sign-in a distinct token, and scenarios use N distinct usernames
+  (the stub accepts any password). Run both warm (`lookup_seconds = 30`) and cold
+  (`lookup_seconds = 0`).
+- What to run against: a release build only (`cargo leptos build --release --precompress`,
+  `./target/release/moonlight --config-file moonlight.loadtest.conf`). The dev server's debug build
+  and its 44 MB WASM say nothing about production; never build release while `watch` is serving
+  (AGENTS.md §6). Load generator, Moonlight and the stub on one machine is fine for comparing two
+  versions; for absolute numbers, put the load generator on another host. Behind a proxy that
+  sets `[log] client_ip_header`, every Goose user is the same address to the throttle.
+- Level 2 against ttcp-dev: the same `scenarios` binary pointed at the dev server's or a release
+  replica's URL, with real test accounts from environment variables (never committed), low user
+  counts and a short duration, GETs only. Read the OpenStack calls per page from the
+  `3 API · 0.41 s` chip counters in Moonlight's log, next to Goose's latency.
+- Level 3: `benches/mapping.rs` with `criterion` (`[[bench]]`, `required-features = ["ssr"]`) on
+  `mapping::instances`, `mapping::volumes` and similar with 100 / 1000 / 5000 rows. Open question:
+  `server::mapping` must be reachable from a bench (an external crate), so either a `pub` path
+  behind `ssr` or a `#[doc(hidden)] pub mod bench_api` re-export; decide when doing it.
+- Output: a `doc/loadtest.md` (or a section in README) with the commands, and the first baseline
+  recorded in this item's progress note (machine, users, RPS, p50 / p95 / p99, RSS), so later
+  runs can be compared.
+- Open questions: whether to add a CI job (only level 3 is cheap and stable enough to run there);
+  whether Moonlight should expose a `/metrics` endpoint (Prometheus) for server-side numbers
+  during a run, or whether `ps` / `top` plus the log are enough.
+- Slices, in order: (a) fake OpenStack plus a sign-in → Instances scenario, first baseline;
+  (b) the full weighted journey, warm and cold cache, slow-cloud delay; (c) `criterion` benches;
+  (d) level 2 on ttcp-dev and the doc.
+
+## 121. *Your session has expired* dialog: only *Sign In*
+
+**Goal.** When a dialog's action finds the session expired (roadmap 76), the dialog shows *Your
+session has expired* with two buttons, *Close* and *Sign In*, and both end on the login page:
+the session is gone, so wherever *Close* leaves the user, the next request sends them to
+`/login`. Two buttons suggest a choice that does not exist. For an expired session the only way
+forward is signing in again, so the dialog should offer exactly that: one primary *Sign In*
+button. Other failures (`Phase::Failed`) keep *Back* and *Close*, since there the user can fix the
+form or give up and carry on.
+
+**Implementation.**
+
+- `components/dialog.rs`, the `Phase::Expired` arm of the dialog's `view!`: drop the *Close*
+  button from `modal-foot` and keep the `<a class="btn btn-primary" href="/login"
+  rel="external">` (a full load, as now). The `×` in `modal-head`, `Escape` and a backdrop click
+  all call `close()`: in `Phase::Expired` they should either do nothing or go to `/login` the
+  same way (`hard_reload(Some("/login"))` from `components/layout.rs`), so no path leaves a
+  dead page behind. Settle by checking where `close()` leaves the user today.
+- Check the same pattern elsewhere: the error page (`ErrorPage` in `components/widgets.rs`,
+  `sign_in` case) shows *Sign In* next to a safety button (*Back* or another region) that the
+  session can't survive either; the jobs tray's `JobState::Expired` (`components/jobs.rs`,
+  `i18n::job_expired`) already says *Sign in again*, check it has no dead-end button.
+- The text `ErrUnauthText` (*Sign in again to continue…*) stays. No new i18n keys, unless
+  the error page's change needs one.
+- Tests: the dialog has no view tests; check in the browser (dry-run, dev server with
+  `moonlight.conf`). Roadmap 76 noted the HttpOnly cookie can't be dropped from the page, so
+  trigger it by waiting out the token, or by a short `[session]` timeout in a scratch copy of
+  the settings only if the user agrees (memory: the dev server always uses `moonlight.conf`).
+
+Decided (user, 2026-11-15): keep the `×`, for consistency with the other dialogs; in this phase
+it goes to `/login` like *Sign In*.
 
 ## Also pending (from the PoC)
 
