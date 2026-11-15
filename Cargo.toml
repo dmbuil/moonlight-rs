@@ -1,6 +1,6 @@
 [package]
 name = "moonlight"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2024"
 description = "Moonlight: a fast, read-only OpenStack dashboard (Horizon replacement PoC) in Rust + Leptos"
 license = "Apache-2.0"
@@ -65,6 +65,14 @@ hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio", "
 tower-http = { version = "0.6", default-features = false, features = ["compression-gzip"], optional = true }
 
 [dev-dependencies]
+# Micro-benchmarks of the mappers (`benches/mapping.rs`, run as its header says). Without plotters
+# or rayon: the text report is enough, and the tests' build stays light.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "mapping"
+harness = false
+required-features = ["ssr"]
 
 # Moonlight is an application: nobody depends on its public API, and its docs are built
 # with `--document-private-items` (AGENTS.md §2), so a doc comment may link to a private helper.

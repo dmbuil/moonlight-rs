@@ -1,0 +1,29 @@
+[package]
+name = "moonlight-loadtest"
+version = "0.1.0"
+edition = "2024"
+description = "Load testing for Moonlight: a fake OpenStack and Goose user scenarios"
+license = "Apache-2.0"
+publish = false
+
+# A crate of its own, not part of Moonlight's build: the load tester and its dependencies stay out
+# of the server and WASM binaries. Moonlight is a single crate, not a workspace.
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "signal"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+# Default features: `cookies`, so each user keeps its own `ml_session` cookie.
+goose = "0.19"
+
+[[bin]]
+name = "fake-openstack"
+path = "src/bin/fake_openstack.rs"
+
+[[bin]]
+name = "scenarios"
+path = "src/bin/scenarios.rs"
+
+[profile.release]
+debug = false

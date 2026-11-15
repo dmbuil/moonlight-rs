@@ -207,7 +207,7 @@ pub fn region_may_help(kind: ErrorKind) -> bool {
 /// Page-level failure: what happened, in plain words, and a way out that
 /// always works: *Retry* (when it may help) and *Back to safety*, which reloads
 /// the Overview; when the region may be the cause, it first switches to another
-/// region of the same project.
+/// region of the same project. An expired session gets only *Sign In*.
 #[component]
 pub fn ErrorPage(error: AppError) -> impl IntoView {
     let i18n = use_i18n();
@@ -269,6 +269,8 @@ pub fn ErrorPage(error: AppError) -> impl IntoView {
                             </button>
                         }.into_any()
                     }
+                    // With the session gone, *Back to safety* would end on the login page too.
+                    None if sign_in => ().into_any(),
                     None => view! {
                         <a class=safety_class href="/project" rel="external">{move || i18n.t(K::BackToSafety)}</a>
                     }.into_any(),

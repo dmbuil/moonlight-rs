@@ -89,7 +89,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 74  | ✅ Network Topology: tell external and shared networks apart from the project's own               | —        | S    | 20                          |
 | 75  | ✅ Key Manager: ACL management for secrets (and containers)                                       | —        | M    | 55, 57 (user picker)        |
 | 76  | ✅ Expired session: server function calls get their error, dialogs say so                         | —        | XS   | —                           |
-| 77  | Keep the session alive while the user is active (`[session] idle_minutes`)                       | P2       | M    | 49, 76                      |
+| 77  | ✖ Keep the session alive while the user is active (`[session] idle_minutes`)                     | —        | M    | 49, 76                      |
 | 78  | ✅ Result dialog: requests without numbers, and `[ui] show_requests`                              | —        | S    | —                           |
 | 79  | ⏸ Alarming (Aodh): alarms list, detail, history, create/edit/delete ([#9])                              | P3       | L    | 62                          |
 | 80  | ✅ 🔒 WebSSO sign-in (OIDC/SAML via Keystone)                                                      | —        | L    | 48, 49, 57                  |
@@ -132,8 +132,9 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 117 | ✅ Dialogs: animate the size change when a wizard's content grows or shrinks (step, shown fields, result) | — | S | 98 |
 | 118 | ✅ *Launch Instance*: choosing a flavor raises the new volume's size to its root disk, never lowers it | — | XS | 2 |
 | 119 | ✅ Admin › Volume › Storage Pools: each Cinder backend pool's capacity (total, free, allocated, provisioned) and volume count | — | S | — |
-| 120 | Load testing: Goose scenarios against a fake OpenStack, the same against the test cloud, `criterion` on the mappers | P3 | L | — |
-| 121 | *Your session has expired* dialog: one *Sign In* button, no *Close* that leads to the login page anyway | P3 | XS | 76 |
+| 120 | 🚧 Load testing: Goose scenarios against a fake OpenStack, the same against the test cloud, `criterion` on the mappers | P3 | L | — |
+| 121 | ✅ *Your session has expired* dialog: one *Sign In* button, no *Close* that leads to the login page anyway | — | XS | 76 |
+| 122 | Dialog help: long footnotes behind an (i), fuller (i) for complex fields, Horizon's contextual help in steps and dialogs ([#18]) | P3 | L | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -152,15 +153,18 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#15]: https://github.com/dmbuil/moonlight-rs/issues/15
 [#16]: https://github.com/dmbuil/moonlight-rs/issues/16
 [#17]: https://github.com/dmbuil/moonlight-rs/issues/17
+[#18]: https://github.com/dmbuil/moonlight-rs/issues/18
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119**.
+114, 97, 115, 116, 117, 118, 119, 121**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
+
+✖ = discarded by the user: it will not be done (see the item's note); do not propose it again.
 
 Priority: **P1** = used daily by operators, or blocks safe use; **P2** = Horizon parity users
 will miss; **P3** = polish or rarely used. Items 21 to 27 come from a read-only review of the
@@ -1732,9 +1736,10 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 
 > 🔗 **Issue:** [#2]
 >
-> 🚧 **In progress.** All four slices are built and a `proxy` upload works against the test
-> cloud. What is left is a real `direct` upload, which needs CORS on a Glance (see the end of
-> this note).
+> 🚧 **In progress.** All four slices are built, and real file uploads work against the test
+> cloud in both modes: `proxy` (2026-11-05) and `direct` (2026-11-15, by the user once the test
+> cloud's Glance allowed CORS). Left: a real *URL* import (`web-download`), so far covered only by
+> the dry-run test; then close #2.
 >
 > `OsAction::ImageCreate(ImageSpec)` (`model.rs`) creates the record (`POST /v2/images`, typed
 > SDK request) and, when the spec has a URL, the `web-download` import (`actions.rs`; formats,
@@ -1812,9 +1817,9 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 > **`max_upload_gb` default: 20 GiB** (user's choice, "for now"; `prefs.rs`, `CONFIGURATION.md`,
 > `moonlight.conf.example`).
 >
-> **Kept open until the test cloud's Glance allows CORS** from Moonlight's origin
-> (`[cors] allowed_origin`, with `PUT`, `X-Auth-Token` and `Content-Type`); the user will add
-> it. Then: a real `direct` upload in the browser, and close #2.
+> **Real upload, `direct`** (2026-11-15): after the test cloud's Glance was given CORS for
+> Moonlight's origin (`[cors] allowed_origin`, with `PUT`, `X-Auth-Token` and `Content-Type`), the
+> user uploaded an image straight from the browser to Glance successfully.
 >
 > **Uploads run in the background** (2026-11-14, user's choice over a minimisable dialog or a
 > second "pick the file" dialog: a big file must not hold the dialog open). On *Create Image*
@@ -3909,6 +3914,14 @@ Found while testing roadmap 62: Check Stack failed with that message an hour aft
 
 ## 77. Keep the session alive while the user is active (`[session] idle_minutes`)
 
+> ✖ **Discarded** (2026-11-15, user's decision). Moonlight will not renew sessions. Every way to
+> do it means holding something that can mint tokens (the password in server memory, an
+> application credential or a trust), and the user doesn't want Moonlight storing credentials or
+> adding any mechanism with security implications for this. A sign-in ends with its Keystone
+> token, as in Horizon; operators who want longer sessions raise Keystone's
+> `[token] expiration`. Nothing was built. The note below is kept as the record of what was
+> considered.
+
 **Goal.** Today a sign-in ends when the Keystone token does (about 1 h, `[token] expiration`),
 even in the middle of work: the next action shows *Your session has expired* (roadmap 76) and
 whatever was typed (a stack template, a launch form) is lost. The user wants the session to go
@@ -4204,8 +4217,8 @@ production cloud is unknown.
 > Moonlight can't delete the IdP's cookies. Documented with the `mod_auth_openidc`
 > `?logout=` form; on ttcp-dev ADFS's own logout URL was enough.
 >
-> API Access checked in the browser by the user. Item 77 has the note on why keep-alive can't
-> renew WebSSO sessions. Login page polish (user's request): *Authenticate using* and the
+> API Access checked in the browser by the user. Item 77 (discarded) has the note on why keep-alive
+> can't renew WebSSO sessions. Login page polish (user's request): *Authenticate using* and the
 > `[login] domain_choices` dropdown use the themed `Combo` (`components/select.rs`; the domain
 > one with a hidden `domain` input), labels from `pages::login::sso_label` (tested), and the
 > "PoC is read-only" footer is gone (`K::ReadOnlyHint` stays as the header badge's tooltip).
@@ -7769,6 +7782,102 @@ the canonical capabilities (NetApp reports many) is shown too, on the pool's det
 
 ## 120. Load testing: a fake OpenStack, user scenarios, and mapper benchmarks
 
+> 🚧 **In progress** (2026-11-15). Slices (a), (b) and (c) are built and measured; left: (d), a
+> short run against the test cloud, waiting for the test users the user will create (see the end of
+> this note). Three
+> findings below are for separate fixes.
+>
+> **What exists.** `loadtest/`, a crate of its own (own `Cargo.toml` and `target/`, git-ignored;
+> not part of Moonlight's build), with the commands in `loadtest/README.md`; AGENTS.md §2 points
+> at it. `fake-openstack` (axum, one port, a prefix per service: `/identity`, `/compute`,
+> `/network`, `/volume`, `/image`) does Keystone discovery, `POST auth/tokens` (any password;
+> rescoping; a distinct token per sign-in; a catalog pointing back at it), `auth/projects`, and the
+> GETs of the journey's pages and of the layout's capabilities, plus tenant usage and Neutron quota
+> details. Payloads are generated (`--servers`, `--volumes`, `--images`, `--flavors`,
+> `--networks`), marker pagination and `next` links work, `--delay-ms` / `--jitter-ms` slow it
+> down. Writes answer `405`, unknown paths `404` (printed), and Ctrl-C prints the requests
+> answered per endpoint. `scenarios` (Goose 0.19) has two scenarios. `instancesuser` loads
+> Instances (full load 1 : in-app navigation 3). `projectuser` is a working session: Overview
+> (`overview`, `get_usage`), Instances ×2, an instance's detail ×2 (IDs from its own
+> `list_instances` answer, so it runs on a real cloud too), Volumes, Networks, plus one full load
+> per round of one of those pages, in turn. Each user signs in once (`GET /login`, then the login
+> server function with `sec-fetch-site: same-origin`, which `same_origin_only` requires).
+> Accounts come from `LOADTEST_USERS` (taken in turn) or `loaduser<N>`, the password from
+> `LOADTEST_PASSWORD`, think time from `LOADTEST_WAIT_MS`. `loadtest/moonlight.loadtest.conf`
+> points at the stub, sets `default_region` (see the findings), `[login] max_failures = 0` and
+> `secure_cookies = false`. Unit tests: 3 in the stub, 3 in the scenarios. `benches/mapping.rs`
+> (`criterion` 0.8 as a dev-dependency, without plotters and rayon; `required-features = ["ssr"]`)
+> times `mapping::instances` (and its JSON), `volumes`, `networks` and `images` on 100 / 1,000 /
+> 5,000 rows. `server::mapping` was already public under `ssr`, so the item's open question needed
+> no re-export. Run it with `CARGO_TARGET_DIR=target/bench`: a bench also builds the `moonlight`
+> binary in the `release` profile, and in `target/` it replaced the one `cargo leptos build
+> --release` made (that binary then warns that `LEPTOS_OUTPUT_NAME` is not set).
+>
+> Server-function URLs end in a hash of the checkout path and module (`server_fn`'s default), the
+> same for every function in `api.rs`, so they differ between checkouts: the scenario reads it from
+> the login form's `action`.
+>
+> **Baselines** (2026-11-15, 0.4.3 release build with `--precompress`, porygon: 16 vCPU, 31 GiB;
+> Goose, Moonlight and the stub on the same machine; 50 servers, 50 volumes, 20 images, 10
+> flavors, 5 networks; `default_region` set; fresh processes; think time 1–3 s unless "none"):
+>
+> | Run | Users | Req/s | Fails | p99, in-app navigations | p99, full loads | CPU | Peak RSS |
+> | --- | ----- | ----- | ----- | ----------------------- | --------------- | --- | -------- |
+> | `instancesuser`, warm, 2 min | 200 | 100 | 0 | 5.0 ms | 15 ms | ≈ 0.5 core | 416 MB |
+> | `instancesuser`, no think, 1 min | 32 | 2,227 | 0 | 20 ms | 41 ms | ≈ 10 cores | 438 MB |
+> | `projectuser`, warm, 2 min | 200 | 112 | 0 | 2.5–5.6 ms | 6.8–16 ms | ≈ 0.25 core | 442 MB |
+> | `projectuser`, warm, 1 min | 50 | 28 | 0 | — | — | < 0.1 core | 180 MB |
+> | `projectuser`, cold cache, 2 min | 200 | 112 | 1 ¹ | 2.2–5.8 ms | 8.9–16 ms | ≈ 0.4 core | 409 MB |
+> | `projectuser`, slow cloud ², 2 min | 200 | 103 | 0 | 202–204 ms | 206–391 ms | ≈ 0.25 core | 507 MB |
+> | `projectuser`, no think, 1 min | 32 | 4,073 | 0 | 11–14 ms | 21–35 ms | ≈ 8 cores | 194 MB |
+>
+> ¹ A client-side `SendRequest` error with nothing in Moonlight's log, likely a request cut when
+> the run stopped. ² `--delay-ms 100 --jitter-ms 100` on every OpenStack call. The cold runs
+> (`lookup_seconds = 0`) and the first `instancesuser` runs had `default_region` unset.
+>
+> What the runs say. The journey cost the stub 60,800 OpenStack calls for 13,400 Moonlight requests
+> (about 4.5 per request) warm, and 95,100 cold (53 % more; flavors, images and volumes are then
+> fetched on every page), for 0.5–2.5 ms more latency. On the slow cloud every in-app navigation
+> took about one OpenStack call (≈ 200 ms), so the parallel fetches work. A sign-in took ≈ 1 s
+> (about five sequential round trips), and a full Instances load 214–391 ms (sometimes two
+> sequential round trips; not investigated). Mapping costs 1.8–3.3 µs per server: 5,000 instances
+> take 16.7 ms to map and 2.6 ms to serialise; 5,000 volumes 4.8 ms, networks 3.7 ms, images
+> 5.3 ms.
+>
+> **Findings, for separate items:**
+>
+> 1. **With `[keystone] default_region` unset, each sign-in builds its scoped connection twice.**
+>    `os::new_session` scopes with no region (cached under that key), then stores the catalog's
+>    first region in the session, so the first page misses the cache and rescopes and discovers
+>    again: 3 tokens and 2 discoveries per sign-in instead of 2 and 1, the first Overview took
+>    413 ms instead of 102 ms on a 100 ms cloud, and the extra connection held about 90 MB per 200
+>    users. Fix: in `new_session`, cache the connection under the chosen region's key too when it
+>    serves that region (a single-region catalog), or build the region's connection right away.
+> 2. **Memory grows by about 1.7 MB per signed-in session** (180 MB with 50 users, 442 MB with
+>    200, `default_region` set), so 1,000 sessions on a replica would need ≈ 1.9 GB. Likely the
+>    per-token caches in `server/config.rs`, mainly `connections` (one `AsyncOpenStack` per token,
+>    project and region, each with its own HTTP client and TLS setup; 15 min idle, 2,000 max), plus
+>    lookups. Check with a heap profile, or by sharing one `reqwest::Client`.
+> 3. **The login page's `<Title>` panics under concurrent loads** (`pages/login.rs`,
+>    `text=move || i18n.t(K::LoginTitle)`): `leptos_meta::TitleContext::as_string` runs the closure
+>    from `leptos_axum::handle_response_inner` after the render's owner is gone ("Tried to access a
+>    reactive value that has already been disposed"), or outside the request's arena ("the
+>    `sandboxed-arenas` feature is active, but no Arena is active", also once on the first request
+>    after a start). 32 panics for 32 concurrent sign-ins, 61 in 400 `/login` loads under load. No
+>    broken response was seen (all 400 pages complete, with their `<title>`), but each costs an
+>    unwind and a log entry. Every other page passes `<Title>` a plain string; the closure is what
+>    retitles the tab when the language changes on the login page. Fix: a plain string on the
+>    server (`#[cfg(feature = "ssr")]`), the closure only in the browser.
+>
+> Summarised for users in README.md, *Performance* (2026-11-15).
+>
+> **Left: (d), the test cloud. Kept open until the user creates test users for it** (user's
+> decision, 2026-11-15). The release build serves `moonlight.conf` on `127.0.0.1:3100`
+> (`RUST_LOG=moonlight=debug` so the log counts each server function's calls), and the user runs
+> `scenarios --scenarios projectuser` against it from their own shell with 5 users for 2 minutes,
+> the password typed into `read -rs` (never in a file or handled by the agent; README, *Against
+> a real cloud*). Then record latency, OpenStack calls per page and any errors here.
+
 **Goal.** Know how much load one Moonlight replica takes and catch performance regressions,
 emulating real users rather than hammering one URL. Moonlight calls OpenStack with each user's
 own token on every page, so load against a real cloud mostly measures Keystone, Nova and
@@ -7844,6 +7953,18 @@ Horizon has no equivalent; this is tooling, not a panel.
 
 ## 121. *Your session has expired* dialog: only *Sign In*
 
+> ✅ **Done** (2026-11-15). The dialog's `Phase::Expired` footer (`components/dialog.rs`) has
+> only *Sign In* (`<a href="/login" rel="external">`, a full load). `close()` checks the phase: in
+> `Phase::Expired` the `×`, Escape and a backdrop click call `layout::hard_reload(Some("/login"))`,
+> so every way out signs in again; other phases close the dialog as before. `Phase::Failed` keeps
+> *Back* and *Close*. The error page (`ErrorPage`, `components/widgets.rs`) no longer shows *Back to
+> safety* next to *Sign In* for `Unauthenticated` (it led to `/login` too; *Retry* and the region
+> switch were already hidden there). The jobs tray's `JobState::Expired` card already had only
+> *Sign In* (plus the card's own dismiss, which removes the card and is not a dead end): unchanged.
+> No new i18n keys. Clippy clean (ssr and hydrate), 625 tests pass. Not checked in the browser:
+> an expired session needs the token to run out (about 1 h) or a short-lived scratch config,
+> which the user hasn't asked for.
+
 **Goal.** When a dialog's action finds the session expired (roadmap 76), the dialog shows *Your
 session has expired* with two buttons, *Close* and *Sign In*, and both end on the login page:
 the session is gone, so wherever *Close* leaves the user, the next request sends them to
@@ -7874,10 +7995,122 @@ form or give up and carry on.
 Decided (user, 2026-11-15): keep the `×`, for consistency with the other dialogs; in this phase
 it goes to `/login` like *Sign In*.
 
+## 122. Dialog help: long footnotes behind an (i), fuller (i) for complex fields
+
+> 🔗 **Issue:** [#18]
+
+**Goal.** Make field help consistent across dialogs. Today most fields carry their whole
+explanation as a footnote under the input (`Field::help`), some of them two or three sentences
+long, which makes dialogs tall and hard to scan, while only the alarm dialog and two others use
+the (i) beside the label (`Field::tip`). The user's rule (2026-11-15):
+
+- **Too verbose a footnote moves to an (i).** The field keeps a short footnote (one short
+  sentence, or none) and the rest goes into the tip.
+- **Complex fields get more, not less:** extend the explanation (formats, examples, what
+  OpenStack does with it) and put it in the (i), as the alarm fields already do.
+- **Not every long footnote should move.** What the user must not miss stays visible even when
+  long. The user's example: the *Key Pair* wizard's notes (`K::GeneratedKeyHelp`: the private
+  key is downloaded only once; `K::PublicKeyHelp`: the accepted formats) stand out better as
+  footnotes than hidden behind an (i).
+- **Step help and page hints stay shown** (`Step::help`, e.g. `K::EditPortInfoHelp`,
+  `K::DetailsHelp` in *Launch Instance*; page hints such as the Template Generator's
+  `K::TgCanvasHelp`): only field footnotes are in scope.
+- **Bring in Horizon's contextual help** (user, 2026-11-15), which Moonlight never took into
+  account: make more fields and steps verbose with what Horizon explains. In Horizon's wizards
+  (Angular) each step has a help panel that opens from an icon at the top right of the step;
+  Django modals and workflows show a *Description* column beside the form; Django fields show
+  their `help_text` behind a (?) by the label.
+
+Where Horizon keeps that help (a shallow clone of `openstack/horizon` master, 2026-11-15):
+
+- **Wizard step help, 23 files** `*.help.html`: *Launch Instance*, one per step
+  (`dashboards/project/static/dashboard/project/workflow/launch-instance/<step>/<step>.help.html`:
+  details, source, flavor, network, networkports, security-groups, keypair, configuration,
+  server-groups, scheduler-hints, metadata); images (`static/app/core/images/steps/`:
+  create-image, edit-image, update-metadata, create-volume); trunks
+  (`static/app/core/trunks/steps/`: details, parent-port, subports); Swift
+  `containers/create-container.help.html`; Identity users (`info.create`, `info.password`,
+  `info.update`) and domains (`info.help.html`). Example, `source.help.html`: which boot sources
+  give ephemeral and which persistent storage, and what *Create New Volume* and *Delete Volume
+  on Instance Delete* do.
+- **Modal descriptions, 83 templates** with `{% block modal-body-right %}` (e.g.
+  `admin/images/templates/images/_create.html`, `admin/rbac_policies/…/_create.html`,
+  `admin/volume_types/…/_create_qos_spec.html`).
+- **Workflow step descriptions, 49** `help_text = …` in workflow `Action.Meta`
+  (`dashboards/*/workflows.py`).
+- **Field help, 115** `help_text=` on form fields (`forms.py`, `workflows.py`).
+
+Horizon's text is Apache-2.0: adapt it to Moonlight's wording and to what Moonlight's dialog
+actually does (fields differ), in English and Spanish; don't paste it.
+
+**Implementation.**
+
+Slices, in order:
+
+1. **Field footnotes** (the rule above). Audit and the guard test below.
+2. **Horizon's step help and form descriptions, spread over what exists** (user, 2026-11-15:
+   no Horizon-style "big (i)" on the dialog). What explains one field goes into that field's
+   (i) (`Field::tip`): e.g. `source.help.html`'s boot sources and *Create New Volume* into
+   *Source*'s tip in *Launch Instance*. Overview text that belongs to no single field (what a
+   trunk is, ephemeral versus persistent storage in general) goes into the help line under the
+   step's title, which wizards already show (`Step::help`, rendered as `p.step-help` at the top
+   of the body in `components/dialog.rs`), or, in a one-step dialog, into its intro line
+   (`Dialog::intro`, `p.intro`); shortened when Horizon's runs long, since that line is always
+   shown. A field tip stays at about 6 to 8 lines or list items: when a step's text runs
+   longer, split it across that step's fields. Matching Moonlight wizards: *Launch Instance*
+   (`ops/instances.rs`, steps in `launch_with`), *Create/Edit Image* and *Update Metadata*
+   (`ops/images.rs`), *Create Volume* from an image (`ops/volumes.rs`,
+   `create_volume_dialog`), trunks (`ops/trunks.rs`, `create_trunk_dialog`), users and change
+   password (`ops/identity.rs`); then Horizon's modal descriptions and workflow `help_text` for
+   the dialogs Moonlight has (map each Horizon form to its `ops::*_dialog`, listing the ones
+   with no counterpart).
+3. **Field tips from Horizon's field `help_text`** where Horizon says more than Moonlight's
+   footnote: fold it into the field's (i). Slices 2 and 3 can go together, dialog by dialog.
+
+Details:
+
+- The field mechanism exists: `Field::tip` (`components/dialog.rs`), rendered by
+  `widgets::InfoTip` beside the label (`position: fixed`, hover and keyboard focus,
+  `aria-describedby`); its text takes lines, list items (a leading `- `) and inline bold,
+  italic and code (`widgets::tip_blocks`, `widgets::tip_inline`, tested). A field can have both
+  a short `help` and a `tip`. Examples to follow: `components/ops/alarms.rs` (`K::Tip*` keys),
+  `ops/images.rs` (*Architecture*: its help became a tip), `ops/firewall.rs`.
+- Audit the about 170 `*Help` / `*Hint` keys in `i18n.rs` used by `.help(…)` across
+  `components/ops/*.rs` (sort by English length; about 40 are over 95 characters). Sort each
+  into: keep as footnote (short, or on the allow-list), shorten the footnote and move the rest
+  into a tip, or extend into a tip (complex field). First candidates, by length:
+  `SecretTypeHelp`, `PayloadFormatHelp`, `AlgorithmHelp`, `CipherModeHelp`, `AclUsersHelp`,
+  `ContainerSecretsHelp`, the expiration helps (`ops/key_manager.rs`); `AccessRulesHelp` with
+  its `help_code` example, `AppCredHelp` (`ops/identity.rs`); `SourceHelp`
+  (`ops/instances.rs`); `PortFromHelp` and the rest of *Add Rule* (`ops/security_groups.rs`,
+  each field got a help text in roadmap 61); `HostRoutesHelp` (`ops/networks.rs`);
+  `PrefixesHelp` (`ops/admin_storage.rs`); `L7PoliciesHelp`, `MembersHelp`,
+  `LbCertificateHelp` (load balancers).
+- New text lives in new `K::Tip…` keys (English and Spanish), the shortened
+  footnote in the existing `…Help` key. Write a short rule into `AGENTS.md`'s dialog-fields
+  recipe (footnote, field (i), step help line, the allow-list) so new dialogs follow it.
+- Tests: a guard over the dialogs' fields that no footnote passes the limit unless it is on the
+  allow-list, the way `ops/alarms.rs` checks every alarm field has a help; the tip-markup tests
+  cover the new tips. Browser check (dry-run): open the changed dialogs, each (i) by hover and
+  keyboard, the step help lines across steps, in both languages and themes.
+
+Decided (user, 2026-11-15):
+
+- The footnote limit is about 90 characters.
+- Step help and page hints stay shown; Horizon's overview text joins them, shortened if long.
+- No dialog-level (i) like Horizon's: its help goes into the field tips and the step help line.
+- **The allow-list** (footnotes that stay visible however long, because they warn about a
+  consequence or a precondition to read before submitting): `K::GeneratedKeyHelp` and
+  `K::PublicKeyHelp` (*Key Pair*), `K::ImageFileHelp` (*don't close or reload this tab*),
+  `K::UnrestrictedHelp` (the credential can create others), `K::DeleteGroupVolumesHelp` (also
+  deletes the volumes), `K::ResetStatusHelp` (changes only Cinder's record),
+  `K::MigrateHelp` (the data is copied, slow) and `K::IncrementalBackupHelp` (needs an earlier
+  full backup).
+
 ## Also pending (from the PoC)
 
 - Validate `MOONLIGHT_WRITES=on` end to end on DevStack or a lab project.
-- OIDC login (Keystone WebSSO, Horizon's `WEBSSO_*` settings): item 80. Token renewal: item 77.
+- OIDC login (Keystone WebSSO, Horizon's `WEBSSO_*` settings): item 80. Token renewal: item 77, discarded.
 - The login page's `<Title text=…>` closure (`pages/login.rs`) sometimes panics during SSR
   with `the sandboxed-arenas feature is active, but no Arena is active` (reactive_graph 0.2.16,
   backtrace through `I18n::t`): it runs after its owner is gone. Seen twice per dev run while

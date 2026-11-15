@@ -312,6 +312,39 @@ cargo nextest run --features ssr actions             # every write, in dry-run, 
 What they cover: [ARCHITECTURE.md](ARCHITECTURE.md#testing-strategy). The full pre-commit
 check list (both clippy targets, Markdown lint) is in [AGENTS.md](AGENTS.md#2-commands).
 
+## Performance
+
+Measured on 2026-11-15 (0.4.3, release build) with the load tests in [`loadtest/`](loadtest/README.md):
+scripted users ([Goose](https://book.goose.rs)) in front of a fake OpenStack that answers at once,
+so the numbers are Moonlight's own. One 16 vCPU, 31 GiB machine ran Moonlight, the users and the
+fake cloud; the project had 50 servers, 50 volumes, 20 images and 5 networks. Each user signs in
+once, then works through Overview, Instances, an instance's detail, Volumes and Networks, mostly
+as in-app navigations (one server-function call) with a full page load now and then.
+
+| Run | Users | Requests/s | Failures | p99, in-app navigation | p99, full page load | CPU | Memory |
+| --- | ----- | ---------- | -------- | ---------------------- | ------------------- | --- | ------ |
+| 1–3 s think time, 2 min | 200 | 112 | 0 | 2.5–5.6 ms | 6.8–16 ms | ≈ 0.25 core | 442 MB |
+| Same, cold lookup cache | 200 | 112 | 1 (client side) | 2.2–5.8 ms | 8.9–16 ms | ≈ 0.4 core | 409 MB |
+| Same, cloud answering in 100–200 ms | 200 | 103 | 0 | 202–204 ms | 206–391 ms | ≈ 0.25 core | 507 MB |
+| No think time, 1 min | 32 | 4,073 | 0 | 11–14 ms | 21–35 ms | ≈ 8 cores | 194 MB |
+
+In short: one replica serves a few hundred working users on a fraction of a core, and a page costs
+about as long as its slowest OpenStack call, since the calls run in parallel. With `[cache]
+lookup_seconds = 0` a page sends about half as many OpenStack calls again, for under 3 ms more.
+Mapping is cheap: 5,000 instances take 17 ms to map and 3 ms to serialise
+(`benches/mapping.rs`). Signing in takes about five sequential Keystone and discovery round trips
+(≈ 1 s on a cloud answering in 200 ms).
+
+Known costs, to be fixed (details in [ROADMAP.md](ROADMAP.md), item 120):
+
+- memory grows by about 1.7 MB per signed-in session (≈ 1.9 GB for 1,000 sessions on one replica);
+- without `[keystone] default_region`, each sign-in builds its project connection twice and the
+  first page waits for it (set it until this is fixed);
+- the login page logs a panic under concurrent loads (`leptos_meta` title), with no broken page
+  seen.
+
+A run against a real test cloud is still to be done.
+
 ## Troubleshooting
 
 | Symptom                                                             | Cause / fix                                                                                                                             |

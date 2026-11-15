@@ -984,7 +984,14 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
         })
     };
 
-    let close = move || dialogs.current.set(None);
+    // An expired session has only one way forward: `×`, Escape and the backdrop sign in again too.
+    let close = move || {
+        if phase.get_untracked() == Phase::Expired {
+            crate::components::layout::hard_reload(Some("/login"));
+        } else {
+            dialogs.current.set(None);
+        }
+    };
     let go = move |forward: bool| {
         let i = step.get_untracked();
         attempted.update(|a| {
@@ -1106,7 +1113,7 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
                                 <span>{move || i18n.t(K::ErrUnauthText)}</span>
                             </div>
                             <footer class="modal-foot">
-                                <button type="button" class="btn" on:click=move |_| dialogs.current.set(None)>{move || i18n.t(K::Close)}</button>
+                                // The only button: the session is gone, so *Close* would end on the login page anyway.
                                 // A full load, like the error page's: the login page starts a fresh app.
                                 <a class="btn btn-primary" href="/login" rel="external">{move || i18n.t(K::SignIn)}</a>
                             </footer>

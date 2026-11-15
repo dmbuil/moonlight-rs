@@ -62,7 +62,11 @@ cargo leptos build --release                         # ONLY with `watch` stopped
 rumdl check .                                        # Markdown lint (config: .rumdl.toml)
 rumdl fmt .                                          # Markdown auto-fix
 cargo deny check                                     # advisories, licences, duplicates, sources (deny.toml)
+CARGO_TARGET_DIR=target/bench cargo bench --features ssr --bench mapping   # mapper benchmarks
 ```
+
+**Load tests** live in `loadtest/`, a crate of its own (fake OpenStack plus Goose users; see
+`loadtest/README.md`). They need a release build of Moonlight, so stop `watch` first (§6).
 
 Always run **both** `cargo check` variants: code that compiles for `ssr` can fail for
 `hydrate` (and vice versa) because of `#[cfg(feature = …)]` blocks and `web-sys` features.

@@ -33,3 +33,4 @@ logs/
 /scripts/moonlight-remote.sh
 # Personal container launcher (podman run with this machine's conf and log volume).
 /moon.sh
+/loadtest/target
