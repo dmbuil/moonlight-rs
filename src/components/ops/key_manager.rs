@@ -37,7 +37,8 @@ pub fn store_secret_dialog(lang: Lang) -> Dialog {
         Field::select("secret_type", tr(K::SecretType), km_options(lang, SECRET_TYPES))
             .value("opaque")
             .required()
-            .help(tr(K::SecretTypeHelp)),
+            .help(tr(K::SecretTypeHelp))
+            .tip(tr(K::TipSecretType)),
         Field::select(
             "format",
             tr(K::PayloadFormat),
@@ -50,16 +51,24 @@ pub fn store_secret_dialog(lang: Lang) -> Dialog {
             ),
         )
         .value("text/plain")
-        .help(tr(K::PayloadFormatHelp)),
+        .help(tr(K::PayloadFormatHelp))
+        .tip(tr(K::TipPayloadFormat)),
         Field::area("payload", tr(K::Payload)).help(tr(K::PayloadHelp)),
-        Field::text("algorithm", tr(K::Algorithm)).help(tr(K::AlgorithmHelp)),
-        Field::number("bit_length", tr(K::BitLength), 1).help(tr(K::BitLengthHelp)),
-        Field::text("mode", tr(K::CipherMode)).help(tr(K::CipherModeHelp)),
+        Field::text("algorithm", tr(K::Algorithm))
+            .help(tr(K::AlgorithmHelp))
+            .tip(tr(K::TipAlgorithm)),
+        Field::number("bit_length", tr(K::BitLength), 1)
+            .help(tr(K::BitLengthHelp))
+            .tip(tr(K::TipBitLength)),
+        Field::text("mode", tr(K::CipherMode))
+            .help(tr(K::CipherModeHelp))
+            .tip(tr(K::TipCipherMode)),
         // One value, so on one line: date left, time right.
         Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
         Field::time("expiration_time", tr(K::ExpirationTime))
             .half()
-            .help(tr(K::SecretExpirationHelp)),
+            .help(tr(K::SecretExpirationHelp))
+            .tip(tr(K::TipExpiration)),
     ];
     Dialog::form(tr(K::StoreSecret), tr(K::StoreSecret), fields, move |v| {
         let now = chrono::Utc::now().naive_utc();
@@ -166,7 +175,8 @@ fn edit_access(
             Field::check("project_access", tr(K::ProjectAccessField), before_access),
             Field::area("users", tr(K::AclUsersField))
                 .value(before_users.join("\n"))
-                .help(tr(K::AclUsersHelp)),
+                .help(tr(K::AclUsersHelp))
+                .tip(tr(K::TipAclUsers)),
         ];
         let (set, before_users) = (set.clone(), before_users.clone());
         let mut d = Dialog::form(tr(K::EditAccess), tr(K::Save), fields, move |v| {
@@ -329,7 +339,8 @@ pub fn order_key_dialog(lang: Lang) -> Dialog {
         Field::select("order_type", tr(K::OrderType), km_options(lang, &["key", "asymmetric"]))
             .value("key")
             .required()
-            .help(tr(K::OrderTypeHelp)),
+            .help(tr(K::OrderTypeHelp))
+            .tip(tr(K::TipOrderType)),
         Field::text("name", tr(K::Name)).help(tr(K::OrderNameHelp)),
         Field::select("key_bits", tr(K::BitLength), options_raw(&bits("key")))
             .value("256")
@@ -352,7 +363,8 @@ pub fn order_key_dialog(lang: Lang) -> Dialog {
         Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
         Field::time("expiration_time", tr(K::ExpirationTime))
             .half()
-            .help(tr(K::OrderExpirationHelp)),
+            .help(tr(K::OrderExpirationHelp))
+            .tip(tr(K::TipExpiration)),
     ];
     let mut d = Dialog::form(tr(K::OrderKey), tr(K::OrderKey), fields, move |v| {
         let order_type = req(v, "order_type", K::OrderType, lang)?;

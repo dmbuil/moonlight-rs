@@ -101,30 +101,48 @@ pub fn edit_image_dialog(lang: Lang, im: &Image, publicize: bool, formats: &[Str
         Field::area("description", tr(K::Description)).value(prop("description")),
     ];
     if ami {
-        fields.push(Field::text("kernel_id", tr(K::KernelId)).value(prop("kernel_id")));
-        fields.push(Field::text("ramdisk_id", tr(K::RamdiskId)).value(prop("ramdisk_id")));
+        fields.push(
+            Field::text("kernel_id", tr(K::KernelId))
+                .value(prop("kernel_id"))
+                .tip(tr(K::TipKernelId)),
+        );
+        fields.push(
+            Field::text("ramdisk_id", tr(K::RamdiskId))
+                .value(prop("ramdisk_id"))
+                .tip(tr(K::TipRamdiskId)),
+        );
     }
     fields.push(
         Field::text("architecture", tr(K::Architecture))
             .value(prop("architecture"))
             .help(tr(K::ArchitectureHelp)),
     );
-    fields.push(Field::number("min_disk", tr(K::MinDiskGb), 0).value(im.min_disk_gb.unwrap_or(0).to_string()));
-    fields.push(Field::number("min_ram", tr(K::MinRamMb), 0).value(im.min_ram_mb.unwrap_or(0).to_string()));
+    fields.push(
+        Field::number("min_disk", tr(K::MinDiskGb), 0)
+            .value(im.min_disk_gb.unwrap_or(0).to_string())
+            .tip(tr(K::TipMinDisk)),
+    );
+    fields.push(
+        Field::number("min_ram", tr(K::MinRamMb), 0)
+            .value(im.min_ram_mb.unwrap_or(0).to_string())
+            .tip(tr(K::TipMinRam)),
+    );
     if queued {
         let opts: Vec<&str> = formats.iter().map(String::as_str).collect();
         fields.push(
             Field::select("disk_format", tr(K::DiskFormat), options_raw(&opts))
                 .value(im.disk_format.clone().unwrap_or_default())
-                .required(),
+                .required()
+                .tip(tr(K::TipDiskFormat)),
         );
     }
     fields.push(
         Field::select("visibility", tr(K::Visibility), options_raw(&vis))
             .value(im.visibility.clone())
-            .required(),
+            .required()
+            .tip(tr(K::TipImageVisibility)),
     );
-    fields.push(Field::check("protected", tr(K::Protected), im.protected));
+    fields.push(Field::check("protected", tr(K::Protected), im.protected).tip(tr(K::TipImageProtected)));
     let old = im.clone();
     Dialog::form(tr(K::EditImage), tr(K::Save), fields, move |v| {
         let mut c = ImageChanges::default();
@@ -237,6 +255,7 @@ fn create_image_form(
         Field::text("url", tr(K::Url))
             .required()
             .help(tr(K::ImageUrlHelp))
+            .tip(tr(K::TipImageUrl))
             .when("source", "url")
             .half(),
         Field::file("file", tr(K::ImageSourceFile))
@@ -249,22 +268,37 @@ fn create_image_form(
         Field::select("disk_format", tr(K::DiskFormat), options_raw(&formats))
             .value(formats.first().copied().unwrap_or("qcow2"))
             .required()
+            .tip(tr(K::TipDiskFormat))
             .half(),
         // The hint is a tooltip: a help line would make this row taller than its neighbours.
         Field::text("architecture", tr(K::Architecture))
             .tip(tr(K::ArchitectureHelp))
             .half(),
-        Field::text("kernel_id", tr(K::KernelId)).when("disk_format", "ami"),
-        Field::text("ramdisk_id", tr(K::RamdiskId)).when("disk_format", "ami"),
-        Field::number("min_disk", tr(K::MinDiskGb), 0).value("0").half(),
-        Field::number("min_ram", tr(K::MinRamMb), 0).value("0").half(),
+        Field::text("kernel_id", tr(K::KernelId))
+            .when("disk_format", "ami")
+            .tip(tr(K::TipKernelId)),
+        Field::text("ramdisk_id", tr(K::RamdiskId))
+            .when("disk_format", "ami")
+            .tip(tr(K::TipRamdiskId)),
+        Field::number("min_disk", tr(K::MinDiskGb), 0)
+            .value("0")
+            .tip(tr(K::TipMinDisk))
+            .half(),
+        Field::number("min_ram", tr(K::MinRamMb), 0)
+            .value("0")
+            .tip(tr(K::TipMinRam))
+            .half(),
         Field::select("visibility", tr(K::Visibility), options_raw(&vis))
             .value(default_vis)
             .required()
+            .tip(tr(K::TipImageVisibility))
             .half(),
-        Field::check("protected", tr(K::Protected), false).half(),
+        Field::check("protected", tr(K::Protected), false)
+            .tip(tr(K::TipImageProtected))
+            .half(),
         Field::key_values("metadata", tr(K::Metadata), &[])
             .help(tr(K::MetadataHelp))
+            .tip(tr(K::TipImageMetadata))
             .catalog("OS::Glance::Image")
             .catalog_skip(&IMAGE_FIELD_PROPS),
     ];
@@ -447,6 +481,7 @@ pub fn import_keypair_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::ImportKeyIntro))
 }
 
 /// *Create Key Pair*: an Ed25519 SSH key generated on the server; the private key

@@ -15,13 +15,15 @@ fn subport_fields(lang: Lang, optional: bool) -> Vec<Field> {
             port.help(tr(K::SubportOptionalHelp))
         } else {
             port.required()
-        },
+        }
+        .tip(tr(K::TipSubport)),
         Field::select(
             "segmentation_type",
             tr(K::SegmentationType),
             options_raw(&["vlan", "inherit"]),
         )
-        .value("vlan"),
+        .value("vlan")
+        .tip(tr(K::TipSegmentationType)),
         Field::number("segmentation_id", tr(K::SegmentationId), 1)
             .help(tr(K::VlanHelp))
             .show_if(vlan),
@@ -54,11 +56,13 @@ pub fn create_trunk_dialog(lang: Lang) -> Dialog {
     let mut fields = vec![
         Field::text("name", tr(K::Name)),
         Field::text("description", tr(K::Description)),
-        Field::select("parent", tr(K::ParentPort), Source::Set(ChoiceSet::FreePorts)).required(),
-        Field::check("admin_up", tr(K::EnableAdminState), true),
+        Field::select("parent", tr(K::ParentPort), Source::Set(ChoiceSet::FreePorts))
+            .required()
+            .tip(tr(K::TipTrunkParent)),
+        Field::check("admin_up", tr(K::EnableAdminState), true).tip(tr(K::TipTrunkAdminState)),
     ];
     fields.extend(subport_fields(lang, true));
-    Dialog::form(tr(K::CreateTrunk), tr(K::CreateTrunk), fields, move |v| {
+    let mut d = Dialog::form(tr(K::CreateTrunk), tr(K::CreateTrunk), fields, move |v| {
         let parent = req(v, "parent", K::ParentPort, lang)?;
         let sub = subport_spec(v, lang)?;
         if sub.as_ref().is_some_and(|s| s.port_id == parent) {
@@ -71,7 +75,9 @@ pub fn create_trunk_dialog(lang: Lang) -> Dialog {
             admin_up: v.flag("admin_up"),
             subports: sub.into_iter().collect(),
         })
-    })
+    });
+    d.intro = vec![tr(K::CreateTrunkIntro)];
+    d
 }
 
 /// *Add Sub-port* to a trunk.
@@ -110,7 +116,7 @@ pub fn trunk_items(lang: Lang, tk: &TrunkRow) -> Vec<MenuItem> {
             vec![
                 Field::text("name", t(lang, K::Name)).value(n.clone()),
                 Field::text("description", t(lang, K::Description)).value(d.clone()),
-                Field::check("admin_up", t(lang, K::EnableAdminState), up),
+                Field::check("admin_up", t(lang, K::EnableAdminState), up).tip(t(lang, K::TipTrunkAdminState)),
             ],
             move |v| {
                 Ok(OsAction::TrunkUpdate {

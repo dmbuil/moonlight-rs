@@ -16,10 +16,10 @@ pub fn create_app_credential_dialog(lang: Lang) -> Dialog {
         Field::password("secret", tr(K::Secret)).help(tr(K::SecretHelp)),
         // One value, so on one line: date left, time right.
         Field::date("expiration_date", tr(K::ExpirationDate), true).half(),
-        Field::time("expiration_time", tr(K::ExpirationTime)).half().help(tr(K::ExpirationHelp)),
+        Field::time("expiration_time", tr(K::ExpirationTime)).half().help(tr(K::ExpirationHelp)).tip(tr(K::TipExpiration)),
         Field::multi("roles", tr(K::Roles), Source::Set(ChoiceSet::TokenRoles)).help(tr(K::AppCredRolesHelp)),
         // Horizon's examples, in both of the formats it accepts.
-        Field::area("access_rules", tr(K::AccessRules)).help(tr(K::AccessRulesHelp)).help_code(
+        Field::area("access_rules", tr(K::AccessRules)).help(tr(K::AccessRulesHelp)).tip(tr(K::TipAccessRules)).help_code(
             "[\n  {\"service\": \"compute\",\n   \"method\": \"POST\",\n   \"path\": \"/v2.1/servers\"}\n]\n\n- service: compute\n  method: POST\n  path: /v2.1/servers",
         ),
         Field::check("unrestricted", tr(K::UnrestrictedDangerous), false).help(tr(K::UnrestrictedHelp)).danger(),
@@ -255,13 +255,15 @@ pub fn create_user_dialog(lang: Lang) -> Dialog {
             "project",
             tr(K::PrimaryProject),
             Source::Set(ChoiceSet::IdentityProjects),
-        ),
+        )
+        .tip(tr(K::TipPrimaryProject)),
         Field::select("role", tr(K::Role), Source::Set(ChoiceSet::IdentityRoles))
-            .show_if(|v| v.get("project").is_some_and(|p| !p.is_empty())),
+            .show_if(|v| v.get("project").is_some_and(|p| !p.is_empty()))
+            .tip(tr(K::TipUserRole)),
         Field::check("enabled", tr(K::EnabledCol), true),
-        Field::check("lock_password", tr(K::LockPassword), false),
+        Field::check("lock_password", tr(K::LockPassword), false).tip(tr(K::TipLockPassword)),
     ];
-    Dialog::form(tr(K::CreateUser), tr(K::CreateUser), fields, move |v| {
+    let mut d = Dialog::form(tr(K::CreateUser), tr(K::CreateUser), fields, move |v| {
         let password = v.get("password");
         if password != v.get("confirm") {
             return Err(t(lang, K::PasswordsDiffer).to_string());
@@ -279,7 +281,9 @@ pub fn create_user_dialog(lang: Lang) -> Dialog {
             enabled: v.flag("enabled"),
             lock_password: v.flag("lock_password"),
         })))
-    })
+    });
+    d.intro = vec![tr(K::CreateUserIntro)];
+    d
 }
 
 /// A user's menu (admins), as Horizon's: *Edit*, *Change Password*,
@@ -310,7 +314,8 @@ pub fn user_items(lang: Lang, u: &IdentityUser, primary: Option<String>) -> Vec<
                 tr(K::PrimaryProject),
                 Source::Set(ChoiceSet::IdentityProjects),
             )
-            .value(primary.clone().unwrap_or_default()),
+            .value(primary.clone().unwrap_or_default())
+            .tip(tr(K::TipPrimaryProject)),
         ];
         Dialog::form(tr(K::EditUser), tr(K::Save), fields, move |v| {
             Ok(OsAction::UserUpdate {
@@ -329,7 +334,7 @@ pub fn user_items(lang: Lang, u: &IdentityUser, primary: Option<String>) -> Vec<
             Field::password("password", tr(K::Password)).required(),
             Field::password("confirm", tr(K::ConfirmPassword)).required(),
         ];
-        Dialog::form(tr(K::ChangePassword), tr(K::Save), fields, move |v| {
+        let mut d = Dialog::form(tr(K::ChangePassword), tr(K::Save), fields, move |v| {
             let password = v.get("password");
             if password != v.get("confirm") {
                 return Err(t(lang, K::PasswordsDiffer).to_string());
@@ -338,7 +343,9 @@ pub fn user_items(lang: Lang, u: &IdentityUser, primary: Option<String>) -> Vec<
                 id: id.clone(),
                 password,
             })
-        })
+        });
+        d.intro = vec![tr(K::ChangePasswordIntro)];
+        d
     }));
     let (id, name, enabled) = (u.id.clone(), u.name.clone(), u.enabled);
     let label = tr(if enabled { K::DisableUser } else { K::EnableUser });
@@ -381,6 +388,7 @@ pub fn create_group_dialog(lang: Lang) -> Dialog {
             domain_id: String::new(),
         })
     })
+    .intro(tr(K::IdentityGroupIntro))
 }
 
 /// A group's menu (admins): *Manage Members* (on the detail page, which knows

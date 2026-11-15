@@ -94,25 +94,36 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         .filter(|(s, _)| offered.contains(s) || preset == Some(*s))
         .collect();
     let first_source = sources.first().map(|(s, _)| *s).unwrap_or("image");
-    let key_pair = Field::pick("key_name", tr(K::KeyPair), Source::Set(ChoiceSet::KeyPairs));
+    let key_pair =
+        Field::pick("key_name", tr(K::KeyPair), Source::Set(ChoiceSet::KeyPairs)).tip(tr(K::TipLaunchKeyPair));
     let mut fields = vec![
         // Details
         Field::text("name", tr(K::InstanceName)).required(),
         Field::text("description", tr(K::Description)),
         Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::ComputeZones))
-            .empty_label(tr(K::AnyAvailabilityZone)),
-        Field::number("count", tr(K::Count), 1).value("1").required(),
+            .empty_label(tr(K::AnyAvailabilityZone))
+            .tip(tr(K::TipLaunchAz)),
+        Field::number("count", tr(K::Count), 1)
+            .value("1")
+            .required()
+            .tip(tr(K::TipLaunchCount)),
         // Source
         Field::select("source", tr(K::BootSource), options(&sources, lang))
             .value(first_source)
-            .required(),
+            .required()
+            .tip(tr(K::TipBootSource)),
         // `[launch] create_volume`: the production cloud boots from volume, so Yes by default.
-        Field::yes_no("create_volume", tr(K::CreateNewVolume), p.create_volume).show_if(image_like),
+        Field::yes_no("create_volume", tr(K::CreateNewVolume), p.create_volume)
+            .show_if(image_like)
+            .tip(tr(K::TipCreateNewVolume)),
         Field::number("volume_size", tr(K::VolumeSizeGb), 1)
             .value("1")
             .required()
-            .show_if(creates_volume),
-        Field::yes_no("delete_on_terminate", tr(K::DeleteOnTerminate), false).show_if(boots_from_volume),
+            .show_if(creates_volume)
+            .tip(tr(K::TipLaunchVolumeSize)),
+        Field::yes_no("delete_on_terminate", tr(K::DeleteOnTerminate), false)
+            .show_if(boots_from_volume)
+            .tip(tr(K::TipDeleteOnTerminate)),
         Field::pick(
             "source_id",
             tr(K::SourceItem),
@@ -127,31 +138,38 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
             ),
         )
         .required(),
-        Field::pick("flavor", tr(K::Flavor), Source::Set(ChoiceSet::Flavors)).required(),
-        Field::pick_many("networks", tr(K::Networks), Source::Set(ChoiceSet::Networks)),
-        Field::pick_many("ports", tr(K::Ports), Source::Set(ChoiceSet::FreePorts)),
+        Field::pick("flavor", tr(K::Flavor), Source::Set(ChoiceSet::Flavors))
+            .required()
+            .tip(tr(K::TipLaunchFlavor)),
+        Field::pick_many("networks", tr(K::Networks), Source::Set(ChoiceSet::Networks)).tip(tr(K::TipLaunchNetworks)),
+        Field::pick_many("ports", tr(K::Ports), Source::Set(ChoiceSet::FreePorts)).tip(tr(K::TipLaunchPorts)),
         Field::pick_many(
             "security_groups",
             tr(K::SecurityGroups),
             Source::Set(ChoiceSet::SecurityGroups),
         )
-        .value("default"),
+        .value("default")
+        .tip(tr(K::TipLaunchSecurityGroups)),
         if p.requires_keypair {
             key_pair.required()
         } else {
             key_pair
         },
         // Configuration
-        Field::area("user_data", tr(K::CustomizationScript)).from_file(MAX_USER_DATA_BYTES),
+        Field::area("user_data", tr(K::CustomizationScript))
+            .from_file(MAX_USER_DATA_BYTES)
+            .tip(tr(K::TipCustomizationScript)),
         Field::select(
             "disk_partition",
             tr(K::DiskPartition),
             options(&[("auto", K::Automatic), ("manual", K::Manual)], lang),
         )
         .value("auto")
-        .required(),
-        Field::check("config_drive", tr(K::ConfigDrive), p.config_drive),
-        Field::pick("server_group", tr(K::ServerGroup), Source::Set(ChoiceSet::ServerGroups)),
+        .required()
+        .tip(tr(K::TipDiskPartition)),
+        Field::check("config_drive", tr(K::ConfigDrive), p.config_drive).tip(tr(K::TipConfigDrive)),
+        Field::pick("server_group", tr(K::ServerGroup), Source::Set(ChoiceSet::ServerGroups))
+            .tip(tr(K::TipLaunchServerGroup)),
     ];
     let mut config_step = vec!["user_data", "disk_partition", "config_drive"];
     if p.can_set_password {
@@ -314,6 +332,7 @@ pub(super) fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
                     })
                 },
             )
+            .intro(t(lang, K::InstanceSnapshotIntro))
         }),
         Op::AssociateIp => MenuItem::dialog(tr(K::AssociateFloatingIp), move || associate_ip_dialog(lang, &i)),
         Op::AttachInterface => MenuItem::dialog(tr(K::AttachInterface), move || attach_interface_dialog(lang, &i)),
@@ -767,16 +786,16 @@ pub fn edit_port_dialog(lang: Lang, port_id: &str, current: &PortSettings, group
         fields.push(
             Field::select("vnic_type", t(lang, K::VnicType), Source::Static(types))
                 .value(value)
-                .required(),
+                .required()
+                .tip(t(lang, K::TipVnicType)),
         );
         info.push("vnic_type");
     }
     if needs::PORT_SECURITY.met(&caps) {
-        fields.push(Field::check(
-            "port_security",
-            t(lang, K::PortSecurity),
-            current.port_security,
-        ));
+        fields.push(
+            Field::check("port_security", t(lang, K::PortSecurity), current.port_security)
+                .tip(t(lang, K::TipPortSecurity)),
+        );
         info.push("port_security");
     }
     fields.push(

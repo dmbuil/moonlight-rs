@@ -27,6 +27,7 @@ pub fn allocate_ip_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::FloatingIpIntro))
 }
 
 /// Admin › Floating IPs' *Allocate IP To Project*, Horizon's
@@ -49,6 +50,7 @@ pub fn admin_allocate_ip_dialog(lang: Lang) -> Dialog {
             description: v.opt("description"),
         })
     })
+    .intro(tr(K::FloatingIpIntro))
 }
 
 /// Admin › Floating IPs' row menu, Horizon's: *Disassociate* (when mapped) and

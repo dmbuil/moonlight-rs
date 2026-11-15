@@ -310,4 +310,142 @@ mod tests {
             );
         }
     }
+
+    /// Longest field footnote (`Field::help`), in characters: a longer one keeps a short sentence
+    /// and moves the rest into the field's (i) (`Field::tip`). Spanish runs about 15 % longer.
+    const FOOTNOTE_MAX: (usize, usize) = (90, 105);
+
+    /// Footnotes that stay visible however long: they warn about a consequence or a precondition
+    /// the user must read before submitting, which an (i) would hide.
+    const LONG_FOOTNOTES: &[K] = &[
+        K::GeneratedKeyHelp,
+        K::PublicKeyHelp,
+        K::ImageFileHelp,
+        K::UnrestrictedHelp,
+        K::DeleteGroupVolumesHelp,
+        K::ResetStatusHelp,
+        K::MigrateHelp,
+        K::IncrementalBackupHelp,
+    ];
+
+    /// Footnote keys that reach `Field::help` through a variable rather than in the call.
+    const INDIRECT_HELP: &[K] = &[
+        K::TimeoutClientDataHelp,
+        K::TimeoutTcpInspectHelp,
+        K::TimeoutMemberConnectHelp,
+        K::TimeoutMemberDataHelp,
+        K::RouterChangeWhileDown,
+        K::PortHelp,
+        K::PortOrRangeHelp,
+        K::MetadataHelp,
+        K::ExtraSpecsHelp,
+        K::CloneGroupHelp,
+        K::CreateGroupFromSnapshotHelp,
+    ];
+    /// How many `.help(…)` calls on fields take such a variable.
+    const INDIRECT_CALLS: usize = 7;
+
+    /// The dialog builders' sources, read by the footnote guard.
+    const SOURCES: &[(&str, &str)] = &[
+        ("admin_compute.rs", include_str!("admin_compute.rs")),
+        ("admin_storage.rs", include_str!("admin_storage.rs")),
+        ("alarms.rs", include_str!("alarms.rs")),
+        ("firewall.rs", include_str!("firewall.rs")),
+        ("floating_ips.rs", include_str!("floating_ips.rs")),
+        ("identity.rs", include_str!("identity.rs")),
+        ("images.rs", include_str!("images.rs")),
+        ("instances.rs", include_str!("instances.rs")),
+        ("key_manager.rs", include_str!("key_manager.rs")),
+        ("networks.rs", include_str!("networks.rs")),
+        ("octavia.rs", include_str!("octavia.rs")),
+        ("octavia_parts.rs", include_str!("octavia_parts.rs")),
+        ("qos.rs", include_str!("qos.rs")),
+        ("quotas.rs", include_str!("quotas.rs")),
+        ("routers.rs", include_str!("routers.rs")),
+        ("security_groups.rs", include_str!("security_groups.rs")),
+        ("stacks.rs", include_str!("stacks.rs")),
+        ("trunks.rs", include_str!("trunks.rs")),
+        ("volumes.rs", include_str!("volumes.rs")),
+    ];
+
+    /// The footnote keys written in the fields' `.help(tr(K::…))` / `.help(t(lang, K::…))` calls
+    /// (step help lines, `Step::help`, are left out: they stay shown), the string literals, and
+    /// the number of calls that pass a variable.
+    fn field_footnotes() -> (Vec<(&'static str, String)>, Vec<&'static str>, usize) {
+        let (mut keys, mut literals, mut indirect) = (vec![], vec![], 0);
+        for (file, src) in SOURCES {
+            let code = src.split("#[cfg(test)]").next().unwrap_or(src);
+            for (at, _) in code.match_indices(".help(") {
+                let before = &code[..at];
+                if before.rfind("Step::new(") > before.rfind("Field::") {
+                    continue;
+                }
+                let arg = code[at + ".help(".len()..].trim_start();
+                let inner = arg.strip_prefix("tr(").or_else(|| {
+                    arg.strip_prefix("t(")
+                        .map(|a| a.trim_start().trim_start_matches("lang,"))
+                });
+                match inner.map(str::trim_start).and_then(|a| a.strip_prefix("K::")) {
+                    Some(k) => {
+                        let name: String = k.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+                        keys.push((*file, name));
+                    }
+                    None if arg.starts_with('"') => literals.push(arg[1..].split('"').next().unwrap_or("")),
+                    None => indirect += 1,
+                }
+            }
+        }
+        (keys, literals, indirect)
+    }
+
+    #[test]
+    fn field_footnotes_are_short_unless_they_warn() {
+        let (written, literals, indirect) = field_footnotes();
+        assert!(written.len() > 100, "the guard finds the footnotes: {}", written.len());
+        assert_eq!(
+            indirect, INDIRECT_CALLS,
+            "a field's `.help(…)` takes a variable: add its keys to INDIRECT_HELP and count it"
+        );
+        let by_name: std::collections::HashMap<String, K> = K::ALL.iter().map(|k| (format!("{k:?}"), *k)).collect();
+        let mut used: Vec<(&str, K)> = written.iter().map(|(f, n)| (*f, by_name[n])).collect();
+        used.extend(INDIRECT_HELP.iter().map(|k| ("(indirect)", *k)));
+        let (en_max, es_max) = FOOTNOTE_MAX;
+        let long: Vec<String> = used
+            .iter()
+            .filter(|(_, k)| !LONG_FOOTNOTES.contains(k))
+            .filter_map(|(f, k)| {
+                let (en, es) = (t(Lang::EnUs, *k).chars().count(), t(Lang::EsEs, *k).chars().count());
+                (en > en_max || es > es_max).then(|| format!("{f}: {k:?} ({en}, {es})"))
+            })
+            .collect();
+        assert!(
+            long.is_empty(),
+            "footnotes over {FOOTNOTE_MAX:?} characters: keep a short sentence, move the rest into .tip(…): {long:#?}"
+        );
+        for l in literals {
+            assert!(l.chars().count() <= en_max, "literal footnote too long: {l}");
+        }
+        for k in LONG_FOOTNOTES {
+            assert!(used.iter().any(|(_, u)| u == k), "{k:?} is no longer a field footnote");
+        }
+    }
+
+    #[test]
+    fn every_tip_is_used_and_fits_its_popover() {
+        let code: String = SOURCES.iter().map(|(_, s)| *s).collect();
+        for k in K::ALL {
+            let name = format!("{k:?}");
+            if !name.starts_with("Tip") || name.chars().nth(3).is_some_and(|c| c.is_lowercase()) {
+                continue;
+            }
+            assert!(code.contains(&format!("K::{name}")), "{name} is in no dialog");
+            for lang in Lang::ALL {
+                let lines = t(lang, *k).lines().count();
+                assert!(
+                    lines <= 10,
+                    "{name} ({lang:?}) has {lines} lines: split it across fields"
+                );
+            }
+        }
+    }
 }

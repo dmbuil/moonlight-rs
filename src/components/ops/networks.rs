@@ -18,22 +18,31 @@ fn subnet_fields(
         w(Field::text("subnet_name", tr(K::SubnetName))),
         w(Field::text("cidr", tr(K::NetworkAddress))
             .help("192.168.0.0/24")
+            .tip(tr(K::TipSubnetCidr))
             .required()),
         w(Field::select("ip_version", tr(K::IpVersion), options_raw(versions))
             .value("4")
             .required()),
-        w(Field::text("gateway", tr(K::GatewayIp)).help(tr(K::GatewayAuto))),
+        w(Field::text("gateway", tr(K::GatewayIp))
+            .help(tr(K::GatewayAuto))
+            .tip(tr(K::TipGatewayIp))),
         w(Field::check("no_gateway", tr(K::DisableGateway), false)),
-        w(Field::check("dhcp", tr(K::EnableDhcp), true)),
+        w(Field::check("dhcp", tr(K::EnableDhcp), true).tip(tr(K::TipEnableDhcp))),
         // Horizon shows the mode only for IPv6 subnets.
         w(Field::select("ipv6_modes", tr(K::Ipv6Modes), ipv6_mode_options(lang))
             .value(IPV6_MODES[0])
+            .tip(tr(K::TipIpv6Mode))
             .show_if(|v| v.get("ip_version").map(String::as_str) == Some("6"))),
-        w(Field::area("pools", tr(K::AllocationPools)).help(tr(K::PoolsHelp))),
+        w(Field::area("pools", tr(K::AllocationPools))
+            .help(tr(K::PoolsHelp))
+            .tip(tr(K::TipAllocationPools))),
         w(Field::area("dns", tr(K::DnsNameServers))
             .help(tr(K::OnePerLine))
+            .tip(tr(K::TipDnsServers))
             .value(net.default_dns_nameservers.join("\n"))),
-        w(Field::area("host_routes", tr(K::HostRoutes)).help(tr(K::HostRoutesHelp))),
+        w(Field::area("host_routes", tr(K::HostRoutes))
+            .help(tr(K::HostRoutesHelp))
+            .tip(tr(K::TipHostRoutes))),
     ]
 }
 
@@ -184,17 +193,19 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
         Field::select("provider_type", tr(K::ProviderNetworkType), options_raw(&types))
             .value(types[0])
             .help(tr(K::ProviderNetworkTypeHelp))
+            .tip(tr(K::TipProviderType))
             .required(),
         Field::text("physical_network", tr(K::PhysicalNetwork))
             .help("physnet1")
+            .tip(tr(K::TipPhysicalNetwork))
             .show_if(physical)
             .required(),
         Field::number("segmentation_id", tr(K::SegmentationId), 1)
             .help(tr(K::SegmentationIdHelp))
             .show_if(segmented),
         Field::check("admin_up", tr(K::EnableAdminState), true),
-        Field::check("shared", tr(K::Shared), false),
-        Field::check("external", tr(K::ExternalNetwork), false),
+        Field::check("shared", tr(K::Shared), false).tip(tr(K::TipNetworkShared)),
+        Field::check("external", tr(K::ExternalNetwork), false).tip(tr(K::TipNetworkExternal)),
         Field::check("with_subnet", tr(K::WithSubnet), true),
     ];
     // Horizon's *Availability Zone Hints*, only where Neutron schedules by zone.
@@ -206,7 +217,11 @@ pub fn admin_create_network_dialog(lang: Lang) -> Dialog {
                 .hide_when_empty(),
         );
     }
-    fields.push(Field::number("mtu", tr(K::Mtu), 68).help(tr(K::MtuHelp)));
+    fields.push(
+        Field::number("mtu", tr(K::Mtu), 68)
+            .help(tr(K::MtuHelp))
+            .tip(tr(K::TipMtu)),
+    );
     let net = crate::components::dialog::prefs().network;
     fields.extend(subnet_fields(lang, Some(("with_subnet", "true")), &net));
     let with_subnet: fn(&Vals) -> bool = |v| v.get("with_subnet").map(String::as_str) == Some("true");

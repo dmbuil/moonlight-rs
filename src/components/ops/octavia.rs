@@ -138,7 +138,8 @@ pub(super) fn listener_certificate_fields(
             .and_then(|l| l.default_tls_container_ref.clone())
             .unwrap_or_default(),
     )
-    .help(tr(K::LbCertificateHelp));
+    .help(tr(K::LbCertificateHelp))
+    .tip(tr(K::TipLbCertificate));
     let mut sni = Field::multi("sni", tr(K::SniCertificates), Source::Set(ChoiceSet::LbCertificates))
         .value(existing.map(|l| l.sni_container_refs.join(",")).unwrap_or_default())
         .help(tr(K::SniCertificatesHelp));

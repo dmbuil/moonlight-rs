@@ -18,6 +18,7 @@ pub fn create_security_group_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::SecurityGroupIntro))
 }
 
 /// `default` only gets *Manage Rules*: Neutron won't delete it, and renaming it
@@ -94,7 +95,9 @@ pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
                 .help(tr(K::EtherTypeHelp)),
             Field::select("protocol", tr(K::IpProtocol), options_raw(&["tcp", "udp", "icmp"]))
                 .help(tr(K::IpProtocolHelp)),
-            Field::number("port_min", tr(K::PortFrom), 0).help(tr(K::PortFromHelp)),
+            Field::number("port_min", tr(K::PortFrom), 0)
+                .help(tr(K::PortFromHelp))
+                .tip(tr(K::TipPortFrom)),
             Field::number("port_max", tr(K::PortTo), 0).help(tr(K::PortToHelp)),
             Field::text("cidr", tr(K::RemoteCidr))
                 .value("0.0.0.0/0")
@@ -104,7 +107,8 @@ pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
                 tr(K::RemoteGroup),
                 Source::Set(ChoiceSet::SecurityGroupIds),
             )
-            .help(tr(K::RemoteGroupHelp)),
+            .help(tr(K::RemoteGroupHelp))
+            .tip(tr(K::TipRemoteGroup)),
             Field::text("description", tr(K::Description)).help(tr(K::RuleDescriptionHelp)),
         ],
         move |v| {
@@ -131,6 +135,7 @@ pub fn add_rule_dialog(lang: Lang, group_id: &str) -> Dialog {
             }))
         },
     )
+    .intro(tr(K::AddRuleIntro))
 }
 
 /// A security group rule's menu (*Delete Rule*).

@@ -30,7 +30,8 @@ fn flavor_form(lang: Lang, old: Option<&FlavorRow>) -> Dialog {
             .required(),
         Field::text("flavor_id", tr(K::FlavorId))
             .value("auto")
-            .help(tr(K::FlavorIdHelp)),
+            .help(tr(K::FlavorIdHelp))
+            .tip(tr(K::TipFlavorId)),
         // Sizes are a few digits each: three a line, two lines (the user found
         // eight full-width one-liners too long a step).
         Field::number("vcpus", tr(K::Vcpus), 1)
@@ -44,20 +45,26 @@ fn flavor_form(lang: Lang, old: Option<&FlavorRow>) -> Dialog {
         Field::number("disk", tr(K::RootDiskGb), 0)
             .value(old.map_or("0".into(), |f| num(f.disk_gb)))
             .required()
+            .tip(tr(K::TipFlavorRootDisk))
             .short(),
         Field::number("ephemeral", tr(K::EphemeralDiskGb), 0)
             .value(old.map_or("0".into(), |f| num(f.ephemeral_gb)))
+            .tip(tr(K::TipFlavorEphemeral))
             .short(),
         Field::number("swap", tr(K::SwapDiskMb), 0)
             .value(old.map_or("0".into(), |f| num(f.swap_mb)))
+            .tip(tr(K::TipFlavorSwap))
             .short(),
         Field::text("rxtx", tr(K::RxtxFactor))
             .value(old.and_then(|f| f.rxtx_factor).map_or("1.0".into(), |r| r.to_string()))
+            .tip(tr(K::TipRxtxFactor))
             .short(),
-        Field::multi("projects", tr(K::Projects), Source::Set(ChoiceSet::AllProjects)).value(
-            old.map(|f| f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().join(","))
-                .unwrap_or_default(),
-        ),
+        Field::multi("projects", tr(K::Projects), Source::Set(ChoiceSet::AllProjects))
+            .value(
+                old.map(|f| f.access.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().join(","))
+                    .unwrap_or_default(),
+            )
+            .tip(tr(K::TipFlavorProjects)),
     ];
     // The ID stays: Horizon's edit has no ID field.
     let kept = old.map(|f| (f.id.clone(), f.extra_specs.clone()));
@@ -211,7 +218,7 @@ pub fn create_aggregate_dialog(lang: Lang) -> Dialog {
         })
     })
     .wizard(vec![
-        Step::new(tr(K::CreateAggregate), &["name", "zone"]),
+        Step::new(tr(K::CreateAggregate), &["name", "zone"]).help(tr(K::AggregateStepHelp)),
         Step::new(tr(K::ManageHosts), &["hosts"]),
     ])
 }

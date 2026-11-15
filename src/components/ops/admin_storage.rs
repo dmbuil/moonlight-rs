@@ -208,6 +208,7 @@ pub fn create_volume_type_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::VolumeTypeIntro))
 }
 
 /// Admin › Volume Types' row menu, Horizon's: *View Extra Specs*, *Manage QoS
@@ -253,7 +254,7 @@ pub fn volume_type_items(lang: Lang, ty: &VolumeTypeRow) -> Vec<MenuItem> {
                 })
             },
         );
-        d.intro = vec![n.clone()];
+        d.intro = vec![n.clone(), t(lang, K::QosAssociationIntro).to_string()];
         d
     }));
     let (i, n, desc, public) = (
@@ -354,7 +355,7 @@ fn encryption_dialog(lang: Lang, title: K, id: &str, name: &str, current: Option
             })
         },
     );
-    d.intro = vec![name.to_string()];
+    d.intro = vec![name.to_string(), t(lang, K::EncryptionIntro).to_string()];
     d
 }
 
@@ -379,6 +380,7 @@ pub fn create_qos_spec_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::QosSpecIntro))
 }
 
 /// The *QoS Specs* table's row menu, Horizon's: *Manage Specs*, *Edit
@@ -453,6 +455,7 @@ pub fn create_group_type_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::GroupTypeIntro))
 }
 
 /// Admin › Group Types' row menu, Horizon's: *View Specs*, *Edit Group Type*,
@@ -590,7 +593,9 @@ pub fn metadef_items(lang: Lang, n: &MetadefNamespace) -> Vec<MenuItem> {
                 )
                 .value(current.join(",")),
                 // Horizon's per-type *Prefix*: resource type → prefix.
-                Field::key_values("prefixes", t(lang, K::Prefixes), &old).help(t(lang, K::PrefixesHelp)),
+                Field::key_values("prefixes", t(lang, K::Prefixes), &old)
+                    .help(t(lang, K::PrefixesHelp))
+                    .tip(t(lang, K::TipPrefixes)),
             ],
             move |v| {
                 let (new, prefixes) = (v.list("types"), v.pairs("prefixes"));

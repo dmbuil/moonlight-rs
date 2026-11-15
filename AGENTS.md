@@ -189,6 +189,16 @@ call `plugin_enabled(p)?` in each of its server functions and list its actions i
 or preset by the caller runs `Dialog::on_change` once its set loads, as a user pick would.
 Visibility is transitive: hiding a field hides fields that depend on it.
 
+Where help goes. A field's footnote (`.help()`) is one short sentence of at most 90 characters
+(105 in Spanish); the rest, and anything a complex field needs (formats, examples, what
+OpenStack does with the value), goes into its (i), `.tip()` in a `K::Tip…` key: lines, dashed
+list items, inline `**bold**`, `*italic*` and `` `code` ``, about 6 to 8 lines. Footnotes that
+warn about a consequence or a precondition stay visible however long: they are on
+`LONG_FOOTNOTES` in `components/ops/mod.rs`, whose guard test
+(`field_footnotes_are_short_unless_they_warn`) checks the rest. Text about a wizard step as a
+whole goes into the step's help line (`Step::help`), and in a one-step dialog into its intro
+(`Dialog::intro`); both are always shown, so keep them short.
+
 ---
 
 ## 5. i18n

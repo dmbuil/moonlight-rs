@@ -134,7 +134,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 119 | ✅ Admin › Volume › Storage Pools: each Cinder backend pool's capacity (total, free, allocated, provisioned) and volume count | — | S | — |
 | 120 | 🚧 Load testing: Goose scenarios against a fake OpenStack, the same against the test cloud, `criterion` on the mappers | P3 | L | — |
 | 121 | ✅ *Your session has expired* dialog: one *Sign In* button, no *Close* that leads to the login page anyway | — | XS | 76 |
-| 122 | Dialog help: long footnotes behind an (i), fuller (i) for complex fields, Horizon's contextual help in steps and dialogs ([#18]) | P3 | L | — |
+| 122 | ✅ Dialog help: long footnotes behind an (i), fuller (i) for complex fields, Horizon's contextual help in steps and dialogs ([#18]) | — | L | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -159,7 +159,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121**.
+114, 97, 115, 116, 117, 118, 119, 121, 122**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -7998,6 +7998,65 @@ it goes to `/login` like *Sign In*.
 ## 122. Dialog help: long footnotes behind an (i), fuller (i) for complex fields
 
 > 🔗 **Issue:** [#18]
+>
+> ✅ **Done** (2026-11-15), in three slices.
+>
+> **Slice 1, field footnotes.** The audit found 142 footnote keys in `Field::help` calls across
+> `components/ops/*.rs` (step help lines left out); 27 were over the limit outside the
+> allow-list. Each now keeps one short sentence and the rest went into a new (i) (16 keys, 18
+> fields), extended where the field is complex: Store Secret, Order Key and Edit Access
+> (`K::TipSecretType` … `TipExpiration`), access rules (wildcards in `path`), metadef prefixes
+> (`hw:` versus `hw_`), the image URL (*web-download* fetches from the cloud), Add Rule's From
+> Port and Remote Group, host routes, the listener certificate (Octavia's service user needs
+> *Edit Access*) and Edit Members (`K::MembersFieldHelp` + `TipMembers`; the wizard's step line
+> keeps `K::MembersHelp`). Alarm footnotes that had tips were only shortened.
+>
+> **Slices 2 and 3, Horizon's help.** Read from a shallow clone of `openstack/horizon` master:
+> the 23 `*.help.html` step panels, the 82 `modal-body-right` descriptions and the field
+> `help_text`s, adapted (not pasted) in both languages. 54 more `K::Tip…` keys (70 in all) and
+> 21 intro keys:
+>
+> - *Launch Instance*: a tip on every field but name and description (zone, count, boot
+>   source with ephemeral versus persistent, Create New Volume, volume size, delete on
+>   terminate, flavor, networks, ports, security groups, key pair with `ssh-keygen`,
+>   customization script, disk partition, configuration drive, server group); new step lines
+>   for Source, Flavor and Security Groups.
+> - Images (Create, Edit, Upload to Image): disk format, kernel and ramdisk, minimum disk and
+>   RAM, visibility, protected, metadata. *Create Volume*: source, type, size, zone.
+> - Trunks: intro, parent port (launch with it; Open vSwitch), admin state, subport (the
+>   `ip link … type vlan` example), segmentation type (`inherit`).
+> - Identity: Create User and Change Password intros, primary project, role, lock password;
+>   Create Group intro.
+> - Create Flavor (ID, root disk `0`, ephemeral, swap, RX/TX factor, projects), admin Create
+>   Network (provider type, physical network, shared, external, MTU), subnet fields (CIDR,
+>   gateway, DHCP, IPv6 mode, pools, DNS), Edit Port (port security, VNIC type; the step line
+>   lost the port-security sentence, now in the tip), host aggregate step line, volume group
+>   intro and volume types tip.
+> - Intros from Horizon's modal descriptions (new `Dialog::intro` builder): Allocate IP (both),
+>   Create Security Group, Add Rule, Change Volume Type, Create and Accept Transfer, Create and
+>   Restore Backup, instance Create Snapshot, Upload to Image, Create Volume Type, QoS Spec,
+>   Group Type, Manage QoS Association, volume type encryption, Import Public Key.
+>
+> Not taken (no Moonlight counterpart, or nothing to add): Launch Instance's Metadata and
+> Scheduler Hints steps, Swift's Create Container, domains, federation (identity providers,
+> mappings, protocols), credentials, allowed address pairs, DHCP agents, and the one-line
+> "Edit the … details" descriptions.
+>
+> **Fixed on the way:** checkbox fields (`Kind::Check` in `components/dialog.rs`) never drew
+> their (i), so the eight new checkbox tips were invisible; it now sits beside the label in a `.check-head`,
+> outside the `<label>` so a click on it doesn't tick the box. Spanish *tú* in four texts
+> became *usted*.
+>
+> **Guards** (`components/ops/mod.rs`): `field_footnotes_are_short_unless_they_warn` reads the
+> ops sources (`include_str!`), takes the footnote keys of field `.help(…)` calls plus
+> `INDIRECT_HELP` (keys passed through a variable; such calls are pinned at 7) and fails on
+> any over 90 characters in English or 105 in Spanish unless it is on `LONG_FOOTNOTES` (the
+> allow-list below), each of which must still be in use; `every_tip_is_used_and_fits_its_popover`
+> fails on a `K::Tip…` key no dialog uses or one over 10 lines. The rule is in `AGENTS.md`'s
+> *Add a dialog field* recipe. Checked in the browser (dry-run, nothing submitted, English,
+> light theme): every Launch Instance step shows its line and tips; the Configuration Drive
+> and Boot Source tips open on keyboard focus with lists, bold, italics and code; Create
+> Security Group shows its intro. Spanish and the dark theme were not checked in the browser.
 
 **Goal.** Make field help consistent across dialogs. Today most fields carry their whole
 explanation as a footnote under the input (`Field::help`), some of them two or three sentences

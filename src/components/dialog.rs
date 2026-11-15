@@ -612,6 +612,13 @@ impl Dialog {
         self
     }
 
+    /// Adds a paragraph above the fields: what the dialog does, for one-step forms (always
+    /// shown, so one or two short sentences).
+    pub fn intro(mut self, text: impl Into<String>) -> Self {
+        self.intro.push(text.into());
+        self
+    }
+
     /// Turns the form into a wizard (every field must belong to one step).
     pub fn wizard(mut self, steps: Vec<Step>) -> Self {
         self.steps = steps;
@@ -1465,11 +1472,15 @@ fn FieldView(
         Kind::Check => {
             return view! {
                 <div class="field check" class:half=field.half class:danger=field.danger style:display=move || if shown() { "" } else { "none" }>
-                    <label>
-                        <input type="checkbox" prop:checked=move || get() == "true"
-                            on:change=move |ev| put(event_target_checked(&ev).to_string())/>
-                        <span>{label.clone()}</span>
-                    </label>
+                    // The (i) sits after the label, not inside it: a click on it must not tick the box.
+                    <div class="check-head">
+                        <label>
+                            <input type="checkbox" prop:checked=move || get() == "true"
+                                on:change=move |ev| put(event_target_checked(&ev).to_string())/>
+                            <span>{label.clone()}</span>
+                        </label>
+                        {tip}
+                    </div>
                     {help.clone().map(|h| view! { <small class="muted">{h}</small> })}
                     {error_view}
                 </div>

@@ -30,7 +30,8 @@ pub fn create_volume_dialog(lang: Lang, preset: Option<(VolumeSource, String, Op
                 ),
             )
             .value("empty")
-            .required(),
+            .required()
+            .tip(tr(K::TipVolumeSource)),
         );
         fields.push(
             Field::select("source_id", tr(K::SourceItem), Source::Set(ChoiceSet::Images)).when("source", "image"),
@@ -52,19 +53,19 @@ pub fn create_volume_dialog(lang: Lang, preset: Option<(VolumeSource, String, Op
             .when("source", "volume"),
         );
     }
-    fields.push(Field::select(
-        "volume_type",
-        tr(K::VolumeType),
-        Source::Set(ChoiceSet::VolumeTypes),
-    ));
+    fields.push(
+        Field::select("volume_type", tr(K::VolumeType), Source::Set(ChoiceSet::VolumeTypes)).tip(tr(K::TipVolumeType)),
+    );
     fields.push(
         Field::number("size", tr(K::SizeGb), 1)
             .value(size.unwrap_or(1).to_string())
-            .required(),
+            .required()
+            .tip(tr(K::TipVolumeSize)),
     );
     fields.push(
         Field::select("az", tr(K::AvailabilityZone), Source::Set(ChoiceSet::VolumeZones))
-            .empty_label(tr(K::AnyAvailabilityZone)),
+            .empty_label(tr(K::AnyAvailabilityZone))
+            .tip(tr(K::TipVolumeAz)),
     );
 
     Dialog::form(tr(K::CreateVolume), tr(K::CreateVolume), fields, move |v| {
@@ -206,6 +207,7 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                     })
                 },
             )
+            .intro(t(lang, K::RetypeIntro))
         }));
     }
     if (status == "available" || status == "in-use") && needs::UPLOAD_TO_IMAGE.met(&c) {
@@ -223,7 +225,8 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                 Field::text("name", t(lang, K::ImageName)).value(n.clone()).required(),
                 Field::select("format", t(lang, K::DiskFormat), options_raw(&formats))
                     .value(first)
-                    .required(),
+                    .required()
+                    .tip(t(lang, K::TipDiskFormat)),
                 Field::select(
                     "visibility",
                     t(lang, K::Visibility),
@@ -244,6 +247,7 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                     visibility: v.opt("visibility"),
                 })
             })
+            .intro(t(lang, K::UploadToImageIntro))
         }));
     }
     if status == "available" {
@@ -265,6 +269,7 @@ pub fn volume_items(lang: Lang, v: &Volume) -> Vec<MenuItem> {
                     })
                 },
             )
+            .intro(t(lang, K::CreateTransferIntro))
         }));
     }
     if v.attachments.is_empty() {
@@ -330,6 +335,7 @@ pub fn accept_transfer_dialog(lang: Lang) -> Dialog {
             })
         },
     )
+    .intro(t(lang, K::AcceptTransferIntro))
 }
 
 /// *Create Volume Backup* (`backup` plugin). From a volume's menu `volume_id`
@@ -359,6 +365,7 @@ pub fn backup_form(lang: Lang, volume_id: Option<String>, name: String, attached
             snapshot_id: None,
         })
     })
+    .intro(tr(K::BackupIntro))
 }
 
 /// Volumes › Backups' *Create Volume Backup* button.
@@ -390,6 +397,7 @@ pub fn backup_items(lang: Lang, b: &BackupRow) -> Vec<MenuItem> {
                     name: v.opt("name"),
                 })
             })
+            .intro(tr(K::RestoreBackupIntro))
         }));
     }
     let (i, n, d) = (b.id.clone(), b.name.clone(), b.description.clone().unwrap_or_default());
@@ -490,6 +498,7 @@ pub fn create_volume_group(lang: Lang) -> Dialog {
             tr(K::VolumeTypes),
             Source::Set(ChoiceSet::VolumeTypeIds),
         )
+        .tip(tr(K::TipGroupVolumeTypes))
         .required()
         .help(tr(K::VolumeGroupTypesHelp)),
     ];
@@ -506,6 +515,7 @@ pub fn create_volume_group(lang: Lang) -> Dialog {
             availability_zone: v.opt("az"),
         })
     })
+    .intro(tr(K::VolumeGroupIntro))
 }
 
 /// A name and description form that creates a group from a source: *Clone

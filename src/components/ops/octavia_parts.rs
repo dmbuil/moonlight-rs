@@ -326,7 +326,11 @@ pub fn pool_members_dialog(lang: Lang, d: &LoadBalancerDetail, pool: &LbPool) ->
     let current: Vec<LbMember> = d.members.iter().filter(|m| m.pool.id == pool.id).cloned().collect();
     let rows: Vec<MemberRow> = current.iter().map(MemberRow::from_member).collect();
     let pool_id = pool.id.clone();
-    let fields = vec![Field::member_rows("members", tr(K::Members), &rows, None, current).help(tr(K::MembersHelp))];
+    let fields = vec![
+        Field::member_rows("members", tr(K::Members), &rows, None, current)
+            .help(tr(K::MembersFieldHelp))
+            .tip(tr(K::TipMembers)),
+    ];
     let mut dialog = Dialog::form(
         format!("{}: {}", tr(K::EditMembers), pool.name),
         tr(K::EditMembers),
