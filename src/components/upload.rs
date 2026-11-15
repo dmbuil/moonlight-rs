@@ -56,6 +56,22 @@ pub fn remember(file: Option<web_sys::File>) {
     PICKED.with(|p| *p.borrow_mut() = file);
 }
 
+/// The file to send, taken from the dialog when *Create Image* is pressed: the upload then
+/// runs in the background (`jobs`), and a dialog opened meanwhile can pick another file.
+#[derive(Clone, Default)]
+pub struct FileHandle {
+    #[cfg(feature = "hydrate")]
+    file: Option<web_sys::File>,
+}
+
+/// Takes the file picked in the open dialog, leaving none.
+pub fn take() -> FileHandle {
+    FileHandle {
+        #[cfg(feature = "hydrate")]
+        file: PICKED.with(|p| p.borrow_mut().take()),
+    }
+}
+
 /// An upload in progress; [`Upload::abort`] cancels it.
 #[derive(Clone, Default)]
 pub struct Upload {
@@ -75,11 +91,17 @@ impl Upload {
 /// How an upload ends: `Ok`, or the reason (a status and Glance's or Moonlight's text).
 pub type Outcome = Result<(), String>;
 
-/// Sends the remembered file to `url` with `PUT` (Glance wants `application/octet-stream`),
+/// Sends `file` to `url` with `PUT` (Glance wants `application/octet-stream`),
 /// adding `X-Auth-Token` when `token` is set (direct mode). `progress` gets `(sent, total)`
 /// bytes; `done` runs once. Returns the handle to cancel it.
 #[cfg(feature = "hydrate")]
-pub fn start(url: &str, token: Option<&str>, progress: Callback<(f64, f64)>, done: Callback<Outcome>) -> Upload {
+pub fn start(
+    file: FileHandle,
+    url: &str,
+    token: Option<&str>,
+    progress: Callback<(f64, f64)>,
+    done: Callback<Outcome>,
+) -> Upload {
     use wasm_bindgen::{JsCast, closure::Closure};
     use web_sys::{ProgressEvent, XmlHttpRequest};
 
@@ -87,7 +109,7 @@ pub fn start(url: &str, token: Option<&str>, progress: Callback<(f64, f64)>, don
         done.run(Err(msg.to_string()));
         Upload::default()
     };
-    let Some(file) = PICKED.with(|p| p.borrow().clone()) else {
+    let Some(file) = file.file else {
         return fail("no file picked");
     };
     let Ok(xhr) = XmlHttpRequest::new() else {
@@ -127,7 +149,8 @@ pub fn start(url: &str, token: Option<&str>, progress: Callback<(f64, f64)>, don
     xhr.set_onerror(Some(on_error.as_ref().unchecked_ref()));
     let on_abort = Closure::<dyn FnMut()>::new(move || done.run(Err("cancelled".into())));
     xhr.set_onabort(Some(on_abort.as_ref().unchecked_ref()));
-    // The request owns the handlers until it ends; one upload per dialog, so a few bytes leak.
+    // The request owns the handlers until it ends; one upload per *Create Image*, so a few
+    // bytes leak each time.
     on_progress.forget();
     on_load.forget();
     on_error.forget();
@@ -141,7 +164,13 @@ pub fn start(url: &str, token: Option<&str>, progress: Callback<(f64, f64)>, don
 
 /// Server render: nothing uploads.
 #[cfg(not(feature = "hydrate"))]
-pub fn start(_url: &str, _token: Option<&str>, _progress: Callback<(f64, f64)>, done: Callback<Outcome>) -> Upload {
+pub fn start(
+    _file: FileHandle,
+    _url: &str,
+    _token: Option<&str>,
+    _progress: Callback<(f64, f64)>,
+    done: Callback<Outcome>,
+) -> Upload {
     done.run(Err("uploads run in the browser".into()));
     Upload::default()
 }

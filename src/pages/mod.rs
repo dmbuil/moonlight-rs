@@ -20,6 +20,7 @@ pub mod qos;
 pub mod quotas;
 pub mod stack_launch;
 pub mod stacks;
+pub mod storage_pools;
 pub mod template_generator;
 pub mod topology;
 pub mod trunks;

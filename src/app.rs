@@ -29,6 +29,7 @@ use crate::pages::qos::QosPolicyDetailPage;
 use crate::pages::quotas::{IdentityProjectQuotasPage, QuotasPage};
 use crate::pages::stack_launch::{StackChangePage, StackLaunchPage};
 use crate::pages::stacks::{StackDetailPage, StacksPage};
+use crate::pages::storage_pools::{StoragePoolDetailPage, StoragePoolsPage};
 use crate::pages::template_generator::TemplateGeneratorPage;
 use crate::pages::topology::NetworkTopologyPage;
 use crate::pages::trunks::TrunkDetailPage;
@@ -157,6 +158,8 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("volumes") view=AdminVolumesPage/>
                         <Route path=path!("snapshots") view=AdminSnapshotsPage/>
                         <Route path=path!("volume_types") view=VolumeTypesPage/>
+                        <Route path=path!("storage_pools") view=StoragePoolsPage/>
+                        <Route path=path!("storage_pools/:name") view=StoragePoolDetailPage/>
                         <Route path=path!("volume_groups") view=AdminVolumeGroupsPage/>
                         <Route path=path!("vg_snapshots") view=AdminGroupSnapshotsPage/>
                         <Route path=path!("group_types") view=AdminGroupTypesPage/>

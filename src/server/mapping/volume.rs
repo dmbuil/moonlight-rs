@@ -1,4 +1,4 @@
-//! Cinder: volumes, snapshots, backups, groups, messages.
+//! Cinder: volumes, snapshots, backups, groups, messages, backend pools.
 
 use super::*;
 
@@ -320,6 +320,164 @@ pub fn volume_detail(v: &Value, servers: &[Value], snaps: &[Value]) -> VolumeDet
         volume,
         messages: Vec::new(),
     }
+}
+
+// --- Backend pools
+
+/// The capabilities every Cinder driver reports (or may): the pool page's
+/// own fields. The rest are the driver's own (*Vendor Capabilities*).
+const CANONICAL_POOL_KEYS: &[&str] = &[
+    "volume_backend_name",
+    "storage_protocol",
+    "vendor_name",
+    "driver_version",
+    "total_capacity_gb",
+    "free_capacity_gb",
+    "allocated_capacity_gb",
+    "provisioned_capacity_gb",
+    "reserved_percentage",
+    "max_over_subscription_ratio",
+    "thin_provisioning_support",
+    "thick_provisioning_support",
+    "multiattach",
+    "timestamp",
+];
+
+/// A capacity as drivers send it: a number, a numeric string, or the words
+/// `infinite` / `unknown` that the scheduler also accepts.
+fn capacity(v: Option<&Value>) -> Option<Capacity> {
+    match v? {
+        Value::Number(n) => n.as_f64().map(Capacity::Gb),
+        Value::String(s) => {
+            let s = s.trim();
+            if s.eq_ignore_ascii_case("infinite") {
+                Some(Capacity::Infinite)
+            } else if s.eq_ignore_ascii_case("unknown") {
+                Some(Capacity::Unknown)
+            } else {
+                s.parse().ok().map(Capacity::Gb)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// A boolean capability: JSON booleans, `"true"`/`"false"`, or the
+/// `"<is> True"` form some drivers copy from extra-spec syntax.
+fn capability_bool(v: Option<&Value>) -> Option<bool> {
+    match v? {
+        Value::Bool(b) => Some(*b),
+        Value::String(s) => {
+            let s = s.trim();
+            let s = s.strip_prefix("<is>").map_or(s, str::trim);
+            if s.eq_ignore_ascii_case("true") {
+                Some(true)
+            } else if s.eq_ignore_ascii_case("false") {
+                Some(false)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// A capability shown as text: strings as they are, numbers and booleans
+/// printed, objects and lists as compact JSON; `null` is missing.
+fn capability_text(v: Option<&Value>) -> Option<String> {
+    match v? {
+        Value::Null => None,
+        Value::String(s) => Some(s.clone()),
+        other => Some(other.to_string()),
+    }
+}
+
+/// Cinder `scheduler-stats/get_pools?detail=true` → Admin › Storage Pools,
+/// sorted by name, with every project's `volumes` and `snapshots` counted per
+/// pool ([`pool_counts`]). A pool without `capabilities` keeps its name only.
+pub fn storage_pools(raw: &[Value], volumes: &[Value], snapshots: &[Value]) -> Vec<StoragePoolRow> {
+    let names: Vec<String> = raw.iter().filter_map(|p| s_ne(p, "name")).collect();
+    let counts = pool_counts(&names, volumes, snapshots);
+    let mut out: Vec<StoragePoolRow> = raw
+        .iter()
+        .filter_map(|p| {
+            let name = s_ne(p, "name")?;
+            let empty = serde_json::Map::new();
+            let caps = p.get("capabilities").and_then(Value::as_object).unwrap_or(&empty);
+            let c = |k: &str| caps.get(k);
+            let text = |k: &str| capability_text(c(k)).filter(|x| !x.is_empty());
+            let mut extra: Vec<(String, String)> = caps
+                .iter()
+                .filter(|(k, _)| !CANONICAL_POOL_KEYS.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), capability_text(Some(v)).unwrap_or_else(|| "-".into())))
+                .collect();
+            extra.sort();
+            let (volumes, snapshots) = counts.get(&name).copied().unwrap_or_default();
+            Some(StoragePoolRow {
+                backend: text("volume_backend_name"),
+                protocol: text("storage_protocol"),
+                vendor: text("vendor_name"),
+                driver_version: text("driver_version"),
+                total: capacity(c("total_capacity_gb")),
+                free: capacity(c("free_capacity_gb")),
+                allocated: capacity(c("allocated_capacity_gb")),
+                provisioned: capacity(c("provisioned_capacity_gb")),
+                reserved_percentage: match capacity(c("reserved_percentage")) {
+                    Some(Capacity::Gb(v)) => Some(v),
+                    _ => None,
+                },
+                over_subscription: text("max_over_subscription_ratio"),
+                thin: capability_bool(c("thin_provisioning_support")),
+                thick: capability_bool(c("thick_provisioning_support")),
+                multiattach: capability_bool(c("multiattach")),
+                updated: text("timestamp").as_deref().and_then(utc_rfc3339),
+                volumes,
+                snapshots,
+                extra,
+                name,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// `(volumes, snapshots)` per pool name. A volume belongs to the pool its
+/// `os-vol-host-attr:host` names; a host without `#pool` (volumes created
+/// before the driver reported pools) goes to its backend's pool when that
+/// backend has only one. Snapshots count on their volume's pool.
+pub fn pool_counts(pools: &[String], volumes: &[Value], snapshots: &[Value]) -> HashMap<String, (usize, usize)> {
+    let resolve = |host: &str| -> Option<String> {
+        if pools.iter().any(|p| p == host) {
+            return Some(host.to_string());
+        }
+        if host.contains('#') {
+            return None;
+        }
+        let prefix = format!("{host}#");
+        let mut on_backend = pools.iter().filter(|p| p.starts_with(&prefix));
+        match (on_backend.next(), on_backend.next()) {
+            (Some(p), None) => Some(p.clone()),
+            _ => None,
+        }
+    };
+    let mut out: HashMap<String, (usize, usize)> = HashMap::new();
+    let mut pool_of: HashMap<String, String> = HashMap::new();
+    for v in volumes {
+        let Some(pool) = s_ne(v, "os-vol-host-attr:host").as_deref().and_then(resolve) else {
+            continue;
+        };
+        if let Some(id) = s_ne(v, "id") {
+            pool_of.insert(id, pool.clone());
+        }
+        out.entry(pool).or_default().0 += 1;
+    }
+    for sn in snapshots {
+        if let Some(pool) = s_ne(sn, "volume_id").and_then(|id| pool_of.get(&id)) {
+            out.entry(pool.clone()).or_default().1 += 1;
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -654,5 +812,112 @@ mod tests {
             ("public", Some("s1"), None)
         );
         assert_eq!(pool_ids(&fips), ["ext"], "one network lookup for the whole page");
+    }
+
+    #[test]
+    fn storage_pools_parse_capacities_and_split_vendor_keys() {
+        let raw = vec![
+            // NetApp-shaped: canonical keys mixed with the driver's own.
+            json!({"name": "ctl@netapp#aggr1", "capabilities": {
+                "volume_backend_name": "netapp", "storage_protocol": "nfs", "vendor_name": "NetApp",
+                "driver_version": "1.0", "total_capacity_gb": 1000.5, "free_capacity_gb": "400.25",
+                "allocated_capacity_gb": 500, "provisioned_capacity_gb": 900, "reserved_percentage": 5,
+                "max_over_subscription_ratio": "20.0", "thin_provisioning_support": "<is> True",
+                "thick_provisioning_support": false, "multiattach": true,
+                "timestamp": "2026-11-14T10:00:00.000000",
+                "netapp_dedup": "true", "netapp_raid_type": "raid_dp", "utilization": 42.0,
+                "pool_name": "aggr1", "netapp_flexvol": {"a": [1, 2]}, "total_volumes": 3, "odd": null
+            }}),
+            json!({"name": "ctl@nfs#nfs", "capabilities": {
+                "total_capacity_gb": "infinite", "free_capacity_gb": "Unknown",
+                "max_over_subscription_ratio": "auto"
+            }}),
+            json!({"name": "ctl@bare#bare"}),
+            json!({"capabilities": {}}),
+        ];
+        let out = storage_pools(&raw, &[], &[]);
+        let names: Vec<&str> = out.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["ctl@bare#bare", "ctl@netapp#aggr1", "ctl@nfs#nfs"],
+            "sorted; nameless dropped"
+        );
+        let n = &out[1];
+        assert_eq!(n.backend.as_deref(), Some("netapp"));
+        assert_eq!(n.protocol.as_deref(), Some("nfs"));
+        assert_eq!(
+            (n.total, n.free),
+            (Some(Capacity::Gb(1000.5)), Some(Capacity::Gb(400.25))),
+            "numeric strings parse"
+        );
+        assert_eq!(
+            (n.allocated, n.provisioned),
+            (Some(Capacity::Gb(500.0)), Some(Capacity::Gb(900.0)))
+        );
+        assert_eq!(n.reserved_percentage, Some(5.0));
+        assert_eq!(n.over_subscription.as_deref(), Some("20.0"));
+        assert_eq!(
+            (n.thin, n.thick, n.multiattach),
+            (Some(true), Some(false), Some(true)),
+            "`<is> True` is true"
+        );
+        assert_eq!(n.updated.as_deref(), Some("2026-11-14T10:00:00Z"));
+        let keys: Vec<(&str, &str)> = n.extra.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(
+            keys,
+            [
+                ("netapp_dedup", "true"),
+                ("netapp_flexvol", r#"{"a":[1,2]}"#),
+                ("netapp_raid_type", "raid_dp"),
+                ("odd", "-"),
+                ("pool_name", "aggr1"),
+                ("total_volumes", "3"),
+                ("utilization", "42.0"),
+            ],
+            "only the driver's own keys, sorted, as text"
+        );
+        let f = &out[2];
+        assert_eq!((f.total, f.free), (Some(Capacity::Infinite), Some(Capacity::Unknown)));
+        assert_eq!(f.over_subscription.as_deref(), Some("auto"));
+        assert!(f.extra.is_empty());
+        let b = &out[0];
+        assert_eq!(
+            (b.total, b.backend.clone(), b.thin),
+            (None, None, None),
+            "no capabilities: only the name"
+        );
+    }
+
+    #[test]
+    fn pool_counts_by_volume_host_and_snapshot_volume() {
+        let pools: Vec<String> = ["c@ceph#fast", "c@ceph#slow", "c@lvm#lvm"].map(String::from).to_vec();
+        let volumes = vec![
+            json!({"id": "v1", "os-vol-host-attr:host": "c@ceph#fast"}),
+            json!({"id": "v2", "os-vol-host-attr:host": "c@ceph#fast"}),
+            json!({"id": "v3", "os-vol-host-attr:host": "c@ceph#slow"}),
+            // No `#pool`: the backend's only pool.
+            json!({"id": "v4", "os-vol-host-attr:host": "c@lvm"}),
+            // No `#pool` on a backend with two pools: not counted.
+            json!({"id": "v5", "os-vol-host-attr:host": "c@ceph"}),
+            json!({"id": "v6", "os-vol-host-attr:host": null}),
+            json!({"id": "v7", "os-vol-host-attr:host": "gone@x#y"}),
+        ];
+        let snapshots = vec![
+            json!({"id": "s1", "volume_id": "v1"}),
+            json!({"id": "s2", "volume_id": "v1"}),
+            json!({"id": "s3", "volume_id": "v4"}),
+            json!({"id": "s4", "volume_id": "v5"}),
+        ];
+        let c = pool_counts(&pools, &volumes, &snapshots);
+        assert_eq!(c.get("c@ceph#fast"), Some(&(2, 2)));
+        assert_eq!(c.get("c@ceph#slow"), Some(&(1, 0)));
+        assert_eq!(c.get("c@lvm#lvm"), Some(&(1, 1)));
+        assert_eq!(c.len(), 3, "unknown hosts and ambiguous backends are left out");
+        let rows = storage_pools(&[json!({"name": "c@ceph#fast"})], &volumes, &snapshots);
+        assert_eq!(
+            (rows[0].volumes, rows[0].snapshots),
+            (3, 3),
+            "the rows carry the counts; with `fast` the backend's only pool, v5 (`c@ceph`) lands there"
+        );
     }
 }

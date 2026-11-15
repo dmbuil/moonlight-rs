@@ -248,6 +248,94 @@ impl Hypervisors {
     }
 }
 
+/// Admin › Volume › Storage Pools: every Cinder backend pool
+/// (`scheduler-stats/get_pools?detail=true`) with its volume and snapshot counts.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StoragePools {
+    pub pools: Vec<StoragePoolRow>,
+}
+
+impl StoragePools {
+    /// Whether any pool reports `provisioned_capacity_gb` as a number: some
+    /// drivers (NetApp's) leave it to the scheduler, and a donut of zeros would
+    /// read as nothing provisioned.
+    pub fn reports_provisioned(&self) -> bool {
+        self.pools
+            .iter()
+            .any(|p| matches!(p.provisioned, Some(Capacity::Gb(_))))
+    }
+
+    /// The *Storage Summary* donuts, `(value, total capacity)` in GB summed over
+    /// the pools whose total is a number: used (total minus free), allocated and
+    /// provisioned. A pool whose free, allocated or provisioned capacity is not a
+    /// number counts 0 for that one.
+    pub fn totals(&self) -> [(i64, i64); 3] {
+        let gb = |c: &Option<Capacity>| match c {
+            Some(Capacity::Gb(v)) => *v,
+            _ => 0.0,
+        };
+        let (mut used, mut allocated, mut provisioned, mut total) = (0.0, 0.0, 0.0, 0.0);
+        for p in &self.pools {
+            let Some(Capacity::Gb(t)) = p.total else { continue };
+            total += t;
+            if let Some(Capacity::Gb(f)) = p.free {
+                used += (t - f).max(0.0);
+            }
+            allocated += gb(&p.allocated);
+            provisioned += gb(&p.provisioned);
+        }
+        let r = |v: f64| v.round() as i64;
+        [
+            (r(used), r(total)),
+            (r(allocated), r(total)),
+            (r(provisioned), r(total)),
+        ]
+    }
+}
+
+/// A capacity a Cinder driver reports: GB, or one of the two words the
+/// scheduler accepts instead of a number.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Capacity {
+    Gb(f64),
+    /// `"infinite"`: a backend without a fixed size (some NFS or cloud drivers).
+    Infinite,
+    /// `"unknown"`: the driver could not tell.
+    Unknown,
+}
+
+/// One Cinder pool (`host@backend#pool`) and its capabilities. Options are
+/// `None` when the driver doesn't report that capability.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StoragePoolRow {
+    /// `host@backend#pool`, what a volume's `os-vol-host-attr:host` names.
+    pub name: String,
+    /// `volume_backend_name`, what volume types select with their extra spec.
+    pub backend: Option<String>,
+    pub protocol: Option<String>,
+    pub vendor: Option<String>,
+    pub driver_version: Option<String>,
+    pub total: Option<Capacity>,
+    pub free: Option<Capacity>,
+    pub allocated: Option<Capacity>,
+    pub provisioned: Option<Capacity>,
+    pub reserved_percentage: Option<f64>,
+    /// `max_over_subscription_ratio` as reported: a number or `auto`.
+    pub over_subscription: Option<String>,
+    pub thin: Option<bool>,
+    pub thick: Option<bool>,
+    pub multiattach: Option<bool>,
+    /// When the driver last reported its stats (RFC 3339, UTC).
+    pub updated: Option<String>,
+    /// Volumes whose `os-vol-host-attr:host` is this pool, every project's.
+    pub volumes: usize,
+    /// Snapshots of those volumes.
+    pub snapshots: usize,
+    /// Every other capability the driver reports, sorted by key; nested
+    /// objects and lists as compact JSON.
+    pub extra: Vec<(String, String)>,
+}
+
 /// One resource class of a Placement provider: its usage and inventory.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProviderResource {
@@ -569,4 +657,58 @@ pub struct ApiEndpoint {
     pub service_type: String,
     pub name: Option<String>,
     pub url: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A pool with only the capacities set.
+    fn pool(total: Option<Capacity>, free: Option<Capacity>, allocated: f64, provisioned: f64) -> StoragePoolRow {
+        StoragePoolRow {
+            name: String::new(),
+            backend: None,
+            protocol: None,
+            vendor: None,
+            driver_version: None,
+            total,
+            free,
+            allocated: Some(Capacity::Gb(allocated)),
+            provisioned: Some(Capacity::Gb(provisioned)),
+            reserved_percentage: None,
+            over_subscription: None,
+            thin: None,
+            thick: None,
+            multiattach: None,
+            updated: None,
+            volumes: 0,
+            snapshots: 0,
+            extra: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn storage_totals_skip_pools_without_a_numeric_total() {
+        let gb = |v| Some(Capacity::Gb(v));
+        let pools = StoragePools {
+            pools: vec![
+                pool(gb(1000.0), gb(400.0), 500.0, 1500.0),
+                pool(gb(200.4), Some(Capacity::Unknown), 10.0, 20.0),
+                pool(Some(Capacity::Infinite), gb(5.0), 99.0, 99.0),
+                pool(None, None, 7.0, 7.0),
+            ],
+        };
+        assert_eq!(
+            pools.totals(),
+            [(600, 1200), (510, 1200), (1520, 1200)],
+            "infinite or missing totals left out; unknown free counts no usage"
+        );
+        assert!(pools.reports_provisioned());
+        let mut none = pool(gb(10.0), gb(5.0), 0.0, 0.0);
+        none.provisioned = None;
+        assert!(
+            !StoragePools { pools: vec![none] }.reports_provisioned(),
+            "no driver reports it: no donut"
+        );
+    }
 }

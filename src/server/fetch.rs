@@ -3342,6 +3342,40 @@ pub async fn admin_volumes(os: &AsyncOpenStack) -> R<Timed<Vec<Owned<Volume>>>> 
     ))
 }
 
+/// Admin › Volume › Storage Pools: Cinder's pools with their capabilities
+/// (`scheduler-stats/get_pools?detail=true`, admin policy), and every
+/// project's volumes and snapshots to count them per pool, all three in
+/// parallel. Drivers don't all report `total_volumes` (RBD doesn't), hence the
+/// count of our own.
+pub async fn admin_storage_pools(os: &AsyncOpenStack) -> R<Timed<StoragePools>> {
+    let t = Instant::now();
+    let pools = async {
+        use openstack_sdk::api::block_storage::v3::scheduler_stat::pool::list as m;
+        let ep = m::Request::builder()
+            .detail(true)
+            .build()
+            .map_err(sfe("build volume pools"))?;
+        let v: Vec<Value> = counted(ep.query_async(os)).await.map_err(sfe("GET volume pools"))?;
+        Ok::<_, AppError>(v)
+    };
+    let (po, vo, sn) = tokio::join!(
+        pools,
+        all_volumes(os),
+        list_where!(
+            os,
+            openstack_sdk::api::block_storage::v3::snapshot::list,
+            "snapshots?all_tenants",
+            |b| b.all_tenants(true)
+        )
+    );
+    Ok(timed(
+        t,
+        StoragePools {
+            pools: mapping::storage_pools(&po?, &vo?, &sn?),
+        },
+    ))
+}
+
 /// Admin › Volume › Snapshots: every project's, the host being their volume's.
 pub async fn admin_snapshots(os: &AsyncOpenStack) -> R<Timed<Vec<Owned<Snapshot>>>> {
     let t = Instant::now();

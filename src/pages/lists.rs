@@ -237,12 +237,21 @@ paged_page!(
 
 /// The Images list's status: the Glance status, plus a warning pill with Glance's reason when
 /// the last import failed (`os_glance_failed_import`). The image goes back to
-/// `queued`, so without it a failed *URL* import looks like one that has not started.
+/// `queued`, so without it a failed *URL* import looks like one that has not started. While this
+/// tab uploads the image's file (`jobs`), an *Uploading 58%* pill follows it.
 fn image_status(i: &Image, l: Lang) -> AnyView {
     let failed = i.import_failed.clone().map(|why| {
         view! { <span title=why><Pill tone=Tone::Err label=t(l, K::ImageImportFailed).to_string()/></span> }
     });
-    view! { {moving_status(&i.status, l, image_busy(&i.status))}{failed} }.into_any()
+    let uploading = use_context::<crate::components::jobs::Jobs>().map(|jobs| {
+        let id = i.id.clone();
+        move || {
+            jobs.upload_percent(&id).map(|p| {
+                view! { <Pill tone=Tone::Info label=format!("{} {p:.0}%", t(l, K::UploadingPct))/> }
+            })
+        }
+    });
+    view! { {moving_status(&i.status, l, image_busy(&i.status))}{failed}{uploading} }.into_any()
 }
 
 /// The Images list's row drawer: the image's metadata (custom properties,

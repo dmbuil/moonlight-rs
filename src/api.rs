@@ -1273,6 +1273,40 @@ pub async fn get_admin_hypervisors() -> Result<Timed<Hypervisors>, AppError> {
     .await
 }
 
+/// Admin › Volume › Storage Pools: every Cinder pool's capacity, with the
+/// volumes and snapshots on it. Admins only (Cinder's `get_pools` policy too).
+#[server(input = GetUrl)]
+pub async fn get_admin_storage_pools() -> Result<Timed<StoragePools>, AppError> {
+    scoped("get_admin_storage_pools", |_s, c| async move {
+        require_admin(&c)?;
+        fetch::admin_storage_pools(&c).await
+    })
+    .await
+}
+
+/// One pool of [`get_admin_storage_pools`] by its `host@backend#pool` name, for
+/// its detail page. Cinder has no GET of one pool, so the list is filtered here;
+/// the name never reaches a URL. `NotFound` when no pool has it.
+#[server(input = GetUrl)]
+pub async fn get_admin_storage_pool(name: String) -> Result<Timed<StoragePoolRow>, AppError> {
+    scoped("get_admin_storage_pool", |_s, c| async move {
+        require_admin(&c)?;
+        let t = fetch::admin_storage_pools(&c).await?;
+        let pool = t
+            .data
+            .pools
+            .into_iter()
+            .find(|p| p.name == name)
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, format!("storage pool {name}")))?;
+        Ok(Timed {
+            data: pool,
+            millis: t.millis,
+            calls: t.calls,
+        })
+    })
+    .await
+}
+
 /// Admin › Hypervisors' *Resource Provider* tab, loaded when the tab opens
 /// (Placement, two calls per provider). Admins only.
 #[server(input = GetUrl)]

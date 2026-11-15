@@ -205,6 +205,7 @@ pub const ADMIN_NAV: &[Group] = &[
             p(K::Volumes, "/admin/volumes"),
             p(K::Snapshots, "/admin/snapshots"),
             p(K::VolumeTypes, "/admin/volume_types"),
+            p(K::StoragePools, "/admin/storage_pools"),
             needs(K::Groups, "/admin/volume_groups", crate::model::needs::VOLUME_GROUPS),
             needs(
                 K::GroupSnapshots,

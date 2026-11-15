@@ -8,10 +8,10 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::api::{get_choices, get_image_upload_ticket, list_metadata_options, run_action};
+use crate::api::{get_choices, list_metadata_options, run_action};
 use crate::components::pick::PickTable;
 use crate::components::select::Combo;
-use crate::components::upload::{self, Picked, Upload};
+use crate::components::upload::{self, Picked};
 use crate::components::widgets::{Copyable, InfoTip, data_url};
 use crate::i18n::{K, Lang, bytes, t, use_i18n, with_count};
 use crate::model::{
@@ -754,10 +754,6 @@ enum Phase {
     Done(ActionOutcome),
     /// The action failed: the message to show; the form can be edited and resent.
     Failed(String),
-    /// The record exists and its data is on the way: progress is in a signal.
-    Uploading,
-    /// The upload did not finish: the image `.0` stays `queued`, and the user may delete it.
-    UploadFailed(String, String),
     /// The session expired before the action ran: nothing was sent.
     Expired,
 }
@@ -872,7 +868,7 @@ pub fn DialogHost() -> impl IntoView {
 /// The open modal: loads the sets its fields need, keeps the values and problems, runs
 /// `on_change` after each edit, and on submit sends the built `OsAction` through `run_action`
 /// (or hands a bulk one to [`Jobs`](crate::components::jobs::Jobs); an image file is then
-/// uploaded), and shows the [`Outcome`].
+/// uploaded there in the background and the dialog closes), and shows the [`Outcome`].
 #[component]
 fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
     let i18n = use_i18n();
@@ -988,9 +984,6 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
         })
     };
 
-    // Upload progress `(sent, total)` and the transfer, to cancel it.
-    let progress = RwSignal::new((0.0_f64, 0.0_f64));
-    let uploading = StoredValue::new_local(Upload::default());
     let close = move || dialogs.current.set(None);
     let go = move |forward: bool| {
         let i = step.get_untracked();
@@ -1041,7 +1034,11 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
                 };
                 phase.set(Phase::Running);
                 let (navigate, then_go, forbidden) = (navigate.clone(), then_go.clone(), d.forbidden.clone());
-                let file_bytes = action.image_upload_bytes();
+                // *Create Image* › *File*: the image's name and the picked file, taken now so a
+                // dialog opened while this one sends can pick another.
+                let upload = action
+                    .image_upload_bytes()
+                    .map(|size| (size, action.image_name(), upload::take()));
                 let upload_mode = dialogs.prefs.get_untracked().images.upload;
                 spawn_local(async move {
                     match run_action(action).await {
@@ -1053,21 +1050,13 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
                                 }
                                 dialogs.version.update(|v| *v += 1);
                             }
-                            // *Create Image* › *File*: the record exists, now its data (dry-run
-                            // creates nothing, so it only shows the preview).
-                            match (out.mode, out.created.clone(), file_bytes) {
-                                (WriteMode::On, Some(id), Some(size)) => {
-                                    upload_image(
-                                        id,
-                                        size,
-                                        upload_mode,
-                                        out,
-                                        phase,
-                                        progress,
-                                        uploading,
-                                        dialogs.version,
-                                    )
-                                    .await;
+                            // *Create Image* › *File*: the record exists; its data goes up in the
+                            // background (a card in the jobs tray) and the dialog closes. Dry-run
+                            // creates nothing, so it only shows the preview.
+                            match (out.mode, out.created.clone(), upload, jobs) {
+                                (WriteMode::On, Some(id), Some((size, name, file)), Some(jobs)) => {
+                                    jobs.upload(id, name, file, size, upload_mode, dialogs.version);
+                                    dialogs.current.set(None);
                                 }
                                 _ => phase.set(Phase::Done(out)),
                             }
@@ -1123,42 +1112,6 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
                             </footer>
                         </div>
                     }.into_any(),
-                    Phase::Uploading => view! {
-                        <div class="modal-body">
-                            <p>{move || i18n.t(K::Uploading)}</p>
-                            <progress max="100" value=move || percent(progress.get())></progress>
-                            <small class="muted">
-                                {move || { let (sent, total) = progress.get(); format!("{:.0}%  ·  {} / {}", percent((sent, total)), bytes(sent as u64), bytes(total as u64)) }}
-                            </small>
-                            <footer class="modal-foot">
-                                <button type="button" class="btn" on:click=move |_| uploading.with_value(|u| u.abort())>{move || i18n.t(K::CancelUpload)}</button>
-                            </footer>
-                        </div>
-                    }.into_any(),
-                    Phase::UploadFailed(id, why) => {
-                        let delete = move |_| {
-                            let id = id.clone();
-                            spawn_local(async move {
-                                if run_action(OsAction::ImageDelete { id }).await.is_ok() {
-                                    dialogs.version.update(|v| *v += 1);
-                                }
-                                dialogs.current.set(None);
-                            });
-                        };
-                        view! {
-                            <div class="modal-body">
-                                <div class="alert alert-error" role="alert">
-                                    <strong>{move || i18n.t(K::UploadFailedTitle)}</strong>
-                                    <span>{why}</span>
-                                </div>
-                                <p>{move || i18n.t(K::UploadFailedText)}</p>
-                                <footer class="modal-foot">
-                                    <button type="button" class="btn" on:click=move |_| dialogs.current.set(None)>{move || i18n.t(K::Close)}</button>
-                                    <button type="button" class="btn btn-danger" on:click=delete>{move || i18n.t(K::DeleteImage)}</button>
-                                </footer>
-                            </div>
-                        }.into_any()
-                    }
                     Phase::Failed(e) => view! {
                         <div class="modal-body">
                             <div class="alert alert-error" role="alert">
@@ -1722,56 +1675,6 @@ pub fn FileLoad(limit: usize, on_text: Callback<String>) -> impl IntoView {
             {move || problem.get().map(|p| view! { <small class="field-error" role="alert">{p}</small> })}
         </div>
     }
-}
-
-/// `sent` of `total` as 0–100.
-fn percent((sent, total): (f64, f64)) -> f64 {
-    if total > 0.0 {
-        (sent / total * 100.0).clamp(0.0, 100.0)
-    } else {
-        0.0
-    }
-}
-
-/// Sends the file picked for *Create Image* to the image `id` that now exists,
-/// showing progress in `phase`. `proxy` goes through Moonlight's route; `direct` asks the
-/// server for a ticket first and goes to Glance itself. `out` is the creation's outcome, shown
-/// when the data arrived; on failure the dialog offers to delete the empty image.
-#[allow(clippy::too_many_arguments)] // one call site; a struct would only rename the arguments
-async fn upload_image(
-    id: String,
-    size: u64,
-    mode: crate::prefs::ImageUpload,
-    out: ActionOutcome,
-    phase: RwSignal<Phase>,
-    progress: RwSignal<(f64, f64)>,
-    transfer: StoredValue<Upload, LocalStorage>,
-    version: RwSignal<u64>,
-) {
-    use crate::prefs::ImageUpload;
-    phase.set(Phase::Uploading);
-    progress.set((0.0, size as f64));
-    let (url, token) = match mode {
-        ImageUpload::Direct => match get_image_upload_ticket(id.clone(), size).await {
-            Ok(t) => (t.url, Some(t.token)),
-            Err(e) => return phase.set(Phase::UploadFailed(id, e.to_string())),
-        },
-        _ => (crate::model::image_upload_path(&id), None),
-    };
-    let failed_id = id.clone();
-    let done = Callback::new(move |r: upload::Outcome| match r {
-        Ok(()) => {
-            version.update(|v| *v += 1);
-            phase.set(Phase::Done(out.clone()));
-        }
-        Err(e) => phase.set(Phase::UploadFailed(failed_id.clone(), e)),
-    });
-    transfer.set_value(upload::start(
-        &url,
-        token.as_deref(),
-        Callback::new(move |p| progress.set(p)),
-        done,
-    ));
 }
 
 /// The value of field `name` without tracking it (empty when unset): for event handlers and the

@@ -130,6 +130,8 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 115 | ✅ Admin › Networks: the network type (`flat`, `vlan`, `vxlan`, `geneve`…) in the list and the detail page | — | XS | 85 |
 | 116 | ✅ *QoS Policy* selects: two policies with the same name show their IDs, greyed, after the name | — | S | 5 |
 | 117 | ✅ Dialogs: animate the size change when a wizard's content grows or shrinks (step, shown fields, result) | — | S | 98 |
+| 118 | ✅ *Launch Instance*: choosing a flavor raises the new volume's size to its root disk, never lowers it | — | XS | 2 |
+| 119 | ✅ Admin › Volume › Storage Pools: each Cinder backend pool's capacity (total, free, allocated, provisioned) and volume count | — | S | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -153,7 +155,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117**.
+114, 97, 115, 116, 117, 118, 119**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -1811,6 +1813,21 @@ tab also shows *Name* and *Admin State* columns in Horizon (Moonlight shows *Por
 > **Kept open until the test cloud's Glance allows CORS** from Moonlight's origin
 > (`[cors] allowed_origin`, with `PUT`, `X-Auth-Token` and `Content-Type`); the user will add
 > it. Then: a real `direct` upload in the browser, and close #2.
+>
+> **Uploads run in the background** (2026-11-14, user's choice over a minimisable dialog or a
+> second "pick the file" dialog: a big file must not hold the dialog open). On *Create Image*
+> with *File* the dialog closes as soon as the record exists and hands the file to the jobs tray:
+> `Jobs::upload` (`components/jobs.rs`) and a `Transfer` card with the image name, a progress
+> bar, `58% · 1.2 GB / 2.1 GB`, speed and time left (`Transfer::rate`, `i18n::upload_rate`) and
+> *Cancel upload*. A clean upload bumps the data version and fades; a failed or cancelled one
+> keeps its reason and offers *Delete Image* for the `queued` record. While one sends, a
+> `beforeunload` listener in `JobsTray` makes the browser ask before closing or reloading the
+> tab; moving between pages doesn't stop it. The Images list shows an *Uploading 58%* pill on
+> the row (`pages/lists.rs::image_status`, `Jobs::upload_percent`). `upload::take()` takes the
+> picked file at submit, so a dialog opened meanwhile can pick another. The dialog's
+> `Phase::Uploading` / `UploadFailed` are gone; dry-run still shows the preview. Tests:
+> `a_transfer_counts_bytes_speed_and_time_left`, `a_cancelled_upload_keeps_its_reason`,
+> `an_upload_rate_rounds_the_time_left_up`.
 >
 > Narrowing the token `direct` hands the page (an application credential with one access rule)
 > moved to item 95 ([#17]).
@@ -7623,6 +7640,130 @@ already `0ms` there). Simple forms and confirmations get it too if it comes for 
 
 **Decided** (2026-11-14, the user): option 2, the `ResizeObserver` in Rust, so every browser
 animates.
+
+## 118. Launch Instance: the flavor's root disk raises the volume size
+
+> ✅ **Done.** `components/ops/instances.rs::raise_volume_size` raises *Volume Size (GB)* to
+> `max(image minimum, flavor root disk)`, never lowering it; the flavor counts only with *Create
+> New Volume* Yes and a root disk above 0. The `.on_change` hook runs it on `source_id`,
+> `flavor` and `create_volume`, so going back to Source or turning the volume on later also
+> raises it. `.check` is unchanged: only the image minimum is an error, a smaller size typed by
+> hand is accepted (no warning). Test:
+> `allocating_a_flavor_raises_the_volume_size_to_its_root_disk` (20 → 50, keeps 100, keeps 50
+> after a smaller flavor, disk 0 ignored, a later image keeps the flavor's 50, No leaves the size
+> until the volume is turned on). 620 tests pass, both clippy runs clean. Not checked in the
+> browser yet (the DevTools tunnel was down): Source → 20 GB → a bigger flavor → back to Source,
+> and the preview's `block_device_mapping_v2` `volume_size`.
+
+**Goal.** In *Launch Instance*, when *Create New Volume* is Yes, the *Volume Size (GB)* typed on
+the Source step must be at least the root disk of the flavor picked on the Flavor step. Allocating
+a flavor whose root disk is bigger than the volume overwrites the size with it; a bigger volume is
+kept. E.g. a volume set to 20 GB becomes 50 GB when a flavor with a 50 GB root disk is allocated;
+one set to 100 GB stays at 100 GB. Same rule as the image's minimum (item 2): raised, never
+lowered, so switching back to a smaller flavor keeps the larger size. A flavor with root disk 0
+("image size") changes nothing. As far as known Horizon's size follows only the image (not checked
+against Horizon yet); this keeps the boot volume from being smaller than the flavor advertises.
+
+**Implementation.**
+
+- `components/ops/instances.rs::launch_with`, the `.on_change` hook: add a `"flavor"` arm next
+  to `"source_id"`. When `creates_volume(v)` and the chosen flavor
+  (`chosen(sets, Some(ChoiceSet::Flavors), v.get("flavor"))`) has `facts.disk_gb > 0`, set
+  `volume_size` to `max(current, disk_gb)`, parsed the way the `"source_id"` arm does. Factor
+  the "raise `volume_size` to at least N" step into a small helper shared by both arms.
+- The `"source_id"` arm should take the flavor into account too, so allocating an image after the
+  flavor (going back to Source) does not drop below the flavor's disk:
+  `max(current, min_volume_gb(image), flavor disk)`.
+- The flavor hook only fires on a flavor change. Turning *Create New Volume* on after picking the
+  flavor would not raise the size: decide whether `"create_volume"` also runs the raise (likely
+  yes, cheap).
+- `.check`: keep the image minimum as the only error; do not reject a size below the flavor's disk
+  typed by hand afterwards (the user may want a smaller volume). Open question for the user if
+  that should warn instead.
+- `model/choice.rs`: nothing new; `Facts::disk_gb` is already mapped for flavors
+  (`server/mapping/choices.rs`).
+- Tests next to `allocating_an_image_raises_the_volume_size_like_horizon`: a flavor raises
+  20 → 50, keeps 100, keeps the value when a smaller flavor follows, ignores disk 0 and does
+  nothing with *Create New Volume* No. The `sets()` fixture already has flavors with `disk_gb`.
+- Browser (dry-run, do not submit): Source → volume 20 GB → Flavor with a bigger root disk →
+  back to Source shows the new size; the preview's `block_device_mapping_v2` `volume_size` matches.
+
+## 119. Admin › Volume › Storage Pools: backend capacity and usage
+
+> ✅ **Done.** `/admin/storage_pools` (`pages/storage_pools.rs`, `StoragePoolsPage`) after
+> *Volume Types* in `K::VolumeAdminGroup`, gated like the group (admin, `block-storage`); the server
+> functions `get_admin_storage_pools` / `get_admin_storage_pool` call `require_admin`. Fetcher
+> `fetch::admin_storage_pools`: `get_pools?detail=true`, `volumes/detail?all_tenants` and
+> `snapshots?all_tenants` in parallel (3 calls, 2.2 s on the test cloud). Model `StoragePools` /
+> `StoragePoolRow` / `Capacity` (`Gb`, `Infinite`, `Unknown`) in `model/admin.rs`; mapper
+> `mapping::storage_pools` and `pool_counts` in `server/mapping/volume.rs` (`CANONICAL_POOL_KEYS`;
+> the rest becomes `extra`). Volume count by `os-vol-host-attr:host`; a host without `#pool` goes to
+> its backend's only pool, else is not counted. The *Volumes* count links to Admin › Volumes
+> filtered by host (`?f=host&q=…`). Detail page `/admin/storage_pools/:name` (`path_segment`
+> percent-encodes `@` and `#`; the server filters the list, no per-pool GET exists): *Information*
+> and *Capacity* cards, then *Vendor Capabilities* (raw keys, hidden when empty). On the test cloud
+> (three NetApp FC pools) the counts match Cinder's: 77 volumes on the first pool, the same as
+> Admin › Volumes filtered by its host; the detail URL round-trips, and NetApp's 24 extra keys show.
+> NetApp does not report `provisioned_capacity_gb`, so the *Provisioned* donut is shown only when
+> some pool reports it (`StoragePools::reports_provisioned`); the column shows `-`. Tests: capacity
+> parsing (numbers, strings, `infinite`, `Unknown`, `<is> True`, no `capabilities`, NetApp-shaped
+> split), per-pool counts, totals, URL encoding and capacity text/sort. Not compared with
+> `openstack volume backend pool list --long` (no CLI here). Left for later: Admin › Snapshots has
+> no host filter, so the snapshot count is not a link.
+
+**Goal.** Admins see how full each block-storage backend is, the way Admin › Hypervisors shows
+compute. A new panel under Admin › Volume (next to *Volume Types*) lists every Cinder pool
+(`host@backend#pool`) with: backend name, storage protocol, vendor and driver version; total,
+free, allocated and provisioned capacity (GB); reserved percentage and over-subscription ratio;
+thin / thick provisioning; and the number of volumes (and snapshots) on it. Above the table, a
+*Storage Summary* of donuts like *Hypervisor Summary*: used of total across all pools. Horizon has
+no such view (System Information › Block Storage Services lists only the `cinder-volume`
+services, without capacity), so this goes beyond parity; the CLI equivalent is
+`openstack volume backend pool list --long`. Read-only. Named *Storage Pools*, Cinder's term,
+as a panel of its own (decided by the user, 2026-11-14). Whatever extra a driver reports beyond
+the canonical capabilities (NetApp reports many) is shown too, on the pool's detail page.
+
+**Implementation.**
+
+- Data: Cinder `GET scheduler-stats/get_pools?detail=true` (admin policy
+  `scheduler_extension:scheduler_stats:get_pools`), SDK
+  `block_storage::v3::scheduler_stat::pool::list` with `.detail(true)`. It is already called
+  without detail for *Migrate Volume*'s destinations (`fetch.rs`, `ChoiceSet::CinderPools`,
+  `mapping::network::pool_choices`). Each pool has `name` and `capabilities`:
+  `total_capacity_gb`, `free_capacity_gb`, `allocated_capacity_gb`, `provisioned_capacity_gb`,
+  `reserved_percentage`, `max_over_subscription_ratio`, `thin_provisioning_support`,
+  `thick_provisioning_support`, `volume_backend_name`, `storage_protocol`, `vendor_name`,
+  `driver_version`, `multiattach`, `timestamp`, and for some drivers `total_volumes`. Capacities
+  may be numbers, numeric strings, or `"infinite"` / `"unknown"` (shown as such, left out of
+  the summary); keep the pure parser in `server/mapping` with tests on those cases.
+- Volume count: `total_volumes` is not reported by every driver (e.g. RBD). Count volumes per
+  pool from `os-vol-host-attr:host` of every project's volumes (`fetch::admin_volumes`, already
+  used by Admin › Volumes), and snapshots through their volume. When the driver reports
+  `total_volumes` too, it is shown as a vendor capability (below); the column is our count.
+- **Vendor capabilities** (the user, 2026-11-14): drivers report more than the canonical keys
+  (NetApp: `netapp_dedup`, `netapp_compression`, `netapp_raid_type`, `netapp_disk_type`,
+  `netapp_thin_provisioned`, `netapp_aggregate`, `utilization`, `dedupe`, `compression`…; Pure,
+  PowerMax, Ceph have their own; key names from memory, check them on a real pool). Every key of
+  `capabilities` that is not one of the canonical ones above is kept as an `(key, value)` list,
+  sorted by key, values rendered as text (nested objects or lists as compact JSON). Shown on a pool
+  detail page `/admin/storage_pools/:name` (the row's pool name links to it; the name has `@` and
+  `#`, so URL-encode it): the canonical fields as `Kv` rows (like `MetadefDetailPage`), then a
+  *Vendor Capabilities* table with *Key* / *Value*, hidden when empty. Keys stay raw, not translated
+  (vendor-defined). The mapping test includes a NetApp-shaped pool to assert the split between
+  canonical and vendor keys.
+- Model: a `StoragePools { pools: Vec<StoragePoolRow> }` in `model/admin.rs`, next to
+  `Hypervisors` / `HypervisorRow`, with a `totals()` like `Hypervisors::totals` for the donuts.
+- Fetcher `fetch::admin_storage_pools` (two GETs in parallel: pools and volumes), a server fn
+  `get_admin_storage_pools`, page `StoragePoolsPage` in `pages/admin.rs` modelled on
+  `HypervisorsPage` (summary `Donut`s, then `DataTable`, search by pool name and backend), route
+  `/admin/storage_pools` in `app.rs`, nav entry in the `K::VolumeAdminGroup` group of
+  `components/nav.rs`, gated on `needs::ADMIN` and the volume service. A click on the volume
+  count could open Admin › Volumes filtered by host (if that filter exists; else later).
+- i18n both languages: panel title, columns, summary labels (*Capacity Usage*,
+  *Provisioned*…).
+- Tests: the mapping (numbers, strings, `infinite`, missing `capabilities`), the per-pool volume
+  count, and the totals. Browser on the dev server: the panel against the test cloud's pools,
+  numbers compared with `openstack volume backend pool list --long`.
 
 ## Also pending (from the PoC)
 

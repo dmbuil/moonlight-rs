@@ -651,10 +651,13 @@ translations! {
     ImageImportFailed => "Import failed", "Importación fallida";
     ImageDetails => "Image Details", "Detalles de la imagen";
     ImageSourceFile => "File", "Archivo";
-    ImageFileHelp => "The browser sends the file to the image service; keep this page open until it finishes.", "El navegador envía el archivo al servicio de imágenes; mantén esta página abierta hasta que termine.";
+    ImageFileHelp => "After Create Image the browser sends the file in the background: you can keep using Moonlight, but don't close or reload this tab until it finishes.", "Tras Crear imagen, el navegador envía el archivo en segundo plano: puedes seguir usando Moonlight, pero no cierres ni recargues esta pestaña hasta que termine.";
     ChooseFile => "Choose a file…", "Elegir un archivo…";
     ImageFileTooBig => "The file is larger than the allowed", "El archivo supera el máximo permitido de";
-    Uploading => "Uploading the image", "Subiendo la imagen";
+    UploadingPct => "Uploading", "Subiendo";
+    Uploaded => "Uploaded", "Subida";
+    UploadKeepTabOpen => "Keep this tab open: closing or reloading it stops the upload.", "Mantén esta pestaña abierta: si la cierras o la recargas, la subida se detiene.";
+    DeletingImage => "Deleting the image…", "Eliminando la imagen…";
     UploadFailedTitle => "The upload did not finish", "La subida no terminó";
     UploadFailedText => "The image was created but has no data: it stays queued. You can delete it or upload its data some other way.", "La imagen se creó pero no tiene datos: queda en cola. Puedes eliminarla o subir sus datos de otra forma.";
     CancelUpload => "Cancel upload", "Cancelar subida";
@@ -1513,6 +1516,26 @@ translations! {
     VcpuUsage => "VCPU Usage", "Uso de VCPU";
     MemoryUsage => "Memory Usage", "Uso de memoria";
     LocalDiskUsage => "Local Disk Usage", "Uso de disco local";
+    StoragePools => "Storage Pools", "Pools de almacenamiento";
+    StorageSummary => "Storage Summary", "Resumen de almacenamiento";
+    CapacityUsage => "Capacity Usage", "Uso de capacidad";
+    AllocatedCapacity => "Allocated", "Asignada";
+    ProvisionedCapacity => "Provisioned", "Aprovisionada";
+    Backend => "Backend", "Backend";
+    Vendor => "Vendor", "Fabricante";
+    DriverVersion => "Driver Version", "Versión del controlador";
+    Capacity => "Capacity", "Capacidad";
+    TotalGb => "Total (GB)", "Total (GB)";
+    FreeGb => "Free (GB)", "Libre (GB)";
+    AllocatedGb => "Allocated (GB)", "Asignada (GB)";
+    ProvisionedGb => "Provisioned (GB)", "Aprovisionada (GB)";
+    Reserved => "Reserved", "Reservada";
+    OverSubscription => "Over-subscription", "Sobresuscripción";
+    Provisioning => "Provisioning", "Aprovisionamiento";
+    Thin => "Thin", "Fino";
+    Thick => "Thick", "Grueso";
+    Infinite => "Infinite", "Infinita";
+    VendorCapabilities => "Vendor Capabilities", "Capacidades del fabricante";
     ReservedRatio => "reserved", "reservado";
     Hostname => "Hostname", "Nombre de host";
     VcpusUsed => "VCPUs (used)", "VCPUs (usadas)";
@@ -2098,6 +2121,21 @@ pub fn flavor_needs_disk(lang: Lang, gb: i64) -> String {
     }
 }
 
+/// An upload's speed and time left: `14 MB/s · about 2 min left`.
+pub fn upload_rate(lang: Lang, per_s: f64, left_s: f64) -> String {
+    let speed = format!("{}/s", bytes(per_s as u64));
+    let left = left_s.ceil() as u64;
+    let (n, unit_en, unit_es) = match left {
+        0..60 => (left, "s", "s"),
+        60..3600 => (left.div_ceil(60), "min", "min"),
+        _ => (left / 3600, "h", "h"),
+    };
+    match lang {
+        Lang::EnUs => format!("{speed} · about {n} {unit_en} left"),
+        Lang::EsEs => format!("{speed} · quedan unos {n} {unit_es}"),
+    }
+}
+
 /// A byte count in binary units (`1.5 GB`), for image sizes.
 pub fn bytes(n: u64) -> String {
     const U: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
@@ -2392,6 +2430,14 @@ mod tests {
         assert_eq!(task_state(Lang::EsEs, "spawning"), "Creando");
         assert_eq!(task_state(Lang::EnUs, "image_snapshot_pending"), "Snapshotting");
         assert_eq!(task_state(Lang::EnUs, "new_task"), "New task");
+    }
+
+    #[test]
+    fn an_upload_rate_rounds_the_time_left_up() {
+        let mb = 1024.0 * 1024.0;
+        assert_eq!(upload_rate(Lang::EnUs, 14.0 * mb, 41.2), "14 MB/s · about 42 s left");
+        assert_eq!(upload_rate(Lang::EnUs, 14.0 * mb, 61.0), "14 MB/s · about 2 min left");
+        assert_eq!(upload_rate(Lang::EsEs, 2.0 * mb, 7300.0), "2 MB/s · quedan unos 2 h");
     }
 
     #[test]

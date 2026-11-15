@@ -1346,4 +1346,13 @@ impl OsAction {
             _ => None,
         }
     }
+
+    /// The name of the image *Create Image* makes (the upload card's heading); empty for
+    /// other actions.
+    pub fn image_name(&self) -> String {
+        match self {
+            OsAction::ImageCreate(spec) => spec.name.clone(),
+            _ => String::new(),
+        }
+    }
 }

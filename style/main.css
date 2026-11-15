@@ -1021,6 +1021,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .job-stop { color: var(--alert-err-ink); }
 .job-failures { margin: 0; padding-left: 18px; max-height: 8em; overflow-y: auto; font-size: 0.9em; }
 .job-requests summary { cursor: pointer; }
+.job-actions { display: flex; justify-content: flex-end; gap: 8px; }
 /* Template Generator canvas. Icons are heat-dashboard's: ink, white cut-outs. */
 .hot-icon { color: inherit; }
 .hot-icon .bg-f { fill: var(--surface); }

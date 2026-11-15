@@ -43,6 +43,24 @@ fn image_facts<'a>(v: &Vals, sets: &'a Sets) -> Option<&'a Facts> {
         .flatten()
 }
 
+/// Raises *Volume Size (GB)* to the image's minimum and, when *Create New Volume* is Yes, to the
+/// flavor's root disk (0 = "image size" asks nothing). Never lowers a bigger size.
+fn raise_volume_size(v: &mut Vals, sets: &Sets) {
+    let image = image_facts(v, sets).map(min_volume_gb);
+    let flavor = creates_volume(v)
+        .then(|| chosen(sets, Some(ChoiceSet::Flavors), v.get("flavor")))
+        .flatten()
+        .and_then(|f| f.facts.disk_gb)
+        .and_then(|gb| u32::try_from(gb).ok())
+        .filter(|&gb| gb > 0);
+    let Some(min) = image.max(flavor) else { return };
+    let cur = v
+        .get("volume_size")
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    v.insert("volume_size".into(), cur.max(min).to_string());
+}
+
 /// Why a flavor is too small for the image: under the field and as its tooltip in the table.
 fn flavor_message(lang: Lang, issue: FlavorIssue) -> String {
     match issue {
@@ -209,16 +227,9 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
         "source" => {
             v.insert("source_id".into(), String::new());
         }
-        // …and allocating an image raises the volume size to its minimum.
-        "source_id" => {
-            if let Some(min) = image_facts(v, sets).map(min_volume_gb) {
-                let cur = v
-                    .get("volume_size")
-                    .and_then(|s| s.trim().parse::<u32>().ok())
-                    .unwrap_or(0);
-                v.insert("volume_size".into(), cur.max(min).to_string());
-            }
-        }
+        // …and allocating an image, a flavor, or turning *Create New Volume* on raises the
+        // volume size to what they need, never lowers it.
+        "source_id" | "flavor" | "create_volume" => raise_volume_size(v, sets),
         _ => {}
     })
     .check(move |v, sets| {
@@ -942,6 +953,52 @@ mod launch_tests {
         // A new source type clears the allocation.
         hook("source", &mut v, &s);
         assert_eq!(v["source_id"], "");
+    }
+
+    #[test]
+    fn allocating_a_flavor_raises_the_volume_size_to_its_root_disk() {
+        let d = launch_dialog(Lang::EnUs);
+        let (hook, mut s) = (d.on_change.clone().unwrap(), sets());
+        s.get_mut(&ChoiceSet::Flavors).unwrap().push(Choice {
+            value: "ephemeral".into(),
+            facts: Facts {
+                disk_gb: Some(0),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let mut v = launch_values();
+        v.insert("source_id".into(), "debian".into());
+        v.insert("volume_size".into(), "20".into());
+        let pick = |v: &mut Vals, flavor: &str| {
+            v.insert("flavor".into(), flavor.into());
+            hook("flavor", v, &s);
+        };
+        pick(&mut v, "big");
+        assert_eq!(v["volume_size"], "50", "20 GB becomes the flavor's 50 GB");
+        pick(&mut v, "small");
+        assert_eq!(v["volume_size"], "50", "a smaller flavor keeps the larger size");
+        pick(&mut v, "ephemeral");
+        assert_eq!(v["volume_size"], "50", "root disk 0 changes nothing");
+        v.insert("volume_size".into(), "100".into());
+        pick(&mut v, "big");
+        assert_eq!(v["volume_size"], "100", "a bigger volume is kept");
+
+        // Going back to Source: a new image does not drop below the flavor's disk.
+        v.insert("volume_size".into(), "1".into());
+        v.insert("source_id".into(), "rhel".into());
+        hook("source_id", &mut v, &s);
+        assert_eq!(v["volume_size"], "50");
+
+        // No new volume: the flavor leaves the size alone, until the volume is turned on.
+        v.insert("create_volume".into(), "false".into());
+        v.insert("volume_size".into(), "20".into());
+        v.insert("source_id".into(), "debian".into());
+        pick(&mut v, "big");
+        assert_eq!(v["volume_size"], "20");
+        v.insert("create_volume".into(), "true".into());
+        hook("create_volume", &mut v, &s);
+        assert_eq!(v["volume_size"], "50");
     }
 
     #[test]

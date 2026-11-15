@@ -6,14 +6,22 @@
 //! runs exactly as for a dialog. A card in [`JobsTray`] counts the items done.
 //! There is no job state on the server: closing the tab just stops sending.
 //! Horizon has nothing like it (one request per row, then a reload).
+//!
+//! *Create Image* › *File* uploads run here too ([`Transfer`]): the dialog closes once the
+//! image record exists, and a card shows the bytes sent, the speed and the time left, with
+//! *Cancel upload*; a failed or cancelled upload offers *Delete Image* for the `queued` record.
+//! While one is sending, leaving or reloading the page asks first (`beforeunload`), as the
+//! browser would drop the transfer.
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::api::run_action;
 use crate::components::dialog::RequestList;
-use crate::i18n::{K, job_count, job_expired, job_summary, use_i18n};
+use crate::components::upload::{self, FileHandle, Upload};
+use crate::i18n::{K, bytes, job_count, job_expired, job_summary, upload_rate, use_i18n};
 use crate::model::{ActionOutcome, AppError, ErrorKind, OsAction, RequestPreview, WriteMode};
+use crate::prefs::ImageUpload;
 
 /// Items sent per `run_action` call: small enough for the counter to move
 /// every few seconds, large enough that the per-request session rescope
@@ -130,6 +138,8 @@ impl Job {
 pub struct Jobs {
     list: RwSignal<Vec<Job>>,
     next: StoredValue<u64>,
+    /// Image uploads, shown above the batch jobs.
+    transfers: RwSignal<Vec<Transfer>>,
 }
 
 impl Jobs {
@@ -138,6 +148,7 @@ impl Jobs {
         let j = Jobs {
             list: RwSignal::new(vec![]),
             next: StoredValue::new(0),
+            transfers: RwSignal::new(vec![]),
         };
         provide_context(j);
         j
@@ -154,11 +165,17 @@ impl Jobs {
         self.list.try_update(|l| l.retain(|j| j.id != id));
     }
 
+    /// A fresh ID for a card.
+    fn next_id(&self) -> u64 {
+        let id = self.next.get_value();
+        self.next.set_value(id + 1);
+        id
+    }
+
     /// Starts sending `items` and shows a card for them. `version` is bumped after
     /// each chunk sent for real, so the table behind refreshes as rows go.
     pub fn start(&self, title: String, items: Vec<(String, OsAction)>, version: RwSignal<u64>) {
-        let id = self.next.get_value();
-        self.next.set_value(id + 1);
+        let id = self.next_id();
         self.list.update(|l| l.push(Job::new(id, title, items.len())));
         let jobs = *self;
         spawn_local(async move {
@@ -184,6 +201,209 @@ impl Jobs {
             }
         });
     }
+
+    /// Applies `f` to transfer `id` if its card is still there.
+    fn update_transfer(&self, id: u64, f: impl FnOnce(&mut Transfer)) {
+        self.transfers.try_update(|l| l.iter_mut().find(|t| t.id == id).map(f));
+    }
+
+    /// Removes the card of transfer `id`.
+    fn dismiss_transfer(&self, id: u64) {
+        self.transfers.try_update(|l| l.retain(|t| t.id != id));
+    }
+
+    /// Cancels transfer `id`; its card then shows the upload as not finished.
+    fn cancel(&self, id: u64) {
+        // Cloned out first: `abort` runs `done` at once, which edits the list.
+        let mine: Vec<Upload> =
+            HANDLES.with_borrow(|h| h.iter().filter(|(i, _)| *i == id).map(|(_, u)| u.clone()).collect());
+        mine.iter().for_each(Upload::abort);
+    }
+
+    /// Whether some upload is still sending (leaving the page would stop it).
+    pub fn sending(&self) -> bool {
+        self.transfers
+            .try_with_untracked(|l| l.iter().any(|t| t.state == TransferState::Sending))
+            .unwrap_or(false)
+    }
+
+    /// How far the upload into image `image_id` is, `0..=100`, while it sends (the Images
+    /// list's status). Tracks the transfers.
+    pub fn upload_percent(&self, image_id: &str) -> Option<f64> {
+        self.transfers.with(|l| {
+            l.iter()
+                .find(|t| t.image_id == image_id && t.state == TransferState::Sending)
+                .map(Transfer::percent)
+        })
+    }
+
+    /// Sends `file` (`size` bytes) into the image `image_id` that now exists, called `name`,
+    /// and shows a card for it. `proxy` goes through Moonlight's route; `direct` asks the
+    /// server for a ticket first and goes to Glance itself. `version` is bumped when the data
+    /// arrived, so the Images list shows the image going `active`.
+    pub fn upload(
+        &self,
+        image_id: String,
+        name: String,
+        file: FileHandle,
+        size: u64,
+        mode: ImageUpload,
+        version: RwSignal<u64>,
+    ) {
+        let id = self.next_id();
+        let now = now_ms();
+        self.transfers
+            .update(|l| l.insert(0, Transfer::new(id, image_id.clone(), name, size, now)));
+        let jobs = *self;
+        spawn_local(async move {
+            let (url, token) = match mode {
+                ImageUpload::Direct => match crate::api::get_image_upload_ticket(image_id.clone(), size).await {
+                    Ok(t) => (t.url, Some(t.token)),
+                    Err(e) => return jobs.update_transfer(id, |t| t.end(Err(e.to_string()), now_ms())),
+                },
+                _ => (crate::model::image_upload_path(&image_id), None),
+            };
+            let progress = Callback::new(move |(sent, total): (f64, f64)| {
+                jobs.update_transfer(id, |t| t.advance(sent, total, now_ms()))
+            });
+            let done = Callback::new(move |r: upload::Outcome| {
+                HANDLES.with_borrow_mut(|h| h.retain(|(i, _)| *i != id));
+                let ok = r.is_ok();
+                jobs.update_transfer(id, |t| t.end(r, now_ms()));
+                if ok {
+                    version.try_update(|v| *v += 1);
+                    set_timeout(move || jobs.dismiss_transfer(id), FADE_AFTER);
+                }
+            });
+            let handle = upload::start(file, &url, token.as_deref(), progress, done);
+            // `start` may already have failed (and called `done`): keep only a live request.
+            if jobs.sending_id(id) {
+                HANDLES.with_borrow_mut(|h| h.push((id, handle)));
+            }
+        });
+    }
+
+    /// Whether transfer `id` is still sending.
+    fn sending_id(&self, id: u64) -> bool {
+        self.transfers
+            .try_with_untracked(|l| l.iter().any(|t| t.id == id && t.state == TransferState::Sending))
+            .unwrap_or(false)
+    }
+
+    /// Deletes the `queued` image a failed transfer left, then removes its card.
+    fn delete_image(&self, id: u64, image_id: String, version: RwSignal<u64>) {
+        let jobs = *self;
+        jobs.update_transfer(id, |t| t.state = TransferState::Deleting);
+        spawn_local(async move {
+            match crate::api::run_action(OsAction::ImageDelete { id: image_id }).await {
+                Ok(_) => {
+                    version.try_update(|v| *v += 1);
+                    jobs.dismiss_transfer(id);
+                }
+                Err(e) => jobs.update_transfer(id, |t| t.state = TransferState::Failed(e.to_string())),
+            }
+        });
+    }
+}
+
+thread_local! {
+    /// The request of each transfer still sending, by [`Transfer::id`], to cancel it. A
+    /// thread-local, not a `StoredValue::new_local` in [`Jobs`]: the layout also renders on the
+    /// server, where a local value made on one worker thread and dropped on another panics.
+    /// Only the browser ever fills it.
+    static HANDLES: std::cell::RefCell<Vec<(u64, Upload)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Milliseconds since the epoch (the browser's clock in the page).
+fn now_ms() -> f64 {
+    chrono::Utc::now().timestamp_millis() as f64
+}
+
+/// Where an image upload is.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TransferState {
+    /// Bytes are on the way.
+    Sending,
+    /// The image service has the data.
+    Done,
+    /// It stopped (cancelled, refused, connection lost): the reason. The image stays `queued`.
+    Failed(String),
+    /// *Delete Image* was pressed on a failed upload and is running.
+    Deleting,
+}
+
+/// One *Create Image* › *File* upload in the background.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Transfer {
+    /// Unique in the tray, from [`Jobs`]' counter (shared with batch jobs).
+    pub id: u64,
+    /// The image the data goes into.
+    pub image_id: String,
+    /// The image's name, the card's heading.
+    pub name: String,
+    pub sent: f64,
+    pub total: f64,
+    /// When it started and when the last progress came, in ms (speed and time left).
+    pub started: f64,
+    pub at: f64,
+    pub state: TransferState,
+}
+
+impl Transfer {
+    /// An upload of `total` bytes that has just started at `now` ms.
+    pub fn new(id: u64, image_id: String, name: String, total: u64, now: f64) -> Self {
+        Transfer {
+            id,
+            image_id,
+            name,
+            sent: 0.0,
+            total: total as f64,
+            started: now,
+            at: now,
+            state: TransferState::Sending,
+        }
+    }
+
+    /// Records the browser's progress event: `sent` of `total` bytes at `now` ms.
+    pub fn advance(&mut self, sent: f64, total: f64, now: f64) {
+        if self.state == TransferState::Sending {
+            (self.sent, self.at) = (sent, now);
+            if total > 0.0 {
+                self.total = total;
+            }
+        }
+    }
+
+    /// Records how it ended at `now` ms.
+    pub fn end(&mut self, outcome: upload::Outcome, now: f64) {
+        self.at = now;
+        self.state = match outcome {
+            Ok(()) => {
+                self.sent = self.total;
+                TransferState::Done
+            }
+            Err(e) => TransferState::Failed(e),
+        };
+    }
+
+    /// Share sent, `0..=100`.
+    pub fn percent(&self) -> f64 {
+        if self.total > 0.0 {
+            (self.sent / self.total * 100.0).clamp(0.0, 100.0)
+        } else {
+            0.0
+        }
+    }
+
+    /// Average speed in bytes per second and seconds left, once a second has gone by and
+    /// something was sent (before that the numbers jump around).
+    pub fn rate(&self) -> Option<(f64, f64)> {
+        let secs = (self.at - self.started) / 1000.0;
+        (secs >= 1.0 && self.sent > 0.0).then(|| {
+            let per_s = self.sent / secs;
+            (per_s, ((self.total - self.sent) / per_s).max(0.0))
+        })
+    }
 }
 
 /// The cards of every job, fixed at the bottom-right corner (rendered once in
@@ -191,11 +411,90 @@ impl Jobs {
 #[component]
 pub fn JobsTray() -> impl IntoView {
     let jobs = use_context::<Jobs>().expect("Jobs::provide in the layout");
+    // Leaving the page while an upload sends would drop it: let the browser ask first.
+    #[cfg(feature = "hydrate")]
+    {
+        let handle = window_event_listener(leptos::ev::beforeunload, move |ev| {
+            if jobs.sending() {
+                ev.prevent_default();
+                ev.set_return_value("");
+            }
+        });
+        on_cleanup(move || handle.remove());
+    }
+    let version = use_context::<crate::components::dialog::Dialogs>()
+        .map(|d| d.version)
+        .unwrap_or_else(|| RwSignal::new(0));
     move || {
-        let list = jobs.list.get();
-        (!list.is_empty()).then(|| view! {
-            <div class="jobs-tray">{list.into_iter().map(|j| view! { <JobCard job=j jobs=jobs/> }).collect_view()}</div>
+        let (list, transfers) = (jobs.list.get(), jobs.transfers.get());
+        (!list.is_empty() || !transfers.is_empty()).then(|| view! {
+            <div class="jobs-tray">
+                {transfers.into_iter().map(|t| view! { <TransferCard t=t jobs=jobs version=version/> }).collect_view()}
+                {list.into_iter().map(|j| view! { <JobCard job=j jobs=jobs/> }).collect_view()}
+            </div>
         })
+    }
+}
+
+/// One upload's card: the image name, a progress bar, `58% · 1.2 GB / 2.1 GB`, the speed and
+/// time left, and *Cancel upload*; then *Uploaded*, or why it stopped with *Delete Image*.
+#[component]
+fn TransferCard(t: Transfer, jobs: Jobs, version: RwSignal<u64>) -> impl IntoView {
+    let i18n = use_i18n();
+    let id = t.id;
+    let pct = t.percent();
+    let counts = format!("{pct:.0}%  ·  {} / {}", bytes(t.sent as u64), bytes(t.total as u64));
+    let rate = t.rate();
+    let (class, body) = match t.state.clone() {
+        TransferState::Sending => (
+            "job-card job-running",
+            view! {
+                <progress max="100" value=pct></progress>
+                <span class="job-count">{counts}</span>
+                {rate.map(|(per_s, left)| view! { <span class="job-count muted">{move || upload_rate(i18n.lang(), per_s, left)}</span> })}
+                <small class="muted">{move || i18n.t(K::UploadKeepTabOpen)}</small>
+                <div class="job-actions">
+                    <button type="button" class="btn btn-sm" on:click=move |_| jobs.cancel(id)>{move || i18n.t(K::CancelUpload)}</button>
+                </div>
+            }
+            .into_any(),
+        ),
+        TransferState::Done => (
+            "job-card job-ok",
+            view! { <span class="job-count">{move || i18n.t(K::Uploaded)}" · "{bytes(t.total as u64)}</span> }.into_any(),
+        ),
+        TransferState::Failed(why) => {
+            let image_id = t.image_id.clone();
+            (
+                "job-card job-failed",
+                view! {
+                    <span class="job-stop">{move || i18n.t(K::UploadFailedTitle)}": "{why}</span>
+                    <small class="muted">{move || i18n.t(K::UploadFailedText)}</small>
+                    <div class="job-actions">
+                        <button type="button" class="btn btn-sm btn-danger"
+                            on:click=move |_| jobs.delete_image(id, image_id.clone(), version)>{move || i18n.t(K::DeleteImage)}</button>
+                    </div>
+                }
+                .into_any(),
+            )
+        }
+        TransferState::Deleting => (
+            "job-card job-running",
+            view! { <span class="job-count muted">{move || i18n.t(K::DeletingImage)}</span> }.into_any(),
+        ),
+    };
+    let closable = !matches!(t.state, TransferState::Sending | TransferState::Deleting);
+    view! {
+        <section class=class role="status" aria-live="polite">
+            <header>
+                <span class="job-dot" aria-hidden="true"></span>
+                <strong class="job-title" title=t.name.clone()>{t.name.clone()}</strong>
+                {closable.then(|| view! {
+                    <button class="btn-close" type="button" aria-label=move || i18n.t(K::Close) on:click=move |_| jobs.dismiss_transfer(id)>"×"</button>
+                })}
+            </header>
+            {body}
+        </section>
     }
 }
 
@@ -353,6 +652,30 @@ mod tests {
         let mut d = Job::new(1, "t".into(), 1);
         d.record(1, Ok(outcome(WriteMode::DryRun, &[("a", None)])));
         assert!(d.dry_run && !d.fades(), "dry-run stays: nothing was sent");
+    }
+
+    #[test]
+    fn a_transfer_counts_bytes_speed_and_time_left() {
+        let mut t = Transfer::new(0, "img".into(), "debian".into(), 1000, 10_000.0);
+        assert_eq!((t.percent(), t.rate()), (0.0, None), "nothing sent yet");
+        t.advance(100.0, 1000.0, 10_500.0);
+        assert_eq!(t.rate(), None, "under a second: no speed yet");
+        t.advance(250.0, 1000.0, 12_000.0);
+        assert_eq!(t.percent(), 25.0);
+        assert_eq!(t.rate(), Some((125.0, 6.0)), "250 B in 2 s; 750 B left");
+        t.end(Ok(()), 15_000.0);
+        assert_eq!((t.state.clone(), t.percent()), (TransferState::Done, 100.0));
+        t.advance(10.0, 1000.0, 16_000.0);
+        assert_eq!(t.sent, 1000.0, "a late progress event doesn't move a finished upload");
+    }
+
+    #[test]
+    fn a_cancelled_upload_keeps_its_reason() {
+        let mut t = Transfer::new(0, "img".into(), "debian".into(), 1000, 0.0);
+        t.advance(400.0, 1000.0, 2_000.0);
+        t.end(Err("cancelled".into()), 3_000.0);
+        assert_eq!(t.state, TransferState::Failed("cancelled".into()));
+        assert_eq!(t.percent(), 40.0, "the bytes sent stay as they were");
     }
 
     #[test]
