@@ -2497,7 +2497,12 @@ pub async fn admin_flavors(os: &AsyncOpenStack) -> R<Timed<Vec<FlavorRow>>> {
 /// also the deleted ones ([`deleted_since`]).
 pub async fn admin_instances(os: &AsyncOpenStack, since: Option<&str>) -> R<Timed<Vec<Owned<Instance>>>> {
     let t = Instant::now();
-    let (sv, im, vo, names) = tokio::join!(all_servers(os, since), images_raw(os), all_volumes(os), project_names(os, &[]));
+    let (sv, im, vo, names) = tokio::join!(
+        all_servers(os, since),
+        images_raw(os),
+        all_volumes(os),
+        project_names(os, &[])
+    );
     let sv = sv?;
     let rows = mapping::instances(&sv, &[], &soft(im), &soft(vo));
     Ok(timed(

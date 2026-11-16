@@ -51,7 +51,8 @@ pub fn name_cell(i: &Instance) -> AnyView {
         return view! { <span class="name-cell">{name}</span> }.into_any();
     }
     let href = format!("/project/instances/{}", i.id);
-    view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }.into_any()
+    view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }
+        .into_any()
 }
 
 /// Bulk selection key of an instance: none for a deleted row, which no action applies to.
@@ -209,20 +210,30 @@ pub fn InstancesPage() -> impl IntoView {
     let columns = vec![
         col(K::InstanceName, |i: &Instance, _| name_cell(i)).sort_text(|i| i.name.clone()),
         col(K::ImageName, move |i: &Instance, l| late_image_cell(i, l, boot))
-        .sort_text(|i| i.image_name.clone().unwrap_or_default()),
-        col(K::IpAddress, |i: &Instance, _| view! { <IpList addresses=i.addresses.clone()/> }),
-        col(K::Flavor, |i: &Instance, _| view! { <FlavorPopover flavor=i.flavor.clone() key=i.id.clone()/> })
-            .sort_text(|i| i.flavor_name.clone()),
-        col(K::KeyPair, |i: &Instance, _| dash(i.key_name.clone())).sort_text(|i| i.key_name.clone().unwrap_or_default()),
-        col(K::Status, |i: &Instance, l| view! { <Pill tone=Tone::server(&i.status) label=server_status(l, &i.status)/> }.into_any())
-            .sort_text(|i| i.status.clone()),
-        col(K::AvailabilityZone, |i: &Instance, _| view! { <AzPill name=i.availability_zone.clone()/> })
-            .sort_text(|i| i.availability_zone.clone().unwrap_or_default()),
-        col(K::Task, |i: &Instance, l| task_cell(i, l))
-            .sort_text(|i| i.task_state.clone().unwrap_or_default()),
+            .sort_text(|i| i.image_name.clone().unwrap_or_default()),
+        col(
+            K::IpAddress,
+            |i: &Instance, _| view! { <IpList addresses=i.addresses.clone()/> },
+        ),
+        col(
+            K::Flavor,
+            |i: &Instance, _| view! { <FlavorPopover flavor=i.flavor.clone() key=i.id.clone()/> },
+        )
+        .sort_text(|i| i.flavor_name.clone()),
+        col(K::KeyPair, |i: &Instance, _| dash(i.key_name.clone()))
+            .sort_text(|i| i.key_name.clone().unwrap_or_default()),
+        col(K::Status, |i: &Instance, l| {
+            view! { <Pill tone=Tone::server(&i.status) label=server_status(l, &i.status)/> }.into_any()
+        })
+        .sort_text(|i| i.status.clone()),
+        col(
+            K::AvailabilityZone,
+            |i: &Instance, _| view! { <AzPill name=i.availability_zone.clone()/> },
+        )
+        .sort_text(|i| i.availability_zone.clone().unwrap_or_default()),
+        col(K::Task, |i: &Instance, l| task_cell(i, l)).sort_text(|i| i.task_state.clone().unwrap_or_default()),
         col(K::PowerState, |i: &Instance, l| power_state(l, i.power_state)).sort_num(|i| i.power_state),
-        col(K::Age, |i: &Instance, l| age_cell_since(l, &i.created))
-            .sort_text(|i| i.created.clone()),
+        col(K::Age, |i: &Instance, l| age_cell_since(l, &i.created)).sort_text(|i| i.created.clone()),
         col(K::Actions, |i: &Instance, l| {
             view! { <RowActions items=ops::instance_items(l, i)/> }
         })

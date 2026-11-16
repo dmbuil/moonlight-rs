@@ -270,7 +270,10 @@ mod tests {
     #[test]
     fn allowed_actions_follow_horizon() {
         use Op::*;
-        assert!(allowed("DELETED", Some(false), false).is_empty(), "a deleted row offers nothing");
+        assert!(
+            allowed("DELETED", Some(false), false).is_empty(),
+            "a deleted row offers nothing"
+        );
         assert!(allowed("deleted", None, true).is_empty());
         let a = allowed("VERIFY_RESIZE", Some(false), false);
         assert_eq!(a[..2], [ConfirmResize, RevertResize], "confirm/revert come first");

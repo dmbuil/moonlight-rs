@@ -130,7 +130,10 @@ pub fn deleted_since(
     }
     let since = now
         .checked_sub_signed(chrono::Duration::days(i64::from(days)))
-        .map_or_else(|| SINCE_EVER.to_string(), |t| t.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        .map_or_else(
+            || SINCE_EVER.to_string(),
+            |t| t.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        );
     Some(since)
 }
 
@@ -669,7 +672,11 @@ mod tests {
             Some("2026-11-09T10:30:00Z"),
             "others: the configured window"
         );
-        assert_eq!(since(PagedList::Instances, &on, false, 0), None, "0 days: off for non-admins");
+        assert_eq!(
+            since(PagedList::Instances, &on, false, 0),
+            None,
+            "0 days: off for non-admins"
+        );
         assert_eq!(
             since(PagedList::Instances, &ListQuery::default(), true, 7),
             None,

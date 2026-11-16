@@ -771,8 +771,14 @@ mod tests {
             (Some("name"), Some("web"), Some("name"))
         );
         let m = parse(&with_deleted(&m, true));
-        assert!(query_of(&parse(&with_filter(&m, "name", "db"))).deleted, "a new filter keeps it");
-        assert!(query_of(&parse(&with_sort(&m, Some(("created_at", true))))).deleted, "a new sort keeps it");
+        assert!(
+            query_of(&parse(&with_filter(&m, "name", "db"))).deleted,
+            "a new filter keeps it"
+        );
+        assert!(
+            query_of(&parse(&with_sort(&m, Some(("created_at", true))))).deleted,
+            "a new sort keeps it"
+        );
         assert!(!query_of(&parse(&with_deleted(&m, false))).deleted, "off removes it");
         assert!(!query_of(&map(&[("deleted", "0")])).deleted, "only 1 is on");
     }

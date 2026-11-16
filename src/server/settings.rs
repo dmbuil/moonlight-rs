@@ -1504,7 +1504,10 @@ mod tests {
     fn deleted_instances_days_reaches_the_browser() {
         assert_eq!(parse("").unwrap().prefs.deleted_instances_days, 7);
         assert_eq!(
-            parse("[ui]\ndeleted_instances_days = 0\n").unwrap().prefs.deleted_instances_days,
+            parse("[ui]\ndeleted_instances_days = 0\n")
+                .unwrap()
+                .prefs
+                .deleted_instances_days,
             0,
             "0 hides Show deleted from non-admins"
         );
