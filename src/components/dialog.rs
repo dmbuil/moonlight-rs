@@ -171,6 +171,9 @@ pub struct Field {
     /// Keys the catalog picker leaves out because another field of the dialog sets them
     /// (Create Image's `architecture`…); a repeated key is refused.
     pub catalog_skip: &'static [&'static str],
+    /// Never rendered, but submitted with its value whenever it would be visible: a choice the
+    /// operator fixed in `moonlight.conf` that the dialog's rules still read.
+    pub fixed: bool,
 }
 
 impl Field {
@@ -199,6 +202,7 @@ impl Field {
             catalog: None,
             catalog_skip: &[],
             searchable: false,
+            fixed: false,
         }
     }
     /// One-line text.
@@ -352,6 +356,12 @@ impl Field {
     /// Keeps `keys` out of the catalog picker (see [`Field::catalog`]).
     pub fn catalog_skip(mut self, keys: &'static [&'static str]) -> Self {
         self.catalog_skip = keys;
+        self
+    }
+    /// Fixes the field at its value: it is not shown, yet still submitted (and still read by
+    /// `show_if` rules, `on_change` and `check`) as if the user had left it alone.
+    pub fn fixed(mut self) -> Self {
+        self.fixed = true;
         self
     }
     /// Hide the field when its choice list loads empty (nothing to pick).
@@ -844,6 +854,15 @@ fn active(f: &Field, d: &Dialog, steps: &[Step], v: &Vals) -> bool {
             .is_none_or(|s| s.is_enabled(v))
 }
 
+/// The values a submit hands to `build`: those of the [`active`] fields (a [`Field::fixed`] one
+/// included, though it is never rendered).
+fn submitted(d: &Dialog, steps: &[Step], v: &Vals) -> HashMap<String, String> {
+    v.iter()
+        .filter(|(k, _)| d.fields.iter().any(|f| f.name == *k && active(f, d, steps, v)))
+        .map(|(k, x)| (k.clone(), x.clone()))
+        .collect()
+}
+
 /// Problems per field: `(message, shown only after Next/submit)`. Problems
 /// of empty fields (missing values, "pick a network or a port") wait for an
 /// attempt, like Horizon; a wrong value (a too small volume) shows at once.
@@ -1023,12 +1042,7 @@ fn DialogView(dialog: Arc<Dialog>) -> impl IntoView {
             return;
         }
         let vals = values.get_untracked();
-        let shown: HashMap<String, String> = steps.with_value(|st| {
-            vals.iter()
-                .filter(|(k, _)| d.fields.iter().any(|f| f.name == *k && active(f, &d, st, &vals)))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect()
-        });
+        let shown = steps.with_value(|st| submitted(&d, st, &vals));
         match (d.build)(&Values(shown)) {
             Err(e) => errors.set(Some(e)),
             Ok(action) => {
@@ -1347,7 +1361,8 @@ fn FieldView(
     let put = move |v: String| set.run((name, v));
     let f = field.clone();
     let shown = move || {
-        in_step.get()
+        !f.fixed
+            && in_step.get()
             && values.with(|v| visible(&f, v, &all))
             && !(f.hide_empty
                 && matches!(&f.kind, Kind::Select(src) | Kind::Multi(src) | Kind::Pick { src, .. } if resolve(src, values, choices).is_some_and(|l| l.is_empty())))
@@ -2496,6 +2511,21 @@ mod tests {
             Some(&("no".to_string(), false)),
             "a wrong value shows at once"
         );
+    }
+
+    #[test]
+    fn fixed_fields_are_submitted_while_their_rules_hold() {
+        let only_x: fn(&Vals) -> bool = |v| v.get("k").map(String::as_str) == Some("x");
+        let fields = vec![
+            Field::text("k", "K"),
+            Field::yes_no("f", "F", true).show_if(only_x).fixed(),
+        ];
+        let d = Dialog::form("t", "s", fields, |_| Err("unused".into()));
+        let st = steps_of(&d);
+        let on = submitted(&d, &st, &vals_of(&[("k", "x"), ("f", "true")]));
+        assert_eq!(on.get("f").map(String::as_str), Some("true"), "not shown, still sent");
+        let off = submitted(&d, &st, &vals_of(&[("k", "y"), ("f", "true")]));
+        assert!(!off.contains_key("f"), "its own condition still hides it");
     }
 
     #[test]

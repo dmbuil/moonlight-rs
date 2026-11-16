@@ -159,6 +159,7 @@ Horizon's `LAUNCH_INSTANCE_DEFAULTS`, `OPENSTACK_HYPERVISOR_FEATURES` and
 | Key | Default | Meaning |
 |---|---|---|
 | `[launch] create_volume` | `true` | Image sources boot from a new volume. |
+| `[launch] hide_create_volume` | `false` | Hide *Create New Volume* from the wizard, so `create_volume` decides for every image or instance snapshot launch: `true` always boots from a new volume (*Volume Size* and *Delete Volume on Instance Delete* stay), `false` always uses the hypervisor's local disk (a start-up warning says so). The wizard only; the server does not refuse a request that differs. Horizon: `LAUNCH_INSTANCE_DEFAULTS['hide_create_volume']`. |
 | `[launch] config_drive` | `false` | *Configuration Drive* preselected. |
 | `[launch] disable_image` | `false` | Hide images as a boot source. |
 | `[launch] disable_instance_snapshot` | `false` | Hide instance snapshots as a boot source. |

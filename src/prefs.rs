@@ -183,6 +183,9 @@ impl Prefs {
 pub struct LaunchPrefs {
     /// *Create New Volume* preselected for image sources (the production cloud boots from volume).
     pub create_volume: bool,
+    /// Removes *Create New Volume* from the wizard, so `create_volume` always decides whether an
+    /// image boots from a new volume (Horizon's `LAUNCH_INSTANCE_DEFAULTS['hide_create_volume']`).
+    pub hide_create_volume: bool,
     pub config_drive: bool,
     /// Boot sources offered in the wizard.
     pub disable_image: bool,
@@ -203,6 +206,7 @@ impl Default for LaunchPrefs {
     fn default() -> Self {
         LaunchPrefs {
             create_volume: true,
+            hide_create_volume: false,
             config_drive: false,
             disable_image: false,
             disable_instance_snapshot: false,
@@ -230,6 +234,15 @@ impl LaunchPrefs {
         .filter(|(_, off)| !off)
         .map(|(s, _)| s)
         .collect()
+    }
+    /// A start-up warning when the settings leave users no choice of a volume: with
+    /// *Create New Volume* hidden and `create_volume = false`, every image boots on the
+    /// hypervisor's local disk. Allowed (an operator may want exactly that), but worth saying.
+    pub fn warning(&self) -> Option<&'static str> {
+        (self.hide_create_volume && !self.create_volume).then_some(
+            "[launch] hide_create_volume = true with create_volume = false: every image launch boots on the \
+             hypervisor's local disk, and users cannot choose a new volume",
+        )
     }
 }
 
@@ -559,6 +572,7 @@ mod tests {
         assert_eq!(p, Prefs::default());
         assert_eq!(p.poll_interval_ms, 5000);
         assert!(p.launch.create_volume && !p.launch.config_drive && !p.launch.requires_keypair);
+        assert!(!p.launch.hide_create_volume, "the user may choose by default");
         assert_eq!(p.launch.flavor_sort, FlavorSort::Ram);
         assert!(p.network.enable_ipv6 && p.network.fip_topology_check);
         assert_eq!(p.network.topology_max_networks, 50);
@@ -585,6 +599,21 @@ mod tests {
         };
         assert_eq!(l.sources(), ["image", "volume_snapshot"]);
         assert_eq!(LaunchPrefs::default().sources().len(), 4);
+    }
+
+    #[test]
+    fn hiding_create_volume_without_volumes_is_warned_about() {
+        let l = |create_volume, hide_create_volume| LaunchPrefs {
+            create_volume,
+            hide_create_volume,
+            ..Default::default()
+        };
+        assert!(l(false, true).warning().is_some_and(|w| w.contains("local disk")));
+        assert!(
+            l(true, true).warning().is_none(),
+            "always a new volume: nothing to warn"
+        );
+        assert!(l(false, false).warning().is_none(), "users can still choose");
     }
 
     #[test]

@@ -135,6 +135,9 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 120 | 🚧 Load testing: Goose scenarios against a fake OpenStack, the same against the test cloud, `criterion` on the mappers | P3 | L | — |
 | 121 | ✅ *Your session has expired* dialog: one *Sign In* button, no *Close* that leads to the login page anyway | — | XS | 76 |
 | 122 | ✅ Dialog help: long footnotes behind an (i), fuller (i) for complex fields, Horizon's contextual help in steps and dialogs ([#18]) | — | L | — |
+| 123 | ✅ *Launch Instance*: `[launch] hide_create_volume` hides *Create New Volume* and keeps `create_volume`'s choice | — | S | 118 |
+| 124 | Compute › Instances: a *Show deleted* toggle next to the filter box lists deleted instances too | P3 | M | 88 |
+| 125 | Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password | P3 | XS | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -159,7 +162,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8165,6 +8168,164 @@ Decided (user, 2026-11-15):
   deletes the volumes), `K::ResetStatusHelp` (changes only Cinder's record),
   `K::MigrateHelp` (the data is copied, slow) and `K::IncrementalBackupHelp` (needs an earlier
   full backup).
+
+## 123. *Launch Instance*: `[launch] hide_create_volume` hides *Create New Volume*
+
+> ✅ **Done.** `LaunchPrefs.hide_create_volume` (`src/prefs.rs`, default `false`). The dialog
+> engine got a field flag, `Field::fixed()` (`src/components/dialog.rs`): a fixed field is never
+> rendered (`FieldView`'s `shown`), yet it counts as active, so the submit (now the pure
+> `submitted()`), `show_if` rules, `on_change` and `.check` read its value as if the user had
+> left it alone. `launch_with` marks `create_volume` fixed when the setting is on, so *Volume
+> Size* and *Delete Volume on Instance Delete* follow `create_volume` and the spec sends it; rows'
+> *Launch* buttons go through `launch_with` too. UI only, as decided. `LaunchPrefs::warning()`
+> (`hide_create_volume` with `create_volume = false`) is logged by `main.rs` at start-up. Docs in
+> `moonlight.conf.example`, `moonlight.conf` and `CONFIGURATION.md`. Tests:
+> `hide_create_volume_fixes_the_configured_choice` (both values: field fixed, volume rows shown
+> only for `true`, `LaunchSpec.create_volume` and `volume_size_gb` as configured),
+> `fixed_fields_are_submitted_while_their_rules_hold`,
+> `hiding_create_volume_without_volumes_is_warned_about`. Both clippy variants and rustdoc clean,
+> 630 tests passed. Checked in the browser by the user (2026-11-16).
+
+**Goal.** `[launch] create_volume = true` only preselects *Create New Volume* = *Yes* in the
+*Source* step; users can still switch it to *No* and boot an image on the hypervisor's local
+disk. The operator needs the choice to be fixed: a new key `[launch] hide_create_volume` (default
+`false`) removes the *Create New Volume* row from the wizard, while `create_volume` still decides
+what is sent. With `create_volume = true` every image or instance-snapshot launch boots from a
+new volume (*Volume Size* and *Delete Volume on Instance Delete* stay shown); with `false` it
+always boots from the image and those two rows never appear. Horizon has the same key,
+`LAUNCH_INSTANCE_DEFAULTS['hide_create_volume']` (default `False`), which hides the switch and
+keeps `create_volume`'s value.
+
+**Implementation.**
+
+- `src/prefs.rs`, `LaunchPrefs`: add `hide_create_volume: bool` (default `false`, doc comment
+  naming Horizon's key), extend the `Default` impl and the prefs test near line 561.
+- `src/components/ops/instances.rs`, `launch_with` (around line 116): the field cannot simply
+  get `show_if(|_| false)`, because the dialog submits only *visible* fields (`active` /
+  `visible` in `src/components/dialog.rs`, around lines 770 and 839), and `creates_volume`,
+  `boots_from_volume` and the submit closure read `create_volume` from the values. Two options:
+  - drop the field when hidden, and make the rules read the setting: the submit closure
+    captures `p.create_volume` (`let create_volume = source == BootSource::Image && fixed`),
+    but `creates_volume` is a `fn(&Vals) -> bool` used by `show_if` and `.check`, so it can't
+    capture; `launch_with` would have to inject the value another way;
+  - or (simpler, likely) add a field flag in `dialog.rs`, e.g. `Field::fixed()` /
+    `.hidden()`: never rendered, but always counted as active and submitted with its default.
+    Then `launch_with` adds `.hidden()` to `create_volume` when `p.hide_create_volume`, and the
+    rest of the wizard (`show_if(creates_volume)`, `raise_volume_size` on `"create_volume"`,
+    `.check`) keeps working unchanged. Check the wizard's step summary/review and the dry-run
+    preview don't list the hidden field as an editable row.
+- `launch_from` (rows' *Launch* / *Launch as Instance*) goes through `launch_with`, so it follows
+  the setting with no extra work.
+- Server side: no enforcement in `run_action` (decided, see below); the setting only shapes
+  the wizard.
+- Settings load (`src/server/settings.rs`): when `hide_create_volume = true` and
+  `create_volume = false`, log a warning at startup (every image launch then uses the
+  hypervisor's local disk, with no way to choose a volume); still accepted.
+- Config docs: `moonlight.conf.example` and `moonlight.conf` (`[launch]`, after
+  `create_volume`, with a comment), `CONFIGURATION.md` (Launch Instance table, Horizon key
+  `LAUNCH_INSTANCE_DEFAULTS['hide_create_volume']`), and the settings test in
+  `src/server/settings.rs` (around line 1464) if it lists `[launch]` keys.
+- Tests: in `launch_wizard_follows_the_launch_settings`, `hide_create_volume = true` with
+  `create_volume` both `true` and `false`: the field is not rendered, the built `LaunchSpec`
+  has the configured `create_volume`, *Volume Size* shows only for `true`; a settings test for
+  the warning.
+
+Decided (user, 2026-11-16): UI only, no server-side enforcement; `hide_create_volume` with
+`create_volume = false` is allowed but warned about when loading the settings.
+
+## 124. Compute › Instances: a *Show deleted* toggle next to the filter box
+
+**Goal.** A *Show deleted* button (a toggle, pressed while on) in the Instances toolbar, just
+before the filter box. When on, the list also shows the instances that were deleted and that
+Nova still keeps in its database (until an operator runs `nova-manage db
+archive_deleted_rows`): useful to find out what an instance was (name, flavor, image, IPs, host,
+owner) after it is gone. Deleted rows show the *Deleted* status (`DELETED` / `SOFT_DELETED`,
+already mapped in `i18n.rs` and `widgets.rs`), have no row actions and no bulk checkbox, and
+their name is plain text instead of a link to a detail page that would 404. The toggle lives in
+the page's query string (e.g. `?deleted=1`), so it survives refetches, paging and reloads.
+Horizon has no such button (its lists never show deleted servers); the usage report (item 36)
+is the only place deleted instances appear.
+
+**Implementation.**
+
+- Nova (read in `nova/api/openstack/compute/servers.py` `_get_servers` and the api-ref,
+  2026-11-16; still to confirm on ttcp-dev with an admin and a member token):
+  - `deleted=true` works only for admin tokens; for anyone else Nova silently ignores it
+    (the api-ref: "If non-admin users specify this parameter, it is ignored").
+  - `status=DELETED` is refused with 403 *Only administrators may list deleted instances*
+    for non-admins.
+  - `changes-since` / `changes-before` skip Nova's default `deleted=False` filter with no admin
+    check, so they return recently deleted servers to any user, scoped to their project.
+  - `GET servers/{id}` (`show`) goes through `common.get_instance` with no `read_deleted`:
+    most likely a 404 for a deleted server, admin or not (`compute_api.get` not read).
+  - `SOFT_DELETED` servers (with `reclaim_instance_interval`) are in the normal list already.
+- `src/model/mod.rs`, `ListQuery`: add `#[serde(default)] pub deleted: bool`; read and write it
+  in `use_list_query` with the other query-string keys (`marker`, `f`, `q`, sort), and reset
+  the marker when it changes, like the filter does.
+- `src/server/fetch.rs`: `list_request` / `page_raw` add `("deleted", "true")` to the Nova
+  params for `PagedList::Instances` when `q.deleted`; the whole-list fetchers `instances` and
+  `admin_instances` (via `servers` and the `servers/detail?all_tenants` call near line 2230)
+  need the same, so the toggle also works with `page_size = 0`. Images of deleted rows may
+  be gone too: `images_by_ids` already tolerates misses (`soft`).
+- `src/api.rs`: `list_instances` (line ~352) and `list_admin_instances` (line ~1377) pass `q`
+  through; `list_instances` turns `deleted` into `changes-since` for non-admin tokens.
+- Pages: `InstancesPage` (`src/pages/instances.rs`) and `AdminInstancesPage`
+  (`src/pages/admin.rs`) pass the toggle through `DataTable`'s `extra` prop (toolbar
+  controls before the filter, `src/components/table.rs` line ~293). Rows with status
+  `DELETED`: no menu, no checkbox (the `select` closure), name without `<A>`; `poll_while_busy`
+  must not poll on them. The server picks `deleted=true` or `changes-since` from the token's
+  roles (see *Decided*), not the client.
+- i18n: `ShowDeleted` ("Show deleted" / "Mostrar eliminadas") and a tip on what Nova keeps.
+- Tests: `list_request` sends `deleted=true` only when asked (paging tests in
+  `src/server/paging.rs`); `ListQuery` round-trips `deleted` through the query string; the
+  row-action / checkbox rules skip deleted rows. Browser: toggle on Admin › Instances on
+  ttcp-dev, dry-run.
+
+Decided (user, 2026-11-16):
+
+- Both pages, Project › Compute › Instances and Admin › Compute › Instances.
+- Admin tokens (on either page) send `deleted=true`: every deleted server Nova keeps, paged
+  like the rest. Other users on Project get the toggle too, sending
+  `changes-since=<now − window>` instead (`deleted` would be ignored), and its tip says it
+  covers only that window. The window is a new setting, `[ui] deleted_instances_days`
+  (default `7`; `src/prefs.rs`, `moonlight.conf.example`, `moonlight.conf`, `CONFIGURATION.md`;
+  `0` could hide the toggle for non-admins). `changes-since` also returns servers that merely
+  changed in the window, which the list shows anyway; check it pages with `marker`.
+- Deleted rows: plain-text name, no detail page (Nova's `show` most likely 404s), no actions.
+
+## 125. Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password
+
+**Goal.** The button next to the login page's password field shows an eye icon instead of the
+words *Show* / *Hide*: an open eye while the password is hidden, a struck-through eye while it
+is shown. It sits inside the field, at its right end (like Horizon's login, whose `fa-eye` /
+`fa-eye-slash` toggle lives in the input), so the field keeps the width of the username one
+above it. The icon reacts to the pointer and keyboard: hover and focus-visible states, pressed
+state from `aria-pressed`, and it keeps a comfortable touch target on phones. Screen readers
+still hear *Show password* / *Hide password*, and `[login] password_reveal = false` still hides
+it.
+
+**Implementation.**
+
+- `src/pages/login.rs` (the `password-field` span near line 161): replace the text child of
+  `button.btn-reveal` with two inline SVGs (24×24 `viewBox`, `stroke="currentColor"`,
+  `aria-hidden="true"`, in the style of the icons in `src/components/layout.rs` and
+  `datetime.rs`), the eye and the eye-off, picked by `reveal.get()`. Keep `aria-pressed` and
+  the `aria-label`, and add a `title` with the same text for the mouse tooltip.
+- i18n (`src/i18n.rs` line ~1228): `ShowPassword` / `HidePassword` are only used here; make
+  them the full labels, "Show password" / "Mostrar contraseña" and "Hide password" / "Ocultar
+  contraseña", since no visible word is left next to the field.
+- `style/main.css` (`.password-field`, `.btn-reveal`, line ~995): position the button inside
+  the input (`.password-field { position: relative }`, the button absolutely placed at the
+  right, the input with `padding-right` for it), no border, `color: var(--ink-2)` turning to
+  `var(--ink)` on hover, a `:focus-visible` outline, at least 32×32 px of hit area (larger
+  under the existing mobile breakpoint), and a short transition on colour. Check both themes
+  and the background image of item 114.
+- Open question: the other password inputs (`src/components/dialog.rs` line ~1431, *Launch*'s
+  admin password, `src/pages/stack_launch.rs` line ~332) have no reveal button; this item
+  covers only the login page unless the user wants a shared component for all of them.
+- Tests: none for the markup beyond `cargo clippy` for both targets; browser check on the
+  login page in light and dark, desktop and phone width, with keyboard (Tab, Space toggles,
+  focus ring) and with `password_reveal = false`.
 
 ## Also pending (from the PoC)
 

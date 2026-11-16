@@ -65,6 +65,9 @@ async fn serve() {
     if let Some(n) = settings.log.legacy_keep() {
         tracing::warn!("[log] keep = {n} is the old file count: read as max_files = {n}; keep is now yes/no");
     }
+    if let Some(w) = settings.launch.warning() {
+        tracing::warn!("{w}");
+    }
 
     if let Err(e) = moonlight::server::config::init(&settings) {
         eprintln!("configuration error: {e}");

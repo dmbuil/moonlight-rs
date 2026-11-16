@@ -113,9 +113,14 @@ fn launch_with(lang: Lang, p: &crate::prefs::LaunchPrefs, preset: Option<&str>) 
             .required()
             .tip(tr(K::TipBootSource)),
         // `[launch] create_volume`: the production cloud boots from volume, so Yes by default.
-        Field::yes_no("create_volume", tr(K::CreateNewVolume), p.create_volume)
-            .show_if(image_like)
-            .tip(tr(K::TipCreateNewVolume)),
+        // `hide_create_volume` fixes that choice: the field is not shown but still submitted, so
+        // the volume rows and the size rules below keep reading it.
+        {
+            let f = Field::yes_no("create_volume", tr(K::CreateNewVolume), p.create_volume)
+                .show_if(image_like)
+                .tip(tr(K::TipCreateNewVolume));
+            if p.hide_create_volume { f.fixed() } else { f }
+        },
         Field::number("volume_size", tr(K::VolumeSizeGb), 1)
             .value("1")
             .required()
@@ -1109,6 +1114,43 @@ mod tests {
             ["image", "volume", "volume_snapshot"],
             "a row's own source stays"
         );
+        assert!(!field(&def, "create_volume").unwrap().fixed, "users choose by default");
+    }
+
+    #[test]
+    fn hide_create_volume_fixes_the_configured_choice() {
+        for create_volume in [true, false] {
+            let p = crate::prefs::LaunchPrefs {
+                create_volume,
+                hide_create_volume: true,
+                ..Default::default()
+            };
+            let d = launch_with(Lang::EnUs, &p, None);
+            let f = d.fields.iter().find(|f| f.name == "create_volume").unwrap();
+            assert!(f.fixed, "never rendered");
+            // What the dialog submits when the user can't touch the field: its default.
+            let v = vals(&[
+                ("name", "web"),
+                ("source", "image"),
+                ("source_id", "img"),
+                ("create_volume", f.default.as_str()),
+                ("volume_size", "30"),
+                ("flavor", "f"),
+                ("networks", "n1"),
+            ]);
+            let shows = |n: &str| (d.fields.iter().find(|f| f.name == n).unwrap().show_if.unwrap())(&v.0);
+            assert_eq!(
+                shows("volume_size"),
+                create_volume,
+                "Volume Size only with a new volume"
+            );
+            assert_eq!(shows("delete_on_terminate"), create_volume);
+            let OsAction::ServerLaunch(s) = (d.build)(&v).unwrap() else {
+                panic!()
+            };
+            assert_eq!(s.create_volume, create_volume, "the configured choice is sent");
+            assert_eq!(s.volume_size_gb, create_volume.then_some(30));
+        }
     }
 
     #[test]
