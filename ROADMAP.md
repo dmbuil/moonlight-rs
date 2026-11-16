@@ -137,7 +137,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 122 | ✅ Dialog help: long footnotes behind an (i), fuller (i) for complex fields, Horizon's contextual help in steps and dialogs ([#18]) | — | L | — |
 | 123 | ✅ *Launch Instance*: `[launch] hide_create_volume` hides *Create New Volume* and keeps `create_volume`'s choice | — | S | 118 |
 | 124 | ✅ Compute › Instances: a *Show deleted* toggle next to the filter box lists deleted instances too | — | M | 88 |
-| 125 | Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password | P3 | XS | — |
+| 125 | ✅ Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password | — | XS | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -162,7 +162,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8329,6 +8329,15 @@ Decided (user, 2026-11-16):
 - Deleted rows: plain-text name, no detail page (Nova's `show` most likely 404s), no actions.
 
 ## 125. Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password
+
+> ✅ **Done.** `button.btn-reveal` in `src/pages/login.rs` now holds two inline SVGs (eye /
+> eye-off, picked by `reveal`), with `aria-pressed`, `aria-label` and a `title`; `ShowPassword` /
+> `HidePassword` are the full labels ("Show password" / "Hide password", Spanish too). In
+> `style/main.css` the button sits inside the field (absolute, right end, `padding-right` on the
+> input), borderless, `--ink-2` to `--ink` on hover, `--accent` when pressed, a `:focus-visible`
+> outline, 32×32 px (44×44 under the 720 px breakpoint). Both clippy variants clean, 634 of 634
+> tests pass. Checked in the browser by the user (the reveal toggle works). Not
+> checked: phone width and `password_reveal = false`. The other password inputs are unchanged.
 
 **Goal.** The button next to the login page's password field shows an eye icon instead of the
 words *Show* / *Hide*: an open eye while the password is hidden, a struck-through eye while it

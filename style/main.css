@@ -992,10 +992,21 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 
 /* Login: optional notice and the password reveal button ([login] settings) */
 .login-message { white-space: pre-line; margin-bottom: 12px; }
-.password-field { display: flex; gap: 6px; align-items: stretch; }
-.password-field input { flex: 1; min-width: 0; }
-.btn-reveal { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); border-radius: 6px; padding: 0 10px; font: inherit; font-size: 13px; cursor: pointer; }
-.btn-reveal:hover { background: var(--bg-soft); }
+.password-field { position: relative; display: flex; }
+.password-field input { flex: 1; min-width: 0; padding-right: 40px; }
+.btn-reveal {
+  position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: inline-flex;
+  align-items: center; justify-content: center; min-width: 32px; min-height: 32px; padding: 0; border: 0;
+  border-radius: 6px; background: transparent; color: var(--ink-2); cursor: pointer;
+  transition: color calc(var(--motion) * 2) var(--ease), background calc(var(--motion) * 2) var(--ease);
+}
+.btn-reveal:hover { color: var(--ink); background: var(--bg-soft); }
+.btn-reveal:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn-reveal[aria-pressed="true"] { color: var(--accent); }
+@media (max-width: 720px) {
+  .password-field input { padding-right: 52px; }
+  .btn-reveal { min-width: 44px; min-height: 44px; right: 0; }
+}
 
 /* Admin › Hypervisors › Resource Provider: a host's ▸/▾ device toggle. */
 .tree-toggle { background: none; border: 0; padding: 0 0.2em; color: var(--accent); cursor: pointer; font: inherit; }
