@@ -4,3 +4,6 @@
 
 # rustfmt.toml (max_width 120) and cargo fmt over the tree
 91338f3e568eda5d60101b64a45714adb6839c5b
+
+# cargo fmt over code left unformatted by roadmap 124
+e590adbea3b03d1a0fba840ac4de86b3cd18ec71
