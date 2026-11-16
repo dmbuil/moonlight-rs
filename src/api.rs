@@ -353,7 +353,10 @@ pub async fn list_instances(q: ListQuery) -> Result<Timed<Page<Instance>>, AppEr
     scoped("list_instances", |s, c| async move {
         match cfg().prefs.page_size_for(false) {
             Some(size) => fetch::instances_page(&c, &s.project_id, &q, size).await,
-            None => Ok(whole(fetch::instances(&c).await?)),
+            None => {
+                let since = fetch::deleted_since(&c, PagedList::Instances, &q);
+                Ok(whole(fetch::instances(&c, since.as_deref()).await?))
+            }
         }
     })
     .await
@@ -1381,7 +1384,10 @@ pub async fn list_admin_instances(q: ListQuery) -> Result<Timed<Page<Owned<Insta
             Some(size) if waits_for_filter(PagedList::Instances, &q) => Ok(filter_first_page(size)),
             Some(size) => fetch::admin_instances_page(&c, &q, size).await,
             // `page_size = 0`: every row, as before paging (the page keeps its search box).
-            None => Ok(whole(fetch::admin_instances(&c).await?)),
+            None => {
+                let since = fetch::deleted_since(&c, PagedList::Instances, &q);
+                Ok(whole(fetch::admin_instances(&c, since.as_deref()).await?))
+            }
         }
     })
     .await

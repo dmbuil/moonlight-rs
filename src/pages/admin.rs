@@ -25,7 +25,7 @@ use crate::components::pager::{
 };
 use crate::components::table::{Col, DataTable, Select, TimingChip, available, col};
 use crate::components::widgets::{
-    AzPill, AzPills, ErrorBox, LockIcon, PageHeader, Pill, Skeleton, Tone, age_cell_since, dash, render, short_time,
+    AzPill, AzPills, ErrorBox, PageHeader, Pill, Skeleton, Tone, age_cell_since, dash, render, short_time,
 };
 use crate::components::widgets::{FlavorPopover, SpecsPopover};
 use crate::i18n::decimal;
@@ -303,10 +303,7 @@ fn admin_instance_columns(boot: BootImages) -> Vec<Col<Owned<Instance>>> {
         project_col(),
         host_col(),
         // Horizon's padlock before the name, as Project › Instances.
-        lift(col(K::Name, |i: &Instance, _| {
-            let (href, name) = (format!("/project/instances/{}", i.id), i.name.clone());
-            view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }
-        }).sort_text(|i| i.name.clone())),
+        lift(col(K::Name, |i: &Instance, _| crate::pages::instances::name_cell(i)).sort_text(|i| i.name.clone())),
         lift(col(K::ImageName, move |i: &Instance, l| late_image_cell(i, l, boot)).sort_text(|i| i.image_name.clone().unwrap_or_default())),
         lift(col(K::IpAddress, |i: &Instance, _| view! { <IpList addresses=i.addresses.clone()/> })),
         lift(col(K::Flavor, |i: &Instance, _| view! { <FlavorPopover flavor=i.flavor.clone() key=i.id.clone()/> }).sort_text(|i| i.flavor_name.clone())),
@@ -362,15 +359,17 @@ pub fn AdminInstancesPage() -> impl IntoView {
                 let page = t.data;
                 let cols = available(columns.get_value(), &caps());
                 if !page.paged {
+                    // *Show deleted* before the search box, as on a paged page.
+                    let toggle = crate::components::pager::show_deleted(PagedList::Instances).unwrap_or_else(|| ().into_any());
                     return view! {
-                        <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()/>
+                        <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch() extra=toggle/>
                     }.into_any();
                 }
                 let cols = with_server_keys(cols);
                 let footer = view! { <Pager list=PagedList::Instances next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack/> }.into_any();
                 view! {
                     <DataTable rows=page.rows columns=cols search=admin_instance_search timing=(t.millis, t.calls) on_refresh=move |_| data.refetch()
-                        paged=true extra=crate::components::pager::filter_bar(PagedList::Instances, ListScope::Admin, page.needs_filter) footer=footer server_sort=crate::components::pager::server_sort(PagedList::Instances)/>
+                        paged=true extra=crate::components::pager::paged_extra(PagedList::Instances, ListScope::Admin, page.needs_filter) footer=footer server_sort=crate::components::pager::server_sort(PagedList::Instances)/>
                 }.into_any()
             })}
         </Transition>

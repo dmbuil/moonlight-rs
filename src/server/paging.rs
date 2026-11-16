@@ -100,6 +100,40 @@ pub fn params_in(
     Ok(out)
 }
 
+/// The oldest `changes-since` there is: every server Nova still keeps, live or deleted.
+pub const SINCE_EVER: &str = "1970-01-01T00:00:00Z";
+
+/// Nova's `changes-since` for Compute › Instances' *Show deleted* (`q.deleted`), or `None` when
+/// the list is as usual. Nova applies its default `deleted=False` filter only when neither
+/// `changes-since` nor `deleted` is given (`servers.py`, `_get_servers`), so `changes-since`
+/// lists live and deleted servers together, to any user, within their scope. `deleted=true`
+/// would list only deleted ones, and only for admins (others are silently ignored). Admins
+/// (`admin`) get [`SINCE_EVER`]; others the last `days` days (`[ui] deleted_instances_days`),
+/// in which only servers that changed show, live ones included; `0` turns the toggle off for
+/// them. A server Nova never updated has no `updated_at` and is missed even from the epoch,
+/// which doesn't happen to a server that ever booted.
+pub fn deleted_since(
+    list: PagedList,
+    q: &ListQuery,
+    admin: bool,
+    days: u32,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Option<String> {
+    if !q.deleted || list != PagedList::Instances {
+        return None;
+    }
+    if admin {
+        return Some(SINCE_EVER.to_string());
+    }
+    if days == 0 {
+        return None;
+    }
+    let since = now
+        .checked_sub_signed(chrono::Duration::days(i64::from(days)))
+        .map_or_else(|| SINCE_EVER.to_string(), |t| t.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+    Some(since)
+}
+
 /// Cinder's `name~` (*like*) needs volume 3.34 and `with_count` 3.45 (probed on
 /// ttcp-dev, 2026-11-03). Given the cloud's volume microversion, adapts `params`
 /// for a Cinder list and says which `OpenStack-API-Version` to send: at 3.45 a
@@ -614,5 +648,38 @@ mod tests {
             "the extra row only says there is more"
         );
         assert_eq!(cut(rows(0), 3), (vec![], None));
+    }
+
+    #[test]
+    fn show_deleted_asks_nova_for_changes_since() {
+        use chrono::TimeZone;
+        let now = chrono::Utc.with_ymd_and_hms(2026, 11, 16, 10, 30, 0).unwrap();
+        let on = ListQuery {
+            deleted: true,
+            ..Default::default()
+        };
+        let since = |list, q: &ListQuery, admin, days| deleted_since(list, q, admin, days, now);
+        assert_eq!(
+            since(PagedList::Instances, &on, true, 7).as_deref(),
+            Some(SINCE_EVER),
+            "admins: every server Nova keeps, whatever the window"
+        );
+        assert_eq!(
+            since(PagedList::Instances, &on, false, 7).as_deref(),
+            Some("2026-11-09T10:30:00Z"),
+            "others: the configured window"
+        );
+        assert_eq!(since(PagedList::Instances, &on, false, 0), None, "0 days: off for non-admins");
+        assert_eq!(
+            since(PagedList::Instances, &ListQuery::default(), true, 7),
+            None,
+            "not asked"
+        );
+        assert_eq!(since(PagedList::Volumes, &on, true, 7), None, "only Instances");
+        assert_eq!(
+            since(PagedList::Instances, &on, false, u32::MAX).as_deref(),
+            Some(SINCE_EVER),
+            "a window past the epoch is the epoch"
+        );
     }
 }

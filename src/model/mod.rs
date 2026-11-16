@@ -497,6 +497,10 @@ pub struct ListQuery {
     /// Sort descending.
     #[serde(default)]
     pub desc: bool,
+    /// Compute › Instances' *Show deleted*: list the deleted servers Nova still keeps too.
+    /// Ignored by every other list.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 /// One page of a list. `paged` is false when the whole list came back

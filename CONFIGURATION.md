@@ -150,6 +150,7 @@ cookie on `http://localhost` and `http://127.0.0.1`, so plain-HTTP development w
 | `[ui] paged_lists` | `admin` | Which lists `page_size` applies to: `admin` (the big Admin lists) or `all` (the Project panels too). | — (Moonlight's own) |
 | `[ui] quota_edit` | `all` | Who sees *Edit Quotas* on Project › Quotas (roadmap 112): `all` (everyone; each service's policy decides), `admin` (tokens with the `admin` role) or `off` (nobody, the page is read-only). The server refuses a quota update of the session's project the same way, so a hidden button can't be bypassed. Another project's quotas (Identity › Projects › *Quotas*) always need the `admin` role; Admin › *Defaults* is not affected. | — (Horizon never edits quotas from the project dashboard) |
 | `[ui] max_list_items` | `10000` | Most rows a full (unpaged) list may have (roadmap 104). Full lists load 1000 rows per request; past this many the page shows *List too large* instead of a cut list. Use the paged lists (`page_size`, `paged_lists`) for bigger clouds. `0` = no cap. | — (Moonlight's own) |
+| `[ui] deleted_instances_days` | `7` | Compute › Instances' *Show deleted* (roadmap 124) for users without the `admin` role: Nova shows them deleted servers only through `changes-since`, so the toggle lists the instances that changed in this many past days, deleted ones included. Admins always see every deleted instance Nova still keeps (until `nova-manage db archive_deleted_rows`). `0` hides the toggle from non-admins. | — (Moonlight's own) |
 
 ### Launch Instance
 

@@ -31,7 +31,7 @@ mod routers;
 mod security_groups;
 mod stacks;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 mod trunks;
 mod volumes;
 
@@ -109,11 +109,15 @@ pub enum Op {
 /// Which actions an instance offers, like Horizon's `allowed()` checks:
 /// Confirm/Revert first while `VERIFY_RESIZE`, Unshelve only when shelved,
 /// Unrescue only in `RESCUE`… While a task runs only Edit, (Un)lock and Delete
-/// remain. `locked: None` (unknown) offers both Lock and Unlock.
+/// remain. `locked: None` (unknown) offers both Lock and Unlock. A `DELETED` instance (*Show
+/// deleted*) offers nothing: Nova only keeps its record.
 pub fn allowed(status: &str, locked: Option<bool>, busy: bool) -> Vec<Op> {
     use Op::*;
     const RUNNING: &[&str] = &["ACTIVE", "SHUTOFF", "PAUSED", "SUSPENDED"];
     let s = status.to_ascii_uppercase();
+    if s == "DELETED" {
+        return Vec::new();
+    }
     let is = |list: &[&str]| list.contains(&s.as_str());
     let lock = match locked {
         Some(true) => vec![Unlock],
@@ -266,6 +270,8 @@ mod tests {
     #[test]
     fn allowed_actions_follow_horizon() {
         use Op::*;
+        assert!(allowed("DELETED", Some(false), false).is_empty(), "a deleted row offers nothing");
+        assert!(allowed("deleted", None, true).is_empty());
         let a = allowed("VERIFY_RESIZE", Some(false), false);
         assert_eq!(a[..2], [ConfirmResize, RevertResize], "confirm/revert come first");
         assert!(!allowed("ACTIVE", Some(false), false).contains(&ConfirmResize));

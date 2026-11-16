@@ -538,9 +538,11 @@ const TRANSITIONAL: &[&str] = &[
     "PASSWORD",
 ];
 
-/// True while the instance has an operation in progress.
+/// True while the instance has an operation in progress. Never for a `DELETED` one (*Show
+/// deleted*): a task Nova left on it will not finish, and polling would never stop.
 pub fn is_busy(task_state: Option<&str>, status: &str) -> bool {
-    task_state.is_some_and(|t| !t.is_empty()) || TRANSITIONAL.contains(&status.to_ascii_uppercase().as_str())
+    let status = status.to_ascii_uppercase();
+    status != "DELETED" && (task_state.is_some_and(|t| !t.is_empty()) || TRANSITIONAL.contains(&status.as_str()))
 }
 
 /// Cinder volume statuses that change on their own: the page keeps
@@ -911,6 +913,7 @@ mod tests {
         assert!(!is_busy(None, "ACTIVE"));
         assert!(!is_busy(Some(""), "SHUTOFF"));
         assert!(!is_busy(None, "ERROR"));
+        assert!(!is_busy(Some("deleting"), "DELETED"), "gone: nothing left to wait for");
     }
 
     #[test]

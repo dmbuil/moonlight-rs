@@ -270,6 +270,9 @@ pub struct Ui {
     /// Most rows a full list may have before the page fails instead of showing a cut list
     ///; `0` = no cap.
     pub max_list_items: u32,
+    /// Days back Compute › Instances' *Show deleted* looks for non-admins; `0` hides it from
+    /// them.
+    pub deleted_instances_days: u32,
 }
 
 impl Default for Ui {
@@ -288,6 +291,7 @@ impl Default for Ui {
             paged_lists: "admin".into(),
             quota_edit: "all".into(),
             max_list_items: DEFAULT_MAX_LIST_ITEMS,
+            deleted_instances_days: Prefs::default().deleted_instances_days,
         }
     }
 }
@@ -986,6 +990,7 @@ impl Settings {
                 page_size: self.ui.page_size,
                 paged_lists,
                 quota_edit,
+                deleted_instances_days: self.ui.deleted_instances_days,
                 launch: self.launch.clone(),
                 network: NetworkPrefs {
                     default_dns_nameservers: net
@@ -1492,6 +1497,16 @@ mod tests {
         assert!(
             parse("[cache]\nlookup_seconds = 0\n").unwrap().lookup_ttl.is_zero(),
             "0 turns the cache off"
+        );
+    }
+
+    #[test]
+    fn deleted_instances_days_reaches_the_browser() {
+        assert_eq!(parse("").unwrap().prefs.deleted_instances_days, 7);
+        assert_eq!(
+            parse("[ui]\ndeleted_instances_days = 0\n").unwrap().prefs.deleted_instances_days,
+            0,
+            "0 hides Show deleted from non-admins"
         );
     }
 

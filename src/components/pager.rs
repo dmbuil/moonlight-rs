@@ -1,6 +1,6 @@
 //! Controls of the server-paged lists: the page's query string read into
 //! a [`ListQuery`], the filter bar and *Previous* / *Next*. The state lives in the URL
-//! (`?marker=…&f=…&q=…&sort=…&dir=…`), so a page, its filter and its sort can be
+//! (`?marker=…&f=…&q=…&sort=…&dir=…&deleted=1`), so a page, its filter and its sort can be
 //! linked and reloaded; kept outside it are only the stack of markers *Previous*
 //! pops and the result of *Count all* ([`PagerState`]).
 
@@ -161,7 +161,7 @@ pub fn late_host(n: &LateName) -> Option<String> {
     n.host.clone()
 }
 
-/// The list query a page's query string spells (`marker`, `f`, `q`, `sort`, `dir`).
+/// The list query a page's query string spells (`marker`, `f`, `q`, `sort`, `dir`, `deleted`).
 /// Empty values count as absent.
 pub fn query_of(m: &ParamsMap) -> ListQuery {
     let get = |k: &str| m.get(k).filter(|v| !v.is_empty());
@@ -171,7 +171,25 @@ pub fn query_of(m: &ParamsMap) -> ListQuery {
         value: get("q"),
         sort: get("sort"),
         desc: get("dir").as_deref() == Some("desc"),
+        deleted: get("deleted").as_deref() == Some("1"),
     }
+}
+
+/// Keys of the query string that outlive a new filter or sort: Compute › Instances' *Show
+/// deleted* stays on.
+const KEPT: &[&str] = &["deleted"];
+
+/// The query string (with its `?`) of *Show deleted* turned `on` or off over `m`: the filter
+/// and sort survive, the marker doesn't (the rows of page *N* change).
+pub fn with_deleted(m: &ParamsMap, on: bool) -> String {
+    let mut m = m.clone();
+    m.remove("marker");
+    if on {
+        m.replace("deleted", "1".to_string());
+    } else {
+        m.remove("deleted");
+    }
+    m.to_query_string()
 }
 
 /// The query string (with its `?`, percent-encoded) of `m` with `marker` replaced
@@ -194,7 +212,7 @@ pub fn with_marker(m: &ParamsMap, marker: Option<&str>) -> String {
 /// the filter.
 pub fn with_filter(m: &ParamsMap, field: &str, value: &str) -> String {
     let mut out = ParamsMap::new();
-    for k in ["sort", "dir"] {
+    for &k in ["sort", "dir"].iter().chain(KEPT) {
         if let Some(v) = m.get(k).filter(|v| !v.is_empty()) {
             out.replace(k, v);
         }
@@ -212,7 +230,7 @@ pub fn with_filter(m: &ParamsMap, field: &str, value: &str) -> String {
 /// rows of page *N* change with the order.
 pub fn with_sort(m: &ParamsMap, sort: Option<(&str, bool)>) -> String {
     let mut out = ParamsMap::new();
-    for k in ["f", "q"] {
+    for &k in ["f", "q"].iter().chain(KEPT) {
         if let Some(v) = m.get(k).filter(|v| !v.is_empty()) {
             out.replace(k, v);
         }
@@ -338,6 +356,7 @@ pub fn FilterBar(list: PagedList, #[prop(optional)] scope: ListScope) -> impl In
             // The sort survives a new filter; the marker doesn't.
             {now_sort.sort.map(|s| view! { <input type="hidden" name="sort" value=s/> })}
             {now_sort.desc.then(|| view! { <input type="hidden" name="dir" value="desc"/> })}
+            {now_sort.deleted.then(|| view! { <input type="hidden" name="deleted" value="1"/> })}
             <label class="sr-only" for="filter-field">{move || i18n.t(K::FilterBy)}</label>
             <select id="filter-field" name="f" on:change=move |ev| {
                 field.set(event_target_value(&ev));
@@ -498,6 +517,12 @@ pub fn with_server_keys<T>(cols: Vec<Col<T>>) -> Vec<Col<T>> {
         .collect()
 }
 
+/// The toolbar controls of a paged list: [`show_deleted`] when it applies, then [`filter_bar`].
+pub fn paged_extra(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyView {
+    let toggle = show_deleted(list);
+    view! { {toggle} {filter_bar(list, scope, needs_filter)} }.into_any()
+}
+
 /// A paged list's [`FilterBar`], and under it, when the server waited for a
 /// filter (`[admin] filter_first`), why the table is empty.
 pub fn filter_bar(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyView {
@@ -505,6 +530,41 @@ pub fn filter_bar(list: PagedList, scope: ListScope, needs_filter: bool) -> AnyV
     let note = needs_filter
         .then(|| view! { <p class="muted filter-first" role="status">{move || i18n.t(K::FilterFirstNote)}</p> });
     view! { <FilterBar list=list scope=scope/> {note} }.into_any()
+}
+
+/// Compute › Instances' *Show deleted*, a toggle in the toolbar before the filter: on, the
+/// page's query string gets `deleted=1` and the server lists the deleted servers Nova keeps
+/// too (`fetch::deleted_since`). Admins see all of them; others those of the last `[ui]
+/// deleted_instances_days` days, which the tip says; `0` days hides it from them. `None` for
+/// any other list.
+pub fn show_deleted(list: PagedList) -> Option<AnyView> {
+    if list != PagedList::Instances {
+        return None;
+    }
+    let admin = crate::model::needs::ADMIN.met(&crate::components::dialog::caps());
+    let days = crate::components::dialog::prefs().deleted_instances_days;
+    if !admin && days == 0 {
+        return None;
+    }
+    let i18n = use_i18n();
+    let qmap = use_query_map();
+    let on = move || qmap.with(query_of).deleted;
+    let tip = move || {
+        if admin {
+            i18n.t(K::ShowDeletedHelp).to_string()
+        } else {
+            crate::i18n::show_deleted_tip(i18n.lang(), days)
+        }
+    };
+    Some(
+        view! {
+            <button type="button" class="btn" aria-pressed=move || on().to_string() title=tip
+                on:click=move |_| go(qmap.with_untracked(|m| with_deleted(m, !query_of(m).deleted)))>
+                {move || i18n.t(K::ShowDeleted)}
+            </button>
+        }
+        .into_any(),
+    )
 }
 
 /// The table of a paged list, Admin or Project (`scope`): one page
@@ -527,13 +587,16 @@ pub fn paged_table<T: Clone + Send + Sync + 'static>(
     let timing = (t.millis, t.calls);
     // `select` is an optional prop that takes a `Select`, not an `Option`.
     if !page.paged {
-        return match select {
-            Some(select) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select drawer=drawer/> }.into_any(),
-            None => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh drawer=drawer/> }.into_any(),
+        // `extra` is an optional prop that takes an `AnyView`, not an `Option`.
+        return match (select, show_deleted(list)) {
+            (Some(select), Some(t)) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select drawer=drawer extra=t/> }.into_any(),
+            (Some(select), None) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh select=select drawer=drawer/> }.into_any(),
+            (None, Some(t)) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh drawer=drawer extra=t/> }.into_any(),
+            (None, None) => view! { <DataTable rows=page.rows columns=cols search=search timing=timing on_refresh=refresh drawer=drawer/> }.into_any(),
         };
     }
     let footer = view! { <Pager list=list next=page.next.clone() shown=page.rows.len() count=page.count page_size=page.page_size stack=stack scope=scope/> }.into_any();
-    let bar = filter_bar(list, scope, page.needs_filter);
+    let bar = paged_extra(list, scope, page.needs_filter);
     let sort = server_sort(list);
     let cols = with_server_keys(cols);
     match select {
@@ -598,7 +661,8 @@ mod tests {
                 field: Some("host".into()),
                 value: Some("cmp-1".into()),
                 sort: Some("name".into()),
-                desc: true
+                desc: true,
+                deleted: false
             }
         );
         assert_eq!(
@@ -672,7 +736,8 @@ mod tests {
                 field: Some("project".into()),
                 value: Some("p1".into()),
                 sort: Some("name".into()),
-                desc: true
+                desc: true,
+                deleted: false
             }
         );
         let cleared = query_of(&parse(&with_filter(&m, "host", "  ")));
@@ -696,6 +761,23 @@ mod tests {
     }
 
     #[test]
+    fn show_deleted_survives_filters_and_sorts_and_drops_the_marker() {
+        let m = map(&[("marker", "m1"), ("f", "name"), ("q", "web"), ("sort", "name")]);
+        let on = query_of(&parse(&with_deleted(&m, true)));
+        assert!(on.deleted, "deleted=1 reads as on");
+        assert_eq!(on.marker, None, "the rows of page N change: back to the first page");
+        assert_eq!(
+            (on.field.as_deref(), on.value.as_deref(), on.sort.as_deref()),
+            (Some("name"), Some("web"), Some("name"))
+        );
+        let m = parse(&with_deleted(&m, true));
+        assert!(query_of(&parse(&with_filter(&m, "name", "db"))).deleted, "a new filter keeps it");
+        assert!(query_of(&parse(&with_sort(&m, Some(("created_at", true))))).deleted, "a new sort keeps it");
+        assert!(!query_of(&parse(&with_deleted(&m, false))).deleted, "off removes it");
+        assert!(!query_of(&map(&[("deleted", "0")])).deleted, "only 1 is on");
+    }
+
+    #[test]
     fn a_new_sort_keeps_the_filter_and_drops_the_marker() {
         let m = map(&[("marker", "m1"), ("f", "host"), ("q", "c1"), ("sort", "name")]);
         let q = query_of(&parse(&with_sort(&m, Some(("created", true)))));
@@ -706,7 +788,8 @@ mod tests {
                 field: Some("host".into()),
                 value: Some("c1".into()),
                 sort: Some("created".into()),
-                desc: true
+                desc: true,
+                deleted: false
             }
         );
         let q = query_of(&parse(&with_sort(&m, None)));

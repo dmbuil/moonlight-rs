@@ -43,6 +43,22 @@ pub fn IpList(addresses: Vec<Address>) -> impl IntoView {
     .into_any()
 }
 
+/// The *Name* cell of both Instances lists: the padlock, then a link to the detail page, or
+/// plain text for a deleted row (*Show deleted*), whose detail page Nova would answer 404.
+pub fn name_cell(i: &Instance) -> AnyView {
+    let name = i.name.clone();
+    if i.is_deleted() {
+        return view! { <span class="name-cell">{name}</span> }.into_any();
+    }
+    let href = format!("/project/instances/{}", i.id);
+    view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }.into_any()
+}
+
+/// Bulk selection key of an instance: none for a deleted row, which no action applies to.
+fn select_key(i: &Instance) -> Option<(String, String)> {
+    (!i.is_deleted()).then(|| (i.id.clone(), i.name.clone()))
+}
+
 /// Text of the *Task* column: the localised task, or the status when the
 /// instance is busy without one (e.g. `BUILD`), so the bar is never unlabelled.
 fn task_label(task: Option<&str>, status: &str, l: crate::i18n::Lang) -> Option<String> {
@@ -191,12 +207,7 @@ pub fn InstancesPage() -> impl IntoView {
     });
     let stack = PagerState::new();
     let columns = vec![
-        col(K::InstanceName, |i: &Instance, _| {
-            let href = format!("/project/instances/{}", i.id);
-            let name = i.name.clone();
-            view! { <span class="name-cell"><LockIcon locked=i.locked/><A href=href attr:class="strong">{name}</A></span> }
-        })
-        .sort_text(|i| i.name.clone()),
+        col(K::InstanceName, |i: &Instance, _| name_cell(i)).sort_text(|i| i.name.clone()),
         col(K::ImageName, move |i: &Instance, l| late_image_cell(i, l, boot))
         .sort_text(|i| i.image_name.clone().unwrap_or_default()),
         col(K::IpAddress, |i: &Instance, _| view! { <IpList addresses=i.addresses.clone()/> }),
@@ -219,7 +230,7 @@ pub fn InstancesPage() -> impl IntoView {
     ];
     let columns = StoredValue::new(columns);
     let select = Select {
-        key: |i: &Instance| Some((i.id.clone(), i.name.clone())),
+        key: select_key,
         picked: RwSignal::new(Vec::new()),
     };
     view! {
@@ -273,6 +284,20 @@ mod tests {
             "a and b fill a chunk; c would make 51, so it starts the next; a server is never split; rows without volumes ask nothing"
         );
         assert!(boot_chunks(&[]).is_empty());
+    }
+
+    #[test]
+    fn deleted_rows_cannot_be_picked() {
+        use crate::components::ops::testing::instance;
+        let live = instance("ACTIVE", false);
+        assert_eq!(select_key(&live), Some(("i".into(), "n".into())));
+        assert_eq!(select_key(&instance("DELETED", false)), None);
+        assert!(
+            select_key(&instance("SOFT_DELETED", false)).is_some(),
+            "a soft-deleted server can still be restored or deleted"
+        );
+        assert!(ops::instance_items(Lang::EnUs, &instance("DELETED", false)).is_empty());
+        assert!(ops::admin_instance_items(Lang::EnUs, &instance("DELETED", false), Some("h")).is_empty());
     }
 
     #[test]

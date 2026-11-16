@@ -47,6 +47,15 @@ pub struct Instance {
     pub boot_volume_ids: Vec<String>,
 }
 
+impl Instance {
+    /// Gone for good: a row *Show deleted* brought back from Nova's database. It has no actions
+    /// and no detail page (Nova's `GET servers/{id}` answers 404). A `SOFT_DELETED` server is
+    /// not: it can still be restored, and Nova lists it anyway.
+    pub fn is_deleted(&self) -> bool {
+        self.status.eq_ignore_ascii_case("DELETED")
+    }
+}
+
 /// Volume IDs per `api::get_boot_images` call: a paged Instances page sends
 /// its rows' `boot_volume_ids` in chunks this size, so each GET's query string stays
 /// a few KiB and the *Image* cells fill in chunk by chunk.

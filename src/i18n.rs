@@ -108,6 +108,8 @@ translations! {
     PrefixNotAssociated => "A prefix for a resource type that isn't selected", "Un prefijo para un tipo de recurso no seleccionado";
     FilterFirstNote => "Give a filter to list the rows: this list waits for one before asking the cloud.", "Indica un filtro para ver las filas: esta lista espera uno antes de consultar la nube.";
     DeletedSuffix => "(Deleted)", "(Eliminado)";
+    ShowDeleted => "Show deleted", "Mostrar eliminadas";
+    ShowDeletedHelp => "Also list the deleted instances Nova still keeps in its database (until an operator archives them), to see what an instance was. They have no actions and no detail page.", "Lista también las instancias eliminadas que Nova aún guarda en su base de datos (hasta que un operador las archive), para ver qué era una instancia. No tienen acciones ni página de detalle.";
     ImageOwnerHelp => "The project that owns the image; empty: this one.", "El proyecto propietario de la imagen; vacío: este.";
     SelectChoice => "— Select —", "— Seleccione —";
     Admin => "Admin", "Administración";
@@ -1724,6 +1726,25 @@ pub fn page_range(lang: Lang, from: usize, shown: usize, count: Option<(u64, boo
         (Lang::EnUs, Some(n)) => format!("Items {range} of {n}"),
         (Lang::EsEs, None) => format!("Elementos {range}"),
         (Lang::EsEs, Some(n)) => format!("Elementos {range} de {n}"),
+    }
+}
+
+/// Tip of *Show deleted* for a user without the `admin` role: Nova shows them deleted servers
+/// only among what changed in the last `days` days (`[ui] deleted_instances_days`).
+pub fn show_deleted_tip(lang: Lang, days: u32) -> String {
+    match lang {
+        Lang::EnUs => format!(
+            "Also list the instances deleted in the last {days} days, to see what an instance was. \
+             Nova shows deleted instances to non-admins only among those that changed since then, so \
+             the list keeps only the instances that changed in that time. Deleted rows have no actions \
+             and no detail page."
+        ),
+        Lang::EsEs => format!(
+            "Lista también las instancias eliminadas en los últimos {days} días, para ver qué era una \
+             instancia. Nova solo muestra instancias eliminadas a quien no es administrador entre las \
+             que cambiaron desde entonces, así que la lista se queda con las instancias que cambiaron \
+             en ese tiempo. Las filas eliminadas no tienen acciones ni página de detalle."
+        ),
     }
 }
 

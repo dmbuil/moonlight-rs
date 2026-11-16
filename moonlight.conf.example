@@ -150,6 +150,10 @@ quota_edit = "all"
 # Most rows a full (unpaged) list may have: past it the page says the list is too large
 # instead of showing part of it. Full lists load 1000 rows per request. 0 = no cap.
 max_list_items = 10000
+# Compute > Instances' "Show deleted": admins see every deleted instance Nova still keeps;
+# other users see what changed in this many past days, deleted instances included
+# (Nova lists deleted servers to non-admins only through changes-since). 0 = hide it from them.
+deleted_instances_days = 7
 
 [launch]
 # Launch Instance defaults. (LAUNCH_INSTANCE_DEFAULTS, OPENSTACK_HYPERVISOR_FEATURES)

@@ -136,7 +136,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 121 | ✅ *Your session has expired* dialog: one *Sign In* button, no *Close* that leads to the login page anyway | — | XS | 76 |
 | 122 | ✅ Dialog help: long footnotes behind an (i), fuller (i) for complex fields, Horizon's contextual help in steps and dialogs ([#18]) | — | L | — |
 | 123 | ✅ *Launch Instance*: `[launch] hide_create_volume` hides *Create New Volume* and keeps `create_volume`'s choice | — | S | 118 |
-| 124 | Compute › Instances: a *Show deleted* toggle next to the filter box lists deleted instances too | P3 | M | 88 |
+| 124 | ✅ Compute › Instances: a *Show deleted* toggle next to the filter box lists deleted instances too | — | M | 88 |
 | 125 | Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password | P3 | XS | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
@@ -162,7 +162,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8234,6 +8234,41 @@ Decided (user, 2026-11-16): UI only, no server-side enforcement; `hide_create_vo
 `create_volume = false` is allowed but warned about when loading the settings.
 
 ## 124. Compute › Instances: a *Show deleted* toggle next to the filter box
+
+> ✅ **Done.** Tested OK in the browser by the user (2026-11-16). One change from the plan
+> below: admins use `changes-since` too, not `deleted=true`, because `deleted=true` lists
+> *only* deleted servers and the toggle adds them to the live ones. What exists:
+>
+> - Server: `paging::deleted_since` picks the `changes-since` (admins: `SINCE_EVER`, the
+>   epoch; others: now − `[ui] deleted_instances_days`; `0` = none), from the token's roles
+>   (`os::token_is_admin`), never the browser. `fetch::deleted_since` / `deleted_param` add it
+>   to `page_raw` and `count_rows` (paged) and to `servers_since` / `all_servers` (whole lists,
+>   `page_size = 0`); `api::list_instances` and `list_admin_instances` pass it through.
+> - Setting: `Prefs.deleted_instances_days` (default 7), `[ui] deleted_instances_days` in
+>   `settings.rs`, `moonlight.conf.example`, `moonlight.conf`, `CONFIGURATION.md`.
+> - Query string: `ListQuery.deleted` read from `deleted=1` (`pager::query_of`); a new filter
+>   or sort keeps it (`KEPT`, and a hidden input in the filter's GET form); `with_deleted`
+>   toggles it and drops the marker.
+> - Toggle: `pager::show_deleted` (an `aria-pressed` button, before the filter; hidden from
+>   non-admins when the window is `0`; tip `K::ShowDeletedHelp` for admins,
+>   `i18n::show_deleted_tip` with the days for others), placed by `paged_table` and
+>   `paged_extra` (paged and whole lists) on Project › Instances and by `AdminInstancesPage`.
+> - Deleted rows: `Instance::is_deleted` (`DELETED` only; `SOFT_DELETED` keeps its actions);
+>   `ops::allowed` returns nothing for them, `is_busy` is false (no polling, no task bar),
+>   `pages::instances::name_cell` shows plain text with no link, `select_key` gives no checkbox.
+> - Tests: `show_deleted_asks_nova_for_changes_since`,
+>   `show_deleted_survives_filters_and_sorts_and_drops_the_marker`,
+>   `deleted_rows_cannot_be_picked`, `deleted_instances_days_reaches_the_browser`, and new
+>   asserts in `allowed_actions_follow_horizon` and the `is_busy` test. Both clippy variants
+>   clean, 634 tests passed (2026-11-16).
+>
+> Browser, Project › Instances on the test cloud (2026-11-16): the toggle sits before the filter
+> at the same 34 px height as the filter box and *Refresh* (not `btn-sm`, which looked thin),
+> pressed while on; `?deleted=1` listed 90 rows, the deleted ones with plain names, a greyed
+> checkbox and no actions.
+>
+> Not measured by Moonlight's own checks: paging with `marker` through many deleted rows, and a
+> member token's `changes-since` window; worth a look if a cloud reports odd pages.
 
 **Goal.** A *Show deleted* button (a toggle, pressed while on) in the Instances toolbar, just
 before the filter box. When on, the list also shows the instances that were deleted and that

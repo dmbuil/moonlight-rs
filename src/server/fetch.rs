@@ -296,12 +296,21 @@ fn compute_mv() -> (http::HeaderName, http::HeaderValue) {
 
 /// The project's servers, `GET servers/detail` at compute 2.47.
 async fn servers(os: &AsyncOpenStack) -> R<Vec<Value>> {
+    servers_since(os, None).await
+}
+/// [`servers`], with the deleted ones too when `since` is a `changes-since` ([`deleted_since`]).
+async fn servers_since(os: &AsyncOpenStack, since: Option<&str>) -> R<Vec<Value>> {
     let (k, v) = compute_mv();
     list_where!(
         os,
         openstack_sdk::api::compute::v2::server::list_detailed_21,
         "servers/detail",
-        |b| b.header(k, v)
+        |b| {
+            b.header(k, v);
+            if let Some(s) = since {
+                b.changes_since(s);
+            }
+        }
     )
     .await
 }
@@ -411,11 +420,12 @@ fn soft(r: R<Vec<Value>>) -> Vec<Value> {
 }
 
 /// Instances list: servers (2.47), flavors, images and volumes in parallel, the
-/// last three only to resolve names (`soft`).
-pub async fn instances(os: &AsyncOpenStack) -> R<Timed<Vec<Instance>>> {
+/// last three only to resolve names (`soft`). `since`: also the deleted servers
+/// ([`deleted_since`]).
+pub async fn instances(os: &AsyncOpenStack, since: Option<&str>) -> R<Timed<Vec<Instance>>> {
     let t = Instant::now();
     let (sv, fl, im, vo) = tokio::join!(
-        servers(os),
+        servers_since(os, since),
         lookup("flavors", flavors(os)),
         lookup("images", images_raw(os)),
         lookup("volumes", volumes_raw(os))
@@ -2221,14 +2231,20 @@ fn forbidden(e: &AppError) -> bool {
 // Only for admins (`api::require_admin`). Lists take `all_tenants`, or no
 // project filter for Neutron and Glance, the opposite of the Project panels.
 
-/// Every project's servers (compute 2.47, as the Instances panel).
-async fn all_servers(os: &AsyncOpenStack) -> R<Vec<Value>> {
+/// Every project's servers (compute 2.47, as the Instances panel); `since`: also the
+/// deleted ones ([`deleted_since`]).
+async fn all_servers(os: &AsyncOpenStack, since: Option<&str>) -> R<Vec<Value>> {
     let (k, v) = compute_mv();
     list_where!(
         os,
         openstack_sdk::api::compute::v2::server::list_detailed_21,
         "servers/detail?all_tenants",
-        |b| b.header(k, v).all_tenants("true")
+        |b| {
+            b.header(k, v).all_tenants("true");
+            if let Some(s) = since {
+                b.changes_since(s);
+            }
+        }
     )
     .await
 }
@@ -2477,16 +2493,32 @@ pub async fn admin_flavors(os: &AsyncOpenStack) -> R<Timed<Vec<FlavorRow>>> {
     Ok(timed(t, rows))
 }
 
-/// Admin › Compute › Instances: every project's servers, with project and host.
-pub async fn admin_instances(os: &AsyncOpenStack) -> R<Timed<Vec<Owned<Instance>>>> {
+/// Admin › Compute › Instances: every project's servers, with project and host; `since`:
+/// also the deleted ones ([`deleted_since`]).
+pub async fn admin_instances(os: &AsyncOpenStack, since: Option<&str>) -> R<Timed<Vec<Owned<Instance>>>> {
     let t = Instant::now();
-    let (sv, im, vo, names) = tokio::join!(all_servers(os), images_raw(os), all_volumes(os), project_names(os, &[]));
+    let (sv, im, vo, names) = tokio::join!(all_servers(os, since), images_raw(os), all_volumes(os), project_names(os, &[]));
     let sv = sv?;
     let rows = mapping::instances(&sv, &[], &soft(im), &soft(vo));
     Ok(timed(
         t,
         mapping::owned(rows, |i| &i.id, &sv, "tenant_id", Some("OS-EXT-SRV-ATTR:host"), &names),
     ))
+}
+
+/// Nova's `changes-since` for *Show deleted* (`paging::deleted_since`), decided by the
+/// token's roles and `[ui] deleted_instances_days`, never by the browser; `None` when the list
+/// is as usual. Before `config::init` (unit tests) the default window.
+pub fn deleted_since(os: &AsyncOpenStack, list: PagedList, q: &ListQuery) -> Option<String> {
+    let days = super::config::try_state().map_or(crate::prefs::Prefs::default().deleted_instances_days, |st| {
+        st.config.prefs.deleted_instances_days
+    });
+    super::paging::deleted_since(list, q, super::os::token_is_admin(os), days, chrono::Utc::now())
+}
+
+/// [`deleted_since`] as a query parameter of a paged request.
+fn deleted_param(os: &AsyncOpenStack, list: PagedList, q: &ListQuery) -> Option<(&'static str, String)> {
+    deleted_since(os, list, q).map(|s| ("changes-since", s))
 }
 
 /// One page's raw rows, the next page's marker (`None` on the last page) and,
@@ -2516,7 +2548,8 @@ async fn page_raw(
     page_size: u32,
     cinder_mv: Option<(u16, u16)>,
 ) -> R<RawPage> {
-    let params = super::paging::params_in(list, project, q, page_size + 1)?;
+    let mut params = super::paging::params_in(list, project, q, page_size + 1)?;
+    params.extend(deleted_param(os, list, q));
     let (req, key, what) = list_request(list, params, cinder_mv, false);
     let body = get_json(os, req, what).await?;
     let count = body.get("count").and_then(Value::as_u64);
@@ -2617,7 +2650,8 @@ pub async fn count_rows(
         if t.elapsed() > COUNT_BUDGET {
             break;
         }
-        let params = super::paging::count_params(list, project, q, marker.as_deref(), COUNT_PAGE)?;
+        let mut params = super::paging::count_params(list, project, q, marker.as_deref(), COUNT_PAGE)?;
+        params.extend(deleted_param(os, list, q));
         let (req, key, what) = list_request(list, params, cinder_mv, true);
         let body = get_json(os, req, what).await?;
         if let Some(n) = body.get("count").and_then(Value::as_u64) {

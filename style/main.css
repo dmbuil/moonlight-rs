@@ -851,7 +851,7 @@ a.btn:not(.btn-primary) { color: var(--ink); }
 .topo-toolbar .seg { display: inline-flex; }
 .topo-toolbar .seg .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .topo-toolbar .seg .btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
-.topo-toolbar .btn[aria-pressed="true"] { background: var(--selected-bg); border-color: var(--accent); color: var(--accent); }
+.topo-toolbar .btn[aria-pressed="true"], .table-toolbar .btn[aria-pressed="true"] { background: var(--selected-bg); border-color: var(--accent); color: var(--accent); }
 .topo-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; }
 .topo-empty { padding: 28px 0; text-align: center; }
 .topo-empty-actions { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }

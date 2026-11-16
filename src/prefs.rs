@@ -29,6 +29,10 @@ pub struct Prefs {
     pub paged_lists: PagedLists,
     /// `[ui] quota_edit`: who sees *Edit Quotas* on Project › Quotas.
     pub quota_edit: QuotaEdit,
+    /// `[ui] deleted_instances_days`: how far back Compute › Instances' *Show deleted* looks
+    /// for a user without the `admin` role (Nova lists them only what changed since then);
+    /// `0` hides the toggle from them. Admins always see every deleted server Nova keeps.
+    pub deleted_instances_days: u32,
     pub launch: LaunchPrefs,
     pub network: NetworkPrefs,
     pub images: ImagePrefs,
@@ -102,6 +106,7 @@ impl Default for Prefs {
             page_size: 100,
             paged_lists: PagedLists::Admin,
             quota_edit: QuotaEdit::All,
+            deleted_instances_days: 7,
             launch: LaunchPrefs::default(),
             network: NetworkPrefs::default(),
             images: ImagePrefs::default(),
@@ -571,6 +576,7 @@ mod tests {
         let p: Prefs = serde_json::from_str("{}").unwrap();
         assert_eq!(p, Prefs::default());
         assert_eq!(p.poll_interval_ms, 5000);
+        assert_eq!(p.deleted_instances_days, 7);
         assert!(p.launch.create_volume && !p.launch.config_drive && !p.launch.requires_keypair);
         assert!(!p.launch.hide_create_volume, "the user may choose by default");
         assert_eq!(p.launch.flavor_sort, FlavorSort::Ram);

@@ -23,7 +23,7 @@ pub(super) fn dialog_of(items: &[MenuItem], label: &str) -> Dialog {
     open()
 }
 
-pub(super) fn instance(status: &str, locked: bool) -> Instance {
+pub(crate) fn instance(status: &str, locked: bool) -> Instance {
     Instance {
         id: "i".into(),
         name: "n".into(),
