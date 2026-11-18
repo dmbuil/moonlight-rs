@@ -204,6 +204,7 @@ Horizon's `OPENSTACK_NEUTRON_NETWORK` and `ALLOWED_PRIVATE_SUBNET_CIDR`.
 | `[images] max_upload_gb` | `20` | Largest file *File* accepts, in GiB; checked before the upload starts and again by the server. | — |
 | `[images] reserved_properties` | `[]` | Image property keys that *Update Metadata* hides and that Moonlight refuses to write (on the server too), besides Glance's own `os_glance_*`, which are always reserved. The catalog picker leaves them out. | `IMAGE_RESERVED_CUSTOM_PROPERTIES` |
 | `[console] enabled` | `false` | Instance *Log* and *Console* tabs. Both are Nova POSTs, sent only when this is on **and** `[writes] mode = on`; dry-run shows the request. | — |
+| `[images] pills` | `[]` | Custom property keys shown as small pills under each image's name, in this order, in the Images list and in *Launch Instance* › *Source*. The pill shows the property's value and, on hover, its name; an image without the property gets no pill. Glance's own fields (`disk_format`…) are not metadata and never show. The *Source* filter also matches the values. | — |
 | `[console] type` | `auto` | Remote console: `auto` (VNC, then SPICE), `vnc` or `spice`. | `CONSOLE_TYPE` |
 | `[console] log_length` | `35` | Lines the *Log* tab shows first. | `INSTANCE_LOG_LENGTH` |
 | `[key_manager] allow_payload` | `false` | *Show Payload* on a secret's page (`key-manager` plugin): the secret material reaches the browser, fetched on click only, never cached, and wiped from Moonlight's memory when dropped. | — |

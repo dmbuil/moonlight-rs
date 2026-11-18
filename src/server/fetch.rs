@@ -549,7 +549,8 @@ pub async fn project_names(os: &AsyncOpenStack, mine: &[ProjectRef]) -> std::col
 pub async fn images(os: &AsyncOpenStack, project_id: &str, mine: &[ProjectRef]) -> R<Timed<Vec<Image>>> {
     let t = Instant::now();
     let (im, names) = tokio::join!(images_raw(os), project_names(os, mine));
-    Ok(timed(t, mapping::images(&im?, project_id, &names)))
+    let pills = &super::config::state().config.prefs.images.pills;
+    Ok(timed(t, mapping::images(&im?, project_id, &names, pills)))
 }
 
 /// Nova microversion for key pairs: 2.2 adds `type`. Not higher: from 2.35
@@ -3089,7 +3090,7 @@ pub async fn admin_images_page(os: &AsyncOpenStack, q: &ListQuery, page_size: u3
     );
     let RawPage { rows: im, next, .. } = page?;
     let rows = mapping::owned(
-        mapping::images_page(&im, "", &names),
+        mapping::images_page(&im, "", &names, &[]),
         |i| &i.id,
         &im,
         "owner",
@@ -3343,7 +3344,12 @@ pub async fn images_page(
     Ok(timed(
         t,
         Page {
-            rows: mapping::images_page(&im, project_id, &names),
+            rows: mapping::images_page(
+                &im,
+                project_id,
+                &names,
+                &super::config::state().config.prefs.images.pills,
+            ),
             next,
             count: None,
             paged: true,
@@ -3358,7 +3364,7 @@ pub async fn admin_images(os: &AsyncOpenStack) -> R<Timed<Vec<Owned<Image>>>> {
     let t = Instant::now();
     let (im, names) = tokio::join!(images_raw(os), project_names(os, &[]));
     let im = im?;
-    let rows = mapping::images(&im, "", &names);
+    let rows = mapping::images(&im, "", &names, &[]);
     Ok(timed(t, mapping::owned(rows, |i| &i.id, &im, "owner", None, &names)))
 }
 
@@ -4315,8 +4321,14 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
             let l = &super::config::state().config.prefs.launch;
             mapping::flavor_choices(&flavors(os).await?, l.flavor_sort, l.flavor_sort_reverse)
         }
-        ChoiceSet::LaunchImages => mapping::image_choices(&launch_images_raw(os, project_id).await?, false),
-        ChoiceSet::InstanceSnapshots => mapping::image_choices(&launch_images_raw(os, project_id).await?, true),
+        ChoiceSet::LaunchImages => {
+            let pills = &super::config::state().config.prefs.images.pills;
+            mapping::image_choices(&launch_images_raw(os, project_id).await?, false, pills)
+        }
+        ChoiceSet::InstanceSnapshots => {
+            let pills = &super::config::state().config.prefs.images.pills;
+            mapping::image_choices(&launch_images_raw(os, project_id).await?, true, pills)
+        }
         ChoiceSet::FreePorts => {
             use openstack_sdk::api::network::v2::port::list as ports;
             mapping::free_port_choices(&list_where!(os, ports, "ports?tenant_id", |b| b.tenant_id(project_id)).await?)

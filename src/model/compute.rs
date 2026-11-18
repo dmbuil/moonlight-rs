@@ -241,9 +241,36 @@ pub struct Image {
     /// `web-download` / `glance-direct` errors); `None` when it has not.
     #[serde(default)]
     pub import_failed: Option<String>,
+    /// The `[images] pills` this image has, `(key, value)` in config order. Filled by the
+    /// server with the row, so the list needs no other request to show them.
+    #[serde(default)]
+    pub pills: Vec<(String, String)>,
+}
+
+/// The pills of one image: `(key, value)` for each of `keys` (in that order) the image has;
+/// `get` looks a property up. Empty values and absent keys give no pill.
+pub fn image_pills(keys: &[String], get: impl Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+    keys.iter()
+        .filter_map(|k| get(k).filter(|v| !v.is_empty()).map(|v| (k.clone(), v)))
+        .collect()
 }
 
 impl Image {
+    /// The `keys` this image has as pills (what [`Image::pills`] holds once filled).
+    pub fn pills_for(&self, keys: &[String]) -> Vec<(String, String)> {
+        image_pills(keys, |k| self.property(k).map(str::to_string))
+    }
+
+    /// The image's description: the `description` property (Glance's convention), or
+    /// `Description` as some clouds spell it; `None` when neither has text.
+    pub fn description(&self) -> Option<&str> {
+        ["description", "Description"]
+            .into_iter()
+            .filter_map(|k| self.property(k))
+            .map(str::trim)
+            .find(|d| !d.is_empty())
+    }
+
     /// A custom property (`description`, `architecture`, `kernel_id`…).
     pub fn property(&self, k: &str) -> Option<&str> {
         self.properties.iter().find(|(p, _)| p == k).map(|(_, v)| v.as_str())
@@ -622,5 +649,78 @@ mod port_settings_tests {
                 ..
             })
         ));
+    }
+}
+
+#[cfg(test)]
+mod image_pills_tests {
+    use super::*;
+
+    #[test]
+    fn an_image_shows_only_the_configured_keys_it_has_in_config_order() {
+        let im = Image {
+            id: "i".into(),
+            name: "n".into(),
+            is_snapshot: false,
+            status: "active".into(),
+            visibility: "private".into(),
+            protected: false,
+            disk_format: None,
+            size: None,
+            owned_by_project: true,
+            owner_id: None,
+            owner_name: None,
+            properties: vec![
+                ("os_patch_date".into(), "2026-10-02".into()),
+                ("os_type".into(), "linux".into()),
+                ("empty".into(), String::new()),
+            ],
+            min_disk_gb: None,
+            min_ram_mb: None,
+            import_failed: None,
+            pills: Vec::new(),
+        };
+        let keys = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+        assert_eq!(
+            im.pills_for(&keys(&["os_type", "missing", "os_patch_date", "empty"])),
+            vec![pair("os_type", "linux"), pair("os_patch_date", "2026-10-02")]
+        );
+        assert!(im.pills_for(&[]).is_empty(), "no keys, no pills");
+    }
+
+    #[test]
+    fn the_description_is_either_spelling_and_never_blank() {
+        let mut im = Image {
+            id: "i".into(),
+            name: "n".into(),
+            is_snapshot: false,
+            status: "active".into(),
+            visibility: "private".into(),
+            protected: false,
+            disk_format: None,
+            size: None,
+            owned_by_project: true,
+            owner_id: None,
+            owner_name: None,
+            properties: Vec::new(),
+            min_disk_gb: None,
+            min_ram_mb: None,
+            import_failed: None,
+            pills: Vec::new(),
+        };
+        assert_eq!(im.description(), None);
+        im.properties = vec![("Description".into(), " Debian 13 ".into())];
+        assert_eq!(im.description(), Some("Debian 13"), "capitalised, trimmed");
+        im.properties = vec![
+            ("Description".into(), "upper".into()),
+            ("description".into(), "lower".into()),
+        ];
+        assert_eq!(im.description(), Some("lower"), "the usual spelling first");
+        im.properties = vec![
+            ("description".into(), "  ".into()),
+            ("Description".into(), "second".into()),
+        ];
+        assert_eq!(im.description(), Some("second"), "a blank one is skipped");
     }
 }

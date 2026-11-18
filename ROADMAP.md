@@ -138,6 +138,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 123 | ✅ *Launch Instance*: `[launch] hide_create_volume` hides *Create New Volume* and keeps `create_volume`'s choice | — | S | 118 |
 | 124 | ✅ Compute › Instances: a *Show deleted* toggle next to the filter box lists deleted instances too | — | M | 88 |
 | 125 | ✅ Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password | — | XS | — |
+| 130 | ✅ Image metadata pills under the image's name in Compute › Images and the *Launch Instance* › *Source* step, from a `[images]` list of property keys | — | M | 56 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -162,7 +163,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 130**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8370,6 +8371,78 @@ it.
 - Tests: none for the markup beyond `cargo clippy` for both targets; browser check on the
   login page in light and dark, desktop and phone width, with keyboard (Tab, Space toggles,
   focus ring) and with `password_reveal = false`.
+
+## 130. Image metadata pills under the image's name (list and *Launch Instance*)
+
+> ✅ **Done.** `[images] pills` (`ImagePrefs.pills`, `src/prefs.rs`, default empty; trimmed, blanks
+> and repeats dropped in `src/server/settings.rs`). Pure `image_pills(keys, get)` and
+> `Image::pills_for` and the `Image.pills` field in `src/model/compute.rs`; `Choice.tags`
+> (`src/model/choice.rs`) filled by
+> `image_choices(raw, snapshots, pills)` (`src/server/mapping/choices.rs`, Glance's core fields
+> are never metadata; callers in `src/server/fetch.rs` pass the config). Widget
+> `widgets::ImagePills` (`.image-pill` in `style/main.css`: outlined, neutral, ellipsis at 18em);
+> `title` is the property name, or `key: value` for a value over 24 characters. Used in the
+> Images list's *Name* column (`src/pages/lists.rs`, from `Image.pills`, which `images_page`
+> fills with the row so no session-info request is awaited) and in the first
+> column of the pick table (`src/components/pick.rs`), whose filter also matches pill values.
+> Docs in `moonlight.conf.example`, `moonlight.conf` and `CONFIGURATION.md`. Tests: config
+> default, cleaning and wrong type; `Image::pills_for` (order, absent and empty keys, no keys);
+> `image_choices` pills (core field ignored, number as text); filter matches values. Both clippy
+> variants clean, 649 tests passed (`rows_carry_the_configured_pills` added). Browser (dry-run,
+> dialog opened and cancelled): Images list
+> shows `linux` / `20261023` pills only on images that have the property, hover titles are
+> `os_type` / `os_patch_date`; the wizard's *Source* step shows them in *Allocated* and
+> *Available*, and the filter `windows` finds images by pill value. Not checked: phone width and
+> the dark theme. Extra (user, 2026-11-18): in the Images list, hovering the image name shows its
+> description (`Image::description()`: the `description` property, else `Description`, trimmed,
+> blank skipped; the link's `title`; no new request, `properties` is on the row); test
+> `the_description_is_either_spelling_and_never_blank`, 650 tests passed, 22 of 24 names on the
+> test cloud's list had one. Decided: no start-up warning for a pill key that
+> `reserved_properties` hides
+> (the server does not strip reserved keys from the list, so it would be wrong).
+
+**Goal.** Under each image's name, a small pill per configured metadata key, showing the
+property's value (`ubuntu`, `2026-10-02`), so users tell images apart at a glance (OS family,
+patch date) without opening the row drawer (item 56). The keys come from a config array, for
+example `[images] pills = ["os_type", "os_patch_date"]`, in that order; empty by default (no
+pills). A key the image does not have shows no pill (no empty pill, no dash). On hover (`title`)
+the pill shows the metadata name (`os_patch_date`). The same pills appear in the *Image Source*
+(*Source*) step of *Launch Instance*, under the name in the image pick table. Horizon has
+nothing like it.
+
+**Implementation.**
+
+- Config: `ImagePrefs.pills: Vec<String>` in `src/prefs.rs` (`[images]`, next to
+  `reserved_properties`; `#[serde(default)]`, default empty). Document in `moonlight.conf.example`,
+  `moonlight.conf` and `CONFIGURATION.md`. Validation: drop blanks and duplicates (no start-up
+  warning, see the progress note). Pills show only custom properties; a core field such as
+  `disk_format` is not a metadata key (said in the docs).
+- Images list (`src/pages/lists.rs`, the *Name* column of `ImagesPage`, line ~196):
+  `Image.properties` already holds every custom property, so the client only needs the keys:
+  the page reads `[images] pills` from the prefs context (see how `reserved_properties` or
+  `allow_location` reach the UI) and renders the name link plus a `ImagePills` widget below it
+  (a `div` with the pills; nothing when none match). Filter and sort stay on the name.
+- Wizard (`src/model/choice.rs`, `src/server/mapping/choices.rs`): `image_choices` builds the
+  rows from raw Glance JSON and has no prefs, so add a `#[serde(default)] pub tags:
+  Vec<(String, String)>` to `Choice` (key, value; only present keys, in config order) filled by
+  `image_choices(raw, snapshots, pills)` from the same list (its callers pass
+  `prefs.images.pills`). Render it in the pick table's name cell (`src/components/pick.rs`) with
+  the same widget. The pick table's filter may match the pill values too (decide when building;
+  cheap: append them to the searched text).
+- Widget: `widgets::ImagePills { pills: Vec<(String, String)> }` in `src/components/widgets.rs`
+  next to `AzPill`: a neutral outline pill (not a per-value colour; AZ colours mean zones),
+  `title` = the metadata name (`os_patch_date`), as asked; long values are truncated with an
+  ellipsis, and then the `title` becomes `key: value` so the full value stays reachable. CSS
+  `.image-pill` in `style/main.css` (small, muted, in a wrapping flex row, dark theme through
+  `light-dark`).
+- Tests: a pure `fn image_pills(properties, keys) -> Vec<(String, String)>` in the model (config
+  order, absent keys skipped, empty keys list gives none, non-string values as the mapping
+  already renders them) used by both places; `image_choices` test with two images, one lacking a
+  key; `ImagePrefs` default and parse test, plus the start-up warning. Browser check, dry-run
+  only: Compute › Images and the wizard's *Source* step, with an image with both, one and none of
+  the properties; hover shows the key; phone width wraps; dark theme.
+- Open questions: whether the value or the key labels the pill (decided here: the value, with
+  the key on hover, as asked); the wizard's filter matching pill values.
 
 ## Also pending (from the PoC)
 

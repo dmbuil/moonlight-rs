@@ -4,8 +4,13 @@ use super::*;
 
 /// Images with visibility and owner (`project_names` for owners other than
 /// `project_id`): the project's own first, then by name.
-pub fn images(raw: &[Value], project_id: &str, project_names: &HashMap<String, String>) -> Vec<Image> {
-    let mut out = images_page(raw, project_id, project_names);
+pub fn images(
+    raw: &[Value],
+    project_id: &str,
+    project_names: &HashMap<String, String>,
+    pills: &[String],
+) -> Vec<Image> {
+    let mut out = images_page(raw, project_id, project_names, pills);
     // Project images first, then alphabetical (Horizon groups them by tab)
     out.sort_by(|a, b| {
         b.owned_by_project
@@ -16,8 +21,13 @@ pub fn images(raw: &[Value], project_id: &str, project_names: &HashMap<String, S
 }
 
 /// [`images`] in Glance's order, for a paged list: the next page's
-/// marker is the last row.
-pub fn images_page(raw: &[Value], project_id: &str, project_names: &HashMap<String, String>) -> Vec<Image> {
+/// marker is the last row. `pills`: the `[images] pills` keys each row carries (`&[]`: none).
+pub fn images_page(
+    raw: &[Value],
+    project_id: &str,
+    project_names: &HashMap<String, String>,
+    pills: &[String],
+) -> Vec<Image> {
     raw.iter()
         .map(|im| Image {
             id: s(im, "id").unwrap_or_default(),
@@ -35,6 +45,11 @@ pub fn images_page(raw: &[Value], project_id: &str, project_names: &HashMap<Stri
             min_disk_gb: i(im, "min_disk"),
             min_ram_mb: i(im, "min_ram"),
             import_failed: s_ne(im, "os_glance_failed_import"),
+            pills: Vec::new(),
+        })
+        .map(|mut i| {
+            i.pills = i.pills_for(pills);
+            i
         })
         .collect()
 }
@@ -95,7 +110,7 @@ fn image_properties(im: &Value) -> Vec<(String, String)> {
 
 /// The image detail page, with the owner's project name.
 pub fn image_detail(im: &Value, project_id: &str, project_names: &HashMap<String, String>) -> ImageDetail {
-    let image = images(std::slice::from_ref(im), project_id, project_names).remove(0);
+    let image = images(std::slice::from_ref(im), project_id, project_names, &[]).remove(0);
     let properties = image.properties.clone();
     ImageDetail {
         owner: s_ne(im, "owner"),
@@ -116,10 +131,26 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn rows_carry_the_configured_pills() {
+        let raw = [
+            json!({"id": "a", "os_type": "linux", "disk_format": "raw"}),
+            json!({"id": "b"}),
+        ];
+        let keys = ["os_type", "disk_format"].map(String::from);
+        let out = images_page(&raw, "p", &HashMap::new(), &keys);
+        assert_eq!(
+            out[0].pills,
+            vec![("os_type".to_string(), "linux".to_string())],
+            "core fields are not metadata"
+        );
+        assert!(out[1].pills.is_empty() && images_page(&raw, "p", &HashMap::new(), &[])[0].pills.is_empty());
+    }
+
+    #[test]
     fn failed_import_reason_comes_from_os_glance_failed_import() {
         let ok = json!({"id": "a", "status": "queued", "os_glance_failed_import": ""});
         let bad = json!({"id": "b", "status": "queued", "os_glance_failed_import": "Unable to download: 404"});
-        let out = images(&[ok, bad], "p", &HashMap::new());
+        let out = images(&[ok, bad], "p", &HashMap::new(), &[]);
         let by = |id: &str| out.iter().find(|i| i.id == id).unwrap().import_failed.clone();
         assert_eq!(by("a"), None, "an empty value is not a failure");
         assert_eq!(by("b").as_deref(), Some("Unable to download: 404"));
@@ -131,7 +162,7 @@ mod tests {
             json!({"id": "1", "name": "ubuntu", "owner": "other", "visibility": "public", "size": 1024}),
             json!({"id": "2", "name": "backup", "owner": "p1", "visibility": "private", "image_type": "snapshot", "protected": true}),
         ];
-        let out = images(&raw, "p1", &HashMap::new());
+        let out = images(&raw, "p1", &HashMap::new(), &[]);
         assert_eq!(out[0].name, "backup");
         assert!(out[0].is_snapshot && out[0].protected && out[0].owned_by_project);
         assert_eq!(out[1].size, Some(1024));
@@ -162,6 +193,7 @@ mod tests {
             ],
             "p1",
             &names,
+            &[],
         );
         assert_eq!(out[0].owner_name.as_deref(), Some("Proyecto A"));
         assert_eq!(

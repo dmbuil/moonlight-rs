@@ -811,6 +811,8 @@ small.over { color: var(--danger-ink); }
 @media (prefers-reduced-motion: reduce) {
   .busy-bar { animation: none; transform: none; width: 100%; background: repeating-linear-gradient(45deg, var(--primary) 0 6px, var(--busy-stripe) 6px 12px); }
 }
+.image-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.image-pill { display: inline-block; max-width: 18em; padding: 0 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); font-size: 11px; font-weight: 500; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .page-header h1 .busy { width: 120px; margin-left: 0; }
 /* Beside a status pill, not under it: a short bar on the pill's line. */
 .pill + .busy { display: inline-block; vertical-align: middle; width: 56px; min-width: 0; margin-left: 8px; }

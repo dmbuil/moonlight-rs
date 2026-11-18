@@ -32,7 +32,7 @@ pub(super) fn sorted(mut out: Vec<Choice>) -> Vec<Choice> {
 
 /// Active images for the launch *Source* step: Name, Updated, Size, Format,
 /// Visibility. `snapshots` picks Horizon's *Instance Snapshot* list instead.
-pub fn image_choices(raw: &[Value], snapshots: bool) -> Vec<Choice> {
+pub fn image_choices(raw: &[Value], snapshots: bool, pills: &[String]) -> Vec<Choice> {
     sorted(
         raw.iter()
             .filter(|im| s(im, "status").as_deref() == Some("active"))
@@ -56,6 +56,10 @@ pub fn image_choices(raw: &[Value], snapshots: bool) -> Vec<Choice> {
                         ..Default::default()
                     },
                     hint: None,
+                    tags: image_pills(pills, |k| {
+                        let v = im.get(k).filter(|_| !is_image_core_key(k))?;
+                        Some(v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()))
+                    }),
                 })
             })
             .collect(),
@@ -92,6 +96,7 @@ pub fn flavor_choices(raw: &[Value], sort: crate::prefs::FlavorSort, reverse: bo
                     ..Default::default()
                 },
                 hint: None,
+                tags: Vec::new(),
             })
         })
         .collect();
@@ -134,6 +139,7 @@ pub fn volume_choices(raw: &[Value]) -> Vec<Choice> {
                         ..Default::default()
                     },
                     hint: None,
+                    tags: Vec::new(),
                 })
             })
             .collect(),
@@ -160,6 +166,7 @@ pub fn snapshot_choices(raw: &[Value]) -> Vec<Choice> {
                         ..Default::default()
                     },
                     hint: None,
+                    tags: Vec::new(),
                 })
             })
             .collect(),
@@ -697,7 +704,7 @@ mod tests {
             json!({"id": "s1", "name": "Instalacion", "status": "active", "image_type": "snapshot", "size": 0}),
             json!({"id": "q", "name": "queued", "status": "queued"}),
         ];
-        let imgs = image_choices(&raw, false);
+        let imgs = image_choices(&raw, false, &[]);
         assert_eq!(imgs.len(), 1);
         assert_eq!(
             imgs[0].cells,
@@ -707,8 +714,34 @@ mod tests {
             (imgs[0].facts.min_disk_gb, imgs[0].facts.size_bytes),
             (Some(20), Some(7_800_000_000))
         );
-        let snaps = image_choices(&raw, true);
+        let snaps = image_choices(&raw, true, &[]);
         assert_eq!(snaps.iter().map(|c| c.value.as_str()).collect::<Vec<_>>(), vec!["s1"]);
+    }
+
+    #[test]
+    fn launch_images_carry_the_configured_pills() {
+        let raw = vec![
+            json!({"id": "a", "name": "A", "status": "active", "os_type": "linux", "os_patch_date": "2026-10-02"}),
+            json!({"id": "b", "name": "B", "status": "active", "os_patch_date": "", "name_x": 1, "os_version": 9}),
+            json!({"id": "c", "name": "C", "status": "active", "size": 1}),
+        ];
+        let keys: Vec<String> = ["os_type", "os_patch_date", "os_version", "size"]
+            .map(String::from)
+            .to_vec();
+        let by = |id: &str, v: &[Choice]| v.iter().find(|c| c.value == id).unwrap().tags.clone();
+        let c = image_choices(&raw, false, &keys);
+        let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+        assert_eq!(
+            by("a", &c),
+            vec![pair("os_type", "linux"), pair("os_patch_date", "2026-10-02")]
+        );
+        assert_eq!(
+            by("b", &c),
+            vec![pair("os_version", "9")],
+            "empty value skipped, numbers as text"
+        );
+        assert!(by("c", &c).is_empty(), "Glance's own fields are not metadata");
+        assert!(image_choices(&raw, false, &[]).iter().all(|c| c.tags.is_empty()));
     }
 
     #[test]

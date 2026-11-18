@@ -435,6 +435,9 @@ pub struct ImagePrefs {
     /// Image property keys the metadata editors hide and the server never sends (Horizon's
     /// `IMAGE_RESERVED_CUSTOM_PROPERTIES`). `os_glance_*` is always reserved.
     pub reserved_properties: Vec<String>,
+    /// Custom property keys shown as pills under each image's name (Images list, *Launch
+    /// Instance* › *Source*), in this order; an image without the key gets no pill.
+    pub pills: Vec<String>,
 }
 
 /// `[images] upload`: Horizon's `HORIZON_IMAGES_UPLOAD_MODE` (`off`, `legacy`, `direct`).
@@ -471,6 +474,7 @@ impl Default for ImagePrefs {
             upload: ImageUpload::Off,
             max_upload_gb: 20,
             reserved_properties: Vec::new(),
+            pills: Vec::new(),
         }
     }
 }

@@ -401,6 +401,28 @@ pub fn AzPills(names: Vec<String>) -> impl IntoView {
     view! { <span class="az-pills">{names.into_iter().map(|n| view! { <AzPill name=Some(n)/> " " }).collect_view()}</span> }.into_any()
 }
 
+/// Longest value an [`ImagePills`] pill spells out before the `title` carries `key: value`.
+const PILL_VALUE_MAX: usize = 24;
+
+/// The `[images] pills` of an image: a small outlined pill per `(property, value)` under its
+/// name; nothing when there are none. The `title` is the property's name (the value, once the
+/// stylesheet has cut it short, too).
+#[component]
+pub fn ImagePills(pills: Vec<(String, String)>) -> impl IntoView {
+    if pills.is_empty() {
+        return ().into_any();
+    }
+    view! {
+        <div class="image-pills">
+            {pills.into_iter().map(|(k, v)| {
+                let title = if v.chars().count() > PILL_VALUE_MAX { format!("{k}: {v}") } else { k };
+                view! { <span class="image-pill" title=title>{v}</span> }
+            }).collect_view()}
+        </div>
+    }
+    .into_any()
+}
+
 /// Horizon-style padlock next to an instance name.
 #[component]
 pub fn LockIcon(locked: bool) -> impl IntoView {

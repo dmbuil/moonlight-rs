@@ -222,6 +222,10 @@ reserved_properties = []
 
 [console]
 # Instance Log and Console tabs. Both are Nova POSTs that don't change the instance (each
+# Property keys shown as small pills under each image's name (Images list, Launch Instance's
+# Source step), in this order; the value is the pill, the key shows on hover. An image without
+# the key gets no pill. Custom properties only. e.g. ["os_type", "os_patch_date"]
+pills = []
 # console call makes a console token); sent only when this is true AND [writes] mode = "on".
 enabled = false
 # Remote console: auto (VNC, then SPICE) | vnc | spice. (CONSOLE_TYPE)

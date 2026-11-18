@@ -1018,6 +1018,14 @@ impl Settings {
                 console: self.console.clone(),
                 admin: AdminPrefs {
                     flavor_edit: self.admin.flavor_edit,
+                    pills: {
+                        let mut seen = std::collections::HashSet::new();
+                        img.pills
+                            .iter()
+                            .map(|k| k.trim().to_string())
+                            .filter(|k| !k.is_empty() && seen.insert(k.clone()))
+                            .collect()
+                    },
                     filter_first,
                 },
             },
@@ -1292,6 +1300,25 @@ mod tests {
         use crate::model::PagedList;
         let none = parse("").unwrap().prefs.admin;
         assert!(
+    #[test]
+    fn image_pills_default_to_none_and_are_cleaned() {
+        assert!(
+            parse("").unwrap().prefs.images.pills.is_empty(),
+            "no pills unless configured"
+        );
+        let p = parse("[images]\npills = [\"os_type\", \" os_patch_date \", \"\", \"os_type\"]")
+            .unwrap()
+            .prefs
+            .images
+            .pills;
+        assert_eq!(
+            p,
+            vec!["os_type", "os_patch_date"],
+            "trimmed, blanks and repeats dropped, in order"
+        );
+        assert!(parse("[images]\npills = 1").is_err(), "must be a list");
+    }
+
             !none.flavor_edit && none.filter_first.is_empty(),
             "both off by default, as Horizon"
         );

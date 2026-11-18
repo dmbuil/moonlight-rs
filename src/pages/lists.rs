@@ -13,8 +13,8 @@ use crate::components::ops;
 use crate::components::pager::{LateNames, PagerState, late_label, late_text, load_late, paged_table, use_list_query};
 use crate::components::table::{Col, DataTable, Select, available, col};
 use crate::components::widgets::{
-    AzPill, AzPills, Busy, Copyable, PageHeader, Pill, Skeleton, Tone, dash, data_url, image_busy, poll_while_busy,
-    render, short_time, snapshot_busy, volume_busy,
+    AzPill, AzPills, Busy, Copyable, ImagePills, PageHeader, Pill, Skeleton, Tone, dash, data_url, image_busy,
+    poll_while_busy, render, short_time, snapshot_busy, volume_busy,
 };
 use crate::i18n::{
     K, Lang, bytes, image_visibility, key_manager_term, resource_status, server_group_policy, t, use_i18n,
@@ -193,10 +193,16 @@ paged_page!(
     PagedList::Images,
     Image,
     |_: LateNames| vec![
-        col(K::Name, |i: &Image, _| link(
-            format!("/project/images/{}", i.id),
-            i.name.clone()
-        ))
+        col(K::Name, |i: &Image, _| {
+            let href = format!("/project/images/{}", i.id);
+            // Hovering the name shows the image's description, when it has one.
+            let title = i.description().map(str::to_string);
+            let (name, pills) = (i.name.clone(), i.pills.clone());
+            view! {
+                <A href=href attr:class="strong" attr:title=title>{name}</A>
+                <ImagePills pills=pills/>
+            }
+        })
         .sort_text(|i| i.name.clone()),
         col(K::Type, |i: &Image, l| t(
             l,

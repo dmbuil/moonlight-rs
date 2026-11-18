@@ -160,7 +160,7 @@ fn bench_images(c: &mut Criterion) {
         let im = images(n);
         g.throughput(Throughput::Elements(n as u64));
         g.bench_with_input(BenchmarkId::new("map", n), &n, |b, _| {
-            b.iter(|| mapping::images(black_box(&im), PROJECT, &names))
+            b.iter(|| mapping::images(black_box(&im), PROJECT, &names, &[]))
         });
     }
     g.finish();

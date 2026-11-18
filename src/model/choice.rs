@@ -139,6 +139,10 @@ pub struct Choice {
     /// sorting by label ignore it. `None`: the label alone.
     #[serde(default)]
     pub hint: Option<String>,
+    /// `[images] pills` of an image: `(property, value)`, shown under the name and matched by
+    /// the filter.
+    #[serde(default)]
+    pub tags: Vec<(String, String)>,
 }
 
 impl Choice {

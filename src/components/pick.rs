@@ -4,6 +4,7 @@
 
 use leptos::prelude::*;
 
+use crate::components::widgets::ImagePills;
 use crate::i18n::{K, Lang, resource_status, use_i18n};
 use crate::model::{Choice, ChoiceSet};
 
@@ -163,7 +164,8 @@ pub fn move_up(value: &str, id: &str) -> String {
 /// Whether every word of `query` is in the choice's label or cells (case-insensitive): the
 /// *Available* table's filter.
 fn matches(c: &Choice, query: &str) -> bool {
-    let hay = format!("{} {}", c.label, c.cells.join(" ")).to_lowercase();
+    let tags: Vec<&str> = c.tags.iter().map(|(_, v)| v.as_str()).collect();
+    let hay = format!("{} {} {}", c.label, c.cells.join(" "), tags.join(" ")).to_lowercase();
     query.split_whitespace().all(|t| hay.contains(&t.to_lowercase()))
 }
 
@@ -213,7 +215,7 @@ pub fn PickTable(
             .map(|(i, (raw, f))| {
                 let text = cell(l, f, &raw);
                 if i == 0 {
-                    view! { <td class="strong">{text}</td> }.into_any()
+                    view! { <td class="strong">{text}<ImagePills pills=c.tags.clone()/></td> }.into_any()
                 } else {
                     view! { <td>{text}</td> }.into_any()
                 }
@@ -330,6 +332,16 @@ pub fn PickTable(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_filter_matches_pill_values() {
+        let c = Choice {
+            tags: vec![("os_type".into(), "Windows".into())],
+            ..Choice::new("i", "Server image")
+        };
+        assert!(matches(&c, "windows") && matches(&c, "server win"));
+        assert!(!matches(&c, "os_type"), "the key is not text of the row");
+    }
 
     #[test]
     fn single_pick_replaces_and_multi_appends_once() {

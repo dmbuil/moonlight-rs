@@ -789,6 +789,7 @@ mod tests {
             min_disk_gb: Some(5),
             min_ram_mb: None,
             import_failed: None,
+            pills: Vec::new(),
         };
         let formats = vec!["raw".to_string(), "qcow2".to_string()];
         let d = edit_image_dialog(Lang::EnUs, &im, false, &formats);
@@ -876,6 +877,7 @@ mod tests {
             min_disk_gb: None,
             min_ram_mb: None,
             import_failed: None,
+            pills: Vec::new(),
         };
         assert!(
             image_items(Lang::EnUs, &im)

@@ -1576,7 +1576,7 @@ mod tests {
             json!({"id": "i1", "name": "alpha"}),
         ];
         let names = HashMap::from([("p".to_string(), "proj".to_string())]);
-        let page = images_page(&images, "", &names);
+        let page = images_page(&images, "", &names, &[]);
         assert_eq!(
             (page[0].id.as_str(), page[0].owner_name.as_deref()),
             ("i2", Some("proj")),
