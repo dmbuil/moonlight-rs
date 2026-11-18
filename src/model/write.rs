@@ -106,6 +106,10 @@ pub struct ActionOutcome {
     /// exists): *Create Image* › *File* uploads to it.
     #[serde(default)]
     pub created: Option<String>,
+    /// The `openstack` commands that do the same (`[ui] show_cli`; empty otherwise, and for
+    /// an action without an equivalent).
+    #[serde(default)]
+    pub cli: Vec<String>,
 }
 
 impl ActionOutcome {
@@ -501,6 +505,7 @@ mod request_tests {
             secret: None,
             results: vec![],
             created: None,
+            cli: vec![],
         };
         assert_eq!(out.clone().shown(true).requests.len(), 1);
         assert!(out.shown(false).requests.is_empty(), "dry-run too");

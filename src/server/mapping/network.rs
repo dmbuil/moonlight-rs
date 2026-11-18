@@ -599,7 +599,13 @@ pub fn network_detail(net: &Value, subnets_raw: &[Value], ports: Vec<PortRow>, p
 }
 
 /// The router detail page; `interfaces` are its ports, already mapped.
-pub fn router_detail(r: &Value, networks_raw: &[Value], interfaces: Vec<PortRow>) -> RouterDetail {
+/// `qos_policy` is the gateway's policy as read (`None` when unreadable: its ID is shown).
+pub fn router_detail(
+    r: &Value,
+    networks_raw: &[Value],
+    interfaces: Vec<PortRow>,
+    qos_policy: Option<&Value>,
+) -> RouterDetail {
     let row = routers(std::slice::from_ref(r), networks_raw).remove(0);
     let gw = r.get("external_gateway_info").cloned().unwrap_or(Value::Null);
     RouterDetail {
@@ -609,6 +615,13 @@ pub fn router_detail(r: &Value, networks_raw: &[Value], interfaces: Vec<PortRow>
             .iter()
             .filter_map(|f| Some((s(f, "ip_address")?, s(f, "subnet_id").unwrap_or_default())))
             .collect(),
+        gateway_qos: s_ne(&gw, "qos_policy_id").map(|id| Ref {
+            name: qos_policy
+                .map(name_or_id)
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| id.clone()),
+            id,
+        }),
         interfaces,
         routes: arr(r, "routes")
             .iter()
@@ -1219,12 +1232,32 @@ mod tests {
         let r = json!({"id": "r", "name": "gw", "external_gateway_info": {"network_id": "ext", "enable_snat": true,
             "external_fixed_ips": [{"ip_address": "203.0.113.9", "subnet_id": "x"}]},
             "routes": [{"destination": "10.9.0.0/16", "nexthop": "10.0.0.1"}]});
-        let d = router_detail(&r, &[json!({"id": "ext", "name": "public"})], vec![]);
+        let d = router_detail(&r, &[json!({"id": "ext", "name": "public"})], vec![], None);
+        assert_eq!(d.gateway_qos, None);
         assert_eq!(d.row.external_network.as_deref(), Some("public"));
         assert_eq!(d.gateway_ips, vec![("203.0.113.9".into(), "x".into())]);
         assert_eq!(d.row.external_network_id.as_deref(), Some("ext"));
         assert_eq!(d.row.snat, Some(true));
         assert_eq!(d.routes, vec![("10.9.0.0/16".into(), "10.0.0.1".into())]);
+    }
+
+    #[test]
+    fn router_detail_names_the_gateway_qos_policy() {
+        let r = json!({"id": "r", "external_gateway_info": {"network_id": "ext", "qos_policy_id": "q1"}});
+        let name = |p: Option<&Value>| router_detail(&r, &[], vec![], p).gateway_qos.map(|q| (q.id, q.name));
+        assert_eq!(
+            name(Some(&json!({"id": "q1", "name": "gold"}))),
+            Some(("q1".into(), "gold".into()))
+        );
+        // Unreadable policy: the ID stands in for the name.
+        assert_eq!(name(None), Some(("q1".into(), "q1".into())));
+        // No policy, or a null gateway.
+        let none = |r: Value| router_detail(&r, &[], vec![], None).gateway_qos;
+        assert_eq!(
+            none(json!({"id": "r", "external_gateway_info": {"network_id": "ext", "qos_policy_id": null}})),
+            None
+        );
+        assert_eq!(none(json!({"id": "r", "external_gateway_info": null})), None);
     }
 
     #[test]

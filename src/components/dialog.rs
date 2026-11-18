@@ -1265,6 +1265,40 @@ pub fn RequestList(requests: Vec<crate::model::RequestPreview>) -> impl IntoView
     })
 }
 
+/// The `openstack` commands that do what the action did, in a `<details>` closed until clicked,
+/// with a copy button; nothing when the server sent none (`[ui] show_cli`).
+#[component]
+fn CliEquivalent(commands: Vec<String>) -> impl IntoView {
+    let i18n = use_i18n();
+    (!commands.is_empty()).then(|| {
+        let text = commands.join("\n");
+        let copied = RwSignal::new(false);
+        view! {
+            <details class="cli-equivalent">
+                <summary>{move || i18n.t(K::CliEquivalent)}</summary>
+                <p class="muted">{move || i18n.t(K::CliEquivalentHelp)}</p>
+                <div class="cli-box">
+                    <pre class="req-body">{text.clone()}</pre>
+                    <button type="button" class="cli-copy" class:copied=move || copied.get()
+                        title=move || i18n.t(K::Copy) aria-label=move || i18n.t(K::Copy)
+                        on:click=move |_| {
+                            crate::components::widgets::copy_to_clipboard(&text);
+                            copied.set(true);
+                            set_timeout(move || copied.set(false), std::time::Duration::from_millis(1500));
+                        }>
+                        {move || if copied.get() {
+                            view! { <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m5 12 5 5L20 7"></path></svg> }.into_any()
+                        } else {
+                            view! { <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg> }.into_any()
+                        }}
+                    </button>
+                </div>
+                <span class="sr-only" aria-live="polite">{move || if copied.get() { i18n.t(K::Copied) } else { "" }}</span>
+            </details>
+        }
+    })
+}
+
 /// The result page of a dialog: *Dry-run* with the requests that would be sent, *Done*, or the
 /// items that failed with OpenStack's message; *Close* dismisses it.
 #[component]
@@ -1331,6 +1365,7 @@ fn Outcome(out: ActionOutcome) -> impl IntoView {
             }}
             {failures}
             <RequestList requests=out.requests/>
+            <CliEquivalent commands=out.cli/>
             <footer class="modal-foot">
                 <button type="button" class="btn btn-primary" on:click=move |_| dialogs.current.set(None)>{move || i18n.t(K::Close)}</button>
             </footer>

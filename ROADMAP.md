@@ -138,7 +138,12 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 123 | ✅ *Launch Instance*: `[launch] hide_create_volume` hides *Create New Volume* and keeps `create_volume`'s choice | — | S | 118 |
 | 124 | ✅ Compute › Instances: a *Show deleted* toggle next to the filter box lists deleted instances too | — | M | 88 |
 | 125 | ✅ Login page: an eye icon instead of the *Show* / *Hide* text to reveal the password | — | XS | — |
+| 126 | ✅ 🐞 FIX: *Create Subnet*: *Disable Gateway* leaves the *Gateway IP* value in the field | — | XS | — |
+| 127 | ✅ Router detail: show the external gateway's QoS policy | — | S | — |
+| 128 | 🐞 FIX: *Create User* (local users, e.g. in the pokemon project): the dialog sometimes closes unexpectedly, other times *user created but no id returned* | P2 | S | — |
+| 129 | 🚧 A *CLI equivalent* in the result dialog: the `openstack` commands for instance, network and router creation ([#19]) | P3 | M | — |
 | 130 | ✅ Image metadata pills under the image's name in Compute › Images and the *Launch Instance* › *Source* step, from a `[images]` list of property keys | — | M | 56 |
+| 131 | Glance image sharing: *Share Image* (members), *Unshare*, and *Accept* / *Reject* an image shared with the project ([#20]) | P3 | L | 56 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -158,12 +163,14 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#16]: https://github.com/dmbuil/moonlight-rs/issues/16
 [#17]: https://github.com/dmbuil/moonlight-rs/issues/17
 [#18]: https://github.com/dmbuil/moonlight-rs/issues/18
+[#19]: https://github.com/dmbuil/moonlight-rs/issues/19
+[#20]: https://github.com/dmbuil/moonlight-rs/issues/20
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 130**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8372,6 +8379,191 @@ it.
   login page in light and dark, desktop and phone width, with keyboard (Tab, Space toggles,
   focus ring) and with `password_reveal = false`.
 
+## 126. 🐞 FIX: *Create Subnet*: *Disable Gateway* leaves the *Gateway IP* value in the field
+
+> ✅ **Done.** The `gateway` field of `subnet_fields` (`src/components/ops/networks.rs`) has a
+> `show_if` that hides it while `no_gateway` is ticked, so it is not shown nor submitted; this
+> settles the open question below in favour of hiding (the typed value comes back if the box is
+> unticked). One change covers *Create Network*, Admin *Create Network* and *Create Subnet*.
+> Test `disable_gateway_hides_the_gateway_ip_and_ignores_a_stale_value` (the rule, and a stale
+> `gateway` with `no_gateway` still yielding `Some("")`). Both clippy variants clean, 636 of 636
+> tests pass. Not checked in the browser.
+
+**Goal.** In every dialog that creates a subnet, ticking *Disable Gateway* must take the typed
+*Gateway IP* out of play: today the text stays in the field (and in the form's values) although
+`subnet_spec` ignores it and sends an empty `gateway_ip`. The user sees an address that will not
+be used, and unticking the box brings it back by surprise. Horizon's *Subnet Details* tab
+disables the field while the box is ticked.
+
+**Implementation.**
+
+- `src/components/ops/networks.rs` (`subnet_fields`, the `gateway` and `no_gateway` fields near
+  line 25): hide the `gateway` field while `no_gateway` is ticked, with
+  `.show_if(|v| !v.get("no_gateway").is_some_and(|x| x == "true"))` (a hidden field is not
+  submitted, see `visible` in `src/components/dialog.rs`); check the string the checkbox stores
+  (`Vals::flag`). The same fields serve *Create Network* (wizard), Admin *Create Network* and
+  *Create Subnet*, so one change covers all.
+- Open question: hide the field (simplest, supported by `show_if`) or show it disabled and
+  cleared. Hiding keeps the typed value if the box is unticked again; if the user wants it
+  emptied, add an `on_change` on `no_gateway` that clears `gateway` (see how other fields use
+  `on_change`).
+- `subnet_spec` already sends `Some("")` for `no_gateway` (test near line 916), so the server
+  side needs no change; add a test that a stale `gateway` value with `no_gateway` ticked still
+  yields `Some("")`.
+- Browser check, dry-run only: *Create Network* with a subnet, tick *Disable Gateway* after
+  typing an IP, the field goes away; untick, it is back; Admin › *Create Subnet* too.
+
+## 127. Router detail: show the external gateway's QoS policy
+
+> ✅ **Done.** `RouterDetail.gateway_qos: Option<Ref>` (`src/model/detail.rs`), filled by
+> `mapping::router_detail`, which takes the policy as read (`None` → the ID stands in for the
+> name). `fetch::router_detail` does one `qos::policy::get` only when
+> `external_gateway_info.qos_policy_id` is set, and a failure is soft. `router_overview`
+> (`src/pages/details.rs`) shows a *QoS Policy* row in the *External Network* card, gated by
+> `needs::QOS_GATEWAY`: the plain name (not a link, by the user's choice, 2026-11-17), the ID as
+> tooltip, `-` without a policy. Test `router_detail_names_the_gateway_qos_policy` (named,
+> unreadable, null policy, null gateway). Both clippy variants clean, 636 of 636 tests pass.
+> Not checked in the browser (a router with a gateway policy on the test cloud, and one
+> without).
+
+**Goal.** *Project › Network › Routers › detail*, *External Network* card, shows the *QoS
+Policy* applied to the router's gateway (`external_gateway_info.qos_policy_id`, Neutron's
+`qos-gateway-ip` extension), by its name (the ID is optional, as a copyable secondary value or
+a tooltip), and `-` when the router has none. Hidden when the extension or the `qos` plugin is
+off, as the *QoS Policy* field of *Create Router* is. A policy that cannot be read (another
+project's, not shared) shows its ID.
+
+**Implementation.**
+
+- `src/model/detail.rs`: add `gateway_qos: Option<Ref>` (or `(id, Option<name>)`) to
+  `RouterDetail`; `src/server/mapping/network.rs` `router_detail` (line ~603) reads
+  `gw.qos_policy_id` through `s_ne`; take the policy name as a new argument.
+- `src/server/fetch.rs` `router_detail` (line ~1992): when the router has a `qos_policy_id`,
+  resolve the name with a single `qos::policy::get` (as `qos_policy` at line ~1484 does), run
+  after the router fetch, soft on failure (fall back to the ID). No fetch when there is none.
+- `src/pages/details.rs` `router_overview` (line ~452): a `<Kv label=K::QosPolicy>` in the
+  *External Network* card, the name as plain text (no link to the QoS policy page, decided by
+  the user, 2026-11-17); show only when `needs::QOS_GATEWAY` is met (see `routers.rs` line 23).
+- Tests: mapping with a gateway holding `qos_policy_id`, without it and with a null gateway;
+  the router detail test fixture in `src/server/mapping/network.rs` gets the new field.
+- Browser check on the test cloud (read-only): a router whose gateway has a policy, one without.
+
+## 128. 🐞 FIX: *Create User* closes unexpectedly, or fails with *no id returned*
+
+**Goal.** Creating a local Keystone user (Admin › Identity › Users, *Create User*; seen on the
+pokemon project of the test cloud) must always end the same way: the dialog stays open until the
+user chooses, and the result is either success or a faithful error. Two symptoms reported, both
+intermittent: (1) the dialog closes by itself before the user finishes; (2) the error
+*user created but no id returned*, which is misleading (the user exists, so a retry hits a name
+conflict) and, when a primary project and role were given, skips the role grant that follows.
+
+**Implementation.** Not reproduced yet; leads from reading the code:
+
+- *No id returned* is `Exec::create` in `src/server/actions/mod.rs` (line ~362):
+  `created_id` reads a top-level `id` (plus `stack.id`, `alarm_id` and the Barbican refs).
+  `user_create` (`src/server/actions/identity.rs`, line ~191) sends a `JsonRequest` to
+  `POST /users`, whose answer is Keystone's `{"user": {"id": …}}`, and `JsonRequest` returns
+  the raw body. Check what the response really is on the test cloud (a dry-run does not show
+  it: it returns a placeholder id) and add the `user` wrapper (a general `{"<what>": {"id"}}`
+  fallback is an option) to `created_id`, with a test in `created_ids_of_every_create_response`.
+  If that already works, the intermittency points at a response without a body or an id in a
+  proxy-modified answer: log the body (secrets masked) when no id is found.
+- Whatever the cause, the order matters: the role grant after `x.create` is lost when the id
+  is missing. Where the create succeeded but the id is unknown, fall back to
+  `GET /users?name=<name>&domain_id=<domain>` before failing, or report the partial success
+  (user created, role not granted) instead of a plain error.
+- *Dialog closes unexpectedly*: `create_user_dialog` (`src/components/ops/identity.rs`, line
+  ~250) is a plain form; the dialog closes through `dialogs.current.set(None)` in
+  `src/components/dialog.rs` (`close`, line ~1013, and after a successful run). Candidates:
+  a `dialogs.current.set(...)` from another source while the user types (the Users list
+  refetch via `data_version`, a session or capability refresh re-running the panel), or the
+  `Expired` phase reloading to `/login`. Reproduce in the browser against the test cloud with
+  the console and network tabs open (dry-run, do not submit), note the moment it closes and
+  what ran just before; fix the cause, not the symptom, and keep typed values on a refetch.
+- Tests: `created_id` for `{"user": {"id": …}}`; the id fallback if built; for the dialog, a
+  unit test only if the cause turns out to be testable outside the browser.
+- Open questions: does it depend on the domain or on the project's auth (federated or
+  multi-domain pokemon)? Does the user appear in the list after the error?
+
+## 129. A *CLI equivalent* in the result dialog: the `openstack` commands for a creation
+
+> 🔗 **Issue:** [#19]
+>
+> 🚧 **In progress.** Built: `src/model/cli.rs`, `cli_equivalent(&OsAction) -> Vec<String>`
+> for `ServerLaunch`, `NetworkCreate`, `AdminNetworkCreate`, `RouterCreate` and
+> `AdminRouterCreate` (anything else: empty); commands are multi-line with `\` continuations,
+> words single-quoted when needed. A chain (network then subnet, router then its gateway QoS
+> policy through `router set --qos-policy`) captures the ID in `NETWORK_ID` / `ROUTER_ID`
+> (`$(… -f value -c id)`); a single command is plain. Boot from a new volume, a volume or a
+> snapshot is `--block-device source_type=…`; the admin password prints as `<password>` and
+> the script as `--user-data ./user-data.txt`. `ActionOutcome.cli` (`#[serde(default)]`) is set
+> in `run_action` (`src/api.rs`) only with the new `[ui] show_cli` (default `false`;
+> `settings.rs`, `config.rs`, `moonlight.conf.example`, `moonlight.conf` (on),
+> `CONFIGURATION.md`); not part of `ActionOutcome::shown`, which stays about the REST requests.
+> UI: `CliEquivalent` in `src/components/dialog.rs` under `RequestList`, a `<details
+> class="cli-equivalent">` closed by default with a one-line explanation and a `<pre>` with a
+> copy icon in its top right corner (`.cli-copy`) that turns into a green check for 1.5 s
+> (`K::CliEquivalent` = *Command Line equivalent*, `K::CliEquivalentHelp`, both languages;
+> user's changes, 2026-11-17; CSS in `style/main.css`).
+> Eight tests in `cli.rs` (exact text of each case, quoting, masked secrets, unsupported
+> action) plus the `show_cli` setting test; both clippy variants clean, 644 of 644 tests
+> pass. Browser check (2026-11-18, test cloud with writes on, so a real throwaway network
+> `cli-check-129` + subnet was created and then deleted): *Create Network* with a subnet shows
+> the *Command Line equivalent* item closed under the two REST requests; it opens to the
+> explanation and the `NETWORK_ID=$(…)` chain; the copy icon turns into the check and the
+> clipboard holds exactly the text; phone width (390 px) renders fine. Seen: an empty subnet
+> name prints a trailing `''` argument (valid, but odd: omit it or use a placeholder).
+> **Left:** the *Launch Instance* and *Create Router* dialogs in the browser, the dark theme,
+> and the CLI option names against a current `python-openstackclient` (`--block-device`,
+> `--hint`, `router set --qos-policy`, `--provider-segment`) since none was run here.
+
+**Goal.** The result dialog of an action (dry-run or done) lists the REST requests today. Next
+to them it gets a collapsed *CLI equivalent* item, closed until clicked, holding the
+`openstack` command line(s) that do the same thing, ready to copy. First scope: *Launch
+Instance*, *Create Network* (with its optional subnet) and *Create Router* (project and Admin
+variants where cheap); any other action shows no such item. Useful to learn the CLI, to script
+what was just done and to compare with Horizon's own *Launch* help.
+
+**Implementation.**
+
+- A pure function in the model (testable on both targets or server-only), for example
+  `src/model/cli.rs`, `fn cli_equivalent(action: &OsAction) -> Vec<String>` returning one
+  command per element, empty for unsupported actions. Covered: `OsAction::ServerLaunch`
+  (`LaunchSpec`, `src/model/write.rs`), `NetworkCreate` (+ `SubnetSpec`: a second
+  `openstack subnet create --network <name>`), `AdminNetworkCreate`, `RouterCreate`
+  (`--external-gateway`, the gateway QoS policy as a following
+  `openstack router set --qos-policy`), `AdminRouterCreate`.
+- Mapping to check against the CLI help of a current release: `server create --flavor --image
+  | --volume | --snapshot --network | --port --security-group --key-name --hint group=
+  --user-data <file> --config-drive --min --max --description --availability-zone
+  --boot-from-volume <GiB>` (image source with `create_volume`), `--password` only masked;
+  `network create --disable --share --external --provider-network-type …`; `subnet create
+  --subnet-range --ip-version --no-dhcp --gateway none|<ip> --allocation-pool start=,end=
+  --dns-nameserver --host-route destination=,gateway=`; `router create --disable`.
+- Quoting: one shell-quoting helper (single quotes, escape `'`); values are IDs, which the CLI
+  accepts as well as names. Never print secrets: the admin password becomes `<password>`
+  (as `mask_secrets` does for the REST body), the customization script a placeholder
+  (`--user-data ./user-data.txt`, with a note that the file is the one typed).
+- Plumbing: `ActionOutcome` (`src/model/write.rs`) gets `#[serde(default)] pub cli:
+  Vec<String>`, filled where the outcome is built in `src/server/actions/mod.rs` (the action
+  is at hand; for a batch, per item or none). Its own setting, `[ui] show_cli` (decided, user,
+  2026-11-17; default `false` like `show_requests`, independent of it): `ActionOutcome::shown`
+  takes it too and clears `cli` when off. New in `src/prefs.rs`, `moonlight.conf.example`,
+  `moonlight.conf` and `CONFIGURATION.md`, next to `show_requests`.
+- UI: `Outcome` in `src/components/dialog.rs` (line ~1268), below `RequestList`: a
+  `<details class="cli-equivalent">` with a `<summary>` *CLI equivalent* / *Equivalente en la
+  CLI* (i18n, both languages), a `<pre>` with the commands and a copy button (`Copyable`).
+  Closed by default; style in `style/main.css` like `.requests`.
+- Tests: one per action, asserting the exact command text (image launch, boot from volume,
+  two networks plus a port, no gateway subnet, router with and without gateway and policy), the
+  quoting of a name with spaces and a quote, the masked password, and that an unsupported
+  action yields nothing. Browser check, dry-run only: the three dialogs, item closed, opens,
+  copy works, phone width.
+- Decided (user, 2026-11-17): a chain of commands (network then subnet, router then its
+  gateway policy) passes the new ID through a shell variable (`NETWORK_ID=$(openstack network
+  create … -f value -c id)`, then `--network "$NETWORK_ID"`); a single command stays a plain
+  one-liner, with no variables. The commands are shown for a real run too, not only dry-run.
+
 ## 130. Image metadata pills under the image's name (list and *Launch Instance*)
 
 > ✅ **Done.** `[images] pills` (`ImagePrefs.pills`, `src/prefs.rs`, default empty; trimmed, blanks
@@ -8443,6 +8635,76 @@ nothing like it.
   the properties; hover shows the key; phone width wraps; dark theme.
 - Open questions: whether the value or the key labels the pill (decided here: the value, with
   the key on hover, as asked); the wizard's filter matching pill values.
+
+## 131. Glance image sharing: share, accept or reject, unshare
+
+> 🔗 **Issue:** [#20]
+
+**Goal.** Glance lets a project share a `visibility = shared` image with other projects
+(*members*). Moonlight only lists the images shared with the project that already accepted them;
+there is no way to share an image, to see who it is shared with, to take back the share, or to
+accept an image another project offered (Glance hides a `pending` share from the list). Horizon
+has no UI for any of this (`openstack image add project|set --accept` only), so this goes beyond
+Horizon parity. What the user gets:
+
+- *Share Image* (row menu and detail header, owner only, image `visibility = shared`): a dialog
+  asking for the project ID to share with (typed by hand), sent as a new member in state
+  `pending`.
+- A *Shared with* card in the image detail (owner: every member with its status `pending`,
+  `accepted` or `rejected`, and an *Unshare* action per row; a member project: its own status).
+- *Unshare* (the row's action, and *Stop sharing* in the confirmation): removes the member.
+- *Accept* / *Reject* for the receiving project: in the Images list a banner (*N images shared
+  with this project are waiting*) lists the pending offers; each row has
+  *Accept* and *Reject* (and, once accepted, *Stop using*, which sets it back to `rejected` so
+  the image leaves the list).
+
+**Implementation.**
+
+- SDK (`openstack-sdk-image` 0.22.8) has `image::v2::image::member::{list, create, get, set,
+  delete}`: `GET/POST /images/{id}/members`, `GET/PUT/DELETE /images/{id}/members/{member_id}`.
+  `create` takes `member` (the project ID); `set` takes `status` (`accepted`, `rejected`,
+  `pending`) and only the member itself may change it; `delete` is the owner's *Unshare*.
+- Read: `fetch::image_members(os, id)` (new, `src/server/fetch.rs`, next to `image_detail`,
+  line ~2083), mapped by a new `ImageMember { member_id, status, created_at, updated_at,
+  project_name }` in `src/model/compute.rs` (names resolved through `project_names` like the
+  owner). `ImageDetail` (`src/model/detail.rs`) gets `members: Vec<ImageMember>`, fetched only
+  when the image is `shared` (a second call that a private or public image never makes), soft
+  failure like the other optional lookups (to check against the test cloud: what Glance returns
+  to a non-owner listing the members of an image shared with them, probably only their own row
+  or a 403; show what it gives).
+- Pending offers: Glance's `GET /images` returns only accepted shares by default; the pending
+  ones need `visibility=shared&member_status=pending` (the `member_status` builder is already
+  used by `launch_images_raw`, `src/server/fetch.rs` line ~344). Add a `PagedList::Images`
+  variant filter, or a small separate fetch `pending_images(os)` for the banner count and the
+  banner; decide which when building (the list is paged by `limit`/`marker`).
+- Writes, always through `OsAction` (`src/model/action.rs`, `src/server/actions/image.rs`):
+  `ImageShare { id, project_id }` (POST member), `ImageUnshare { id, project_id }` (DELETE),
+  `ImageMemberStatus { id, status }` (PUT `status` for the token's own project; `accepted` or
+  `rejected`). Each has a dry-run test asserting method, path and body
+  (`POST /images/i/members {"member":"p"}`, `PUT /images/i/members/<own project> {"status":
+  "accepted"}`), validation (project ID not empty, not the owner's own project, status in the
+  allowed set), and `ActionOutcome` text in both languages. Gated by `[writes] mode = on` like
+  every write; no capability gate (Glance image API v2 always has members), but hide *Share*
+  unless the image is `shared` and owned by the project, and offer to switch a private image
+  to `shared` first (a note in the dialog, not an automatic change).
+- UI: dialogs in `src/components/ops/images.rs` (`image_owner_items` for *Share Image*, a
+  `Dialog::confirm` for *Unshare*), a *Shared with* `Card` in `ImageDetailPage`
+  (`src/pages/details.rs`, line ~765) with a table in the style of the other detail cards, the
+  pending banner in `src/pages/lists.rs` (`ImagesPage`). New `K::` keys in `src/i18n.rs`, both
+  languages.
+- Tests: mapper test for the member list (statuses, names, missing name); dry-run tests above;
+  `image_items` test that *Share Image* shows only for an owned `shared` image; browser check,
+  dry-run only: the dialogs open, the card shows on a shared image, nothing submitted.
+- Decided (user, 2026-11-18): the target project is typed by hand, as a project ID: no picker and
+  no project list (so the dialog needs no `GET /projects`, and works for any user). The pending
+  offers show in a banner on the Images list (with the count and the *Accept* / *Reject* rows),
+  not elsewhere. Admin › Images gets the same *Shared with* card and actions, since Glance lets
+  an admin read and edit any image's members (slice 4). What Glance returns to a non-owner
+  listing an image's members is checked on the dev cloud (the test cloud), where the whole
+  feature is tested, dry-run first.
+- Slices: (1) read-only *Shared with* card and the pending count; (2) *Share* and *Unshare*;
+  (3) *Accept* / *Reject* and the pending banner; (4) the same card and actions in Admin ›
+  Images.
 
 ## Also pending (from the PoC)
 

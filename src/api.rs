@@ -610,7 +610,11 @@ pub async fn run_action(action: OsAction) -> Result<ActionOutcome, AppError> {
             }
             let failed = out.results.iter().filter(|r| r.error.is_some()).count();
             tracing::info!(user = %s.user, project = %s.project_name, client = %session::client_ip(), ?mode, requests = out.requests.len(), failed, action = %action.kind(), "write");
-            Ok(out.shown(cfg().show_requests))
+            let mut out = out.shown(cfg().show_requests);
+            if cfg().show_cli {
+                out.cli = cli_equivalent(&action);
+            }
+            Ok(out)
         }
         Err(e) => {
             tracing::warn!(user = %s.user, client = %session::client_ip(), ?mode, action = %action.kind(), "write failed: {e}");

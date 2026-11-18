@@ -25,7 +25,9 @@ fn subnet_fields(
             .required()),
         w(Field::text("gateway", tr(K::GatewayIp))
             .help(tr(K::GatewayAuto))
-            .tip(tr(K::TipGatewayIp))),
+            .tip(tr(K::TipGatewayIp))
+            // A ticked *Disable Gateway* takes the address out of play (and of the request).
+            .show_if(|v| v.get("no_gateway").map(String::as_str) != Some("true"))),
         w(Field::check("no_gateway", tr(K::DisableGateway), false)),
         w(Field::check("dhcp", tr(K::EnableDhcp), true).tip(tr(K::TipEnableDhcp))),
         // Horizon shows the mode only for IPv6 subnets.
@@ -917,6 +919,17 @@ mod tests {
         assert_eq!(s.allocation_pools, vec![("10.0.0.10".into(), "10.0.0.20".into())]);
         assert_eq!(s.dns_nameservers.len(), 2);
         assert!((d.build)(&vals(&[("with_subnet", "true"), ("cidr", "x"), ("pools", "nocomma")])).is_err());
+    }
+
+    #[test]
+    fn disable_gateway_hides_the_gateway_ip_and_ignores_a_stale_value() {
+        let fields = subnet_fields(Lang::EnUs, None, &Default::default());
+        let gw = fields.iter().find(|f| f.name == "gateway").unwrap();
+        let show = gw.show_if.unwrap();
+        assert!(show(&vals(&[("no_gateway", "false")]).0));
+        assert!(!show(&vals(&[("no_gateway", "true")]).0));
+        let v = vals(&[("cidr", "10.0.0.0/24"), ("gateway", "10.0.0.1"), ("no_gateway", "true")]);
+        assert_eq!(subnet_spec(&v, Lang::EnUs).unwrap().gateway_ip.as_deref(), Some(""));
     }
 
     #[test]

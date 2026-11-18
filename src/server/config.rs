@@ -77,6 +77,8 @@ pub struct Config {
     /// `[ui] show_requests`: keep the REST requests in action results, dry-run
     /// included. Off: they never reach the browser.
     pub show_requests: bool,
+    /// `[ui] show_cli`: the `openstack` commands that do what a creation did, in its result.
+    pub show_cli: bool,
     /// `[ui] max_list_items`: a full list longer than this fails; 0 = no cap.
     pub max_list_items: u32,
     /// `[log] client_ip_header`.

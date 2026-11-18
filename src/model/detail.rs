@@ -83,6 +83,9 @@ pub struct RouterDetail {
     pub project_id: String,
     /// `(ip, subnet_id)` of each external fixed IP.
     pub gateway_ips: Vec<(String, String)>,
+    /// The gateway's QoS policy (`qos-gateway-ip`): ID and name (the ID when unreadable).
+    #[serde(default)]
+    pub gateway_qos: Option<Ref>,
     pub interfaces: Vec<PortRow>,
     pub routes: Vec<(String, String)>,
 }

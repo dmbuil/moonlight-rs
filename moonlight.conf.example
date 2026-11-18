@@ -133,6 +133,9 @@ show_error_details = false
 # Show the REST requests an action sent (method, path, body) in its result, and in dry-run
 # the requests it would send. Off: only "Done" or the errors; dry-run says nothing was sent.
 show_requests = false
+# Show, collapsed in the result of an instance, network or router creation, the `openstack`
+# CLI commands that do the same (roadmap 129). Independent of show_requests.
+show_cli = false
 # A bulk action (delete, start, release…) with this many items or more runs in the
 # background: the dialog closes and a card in the corner shows the progress. 0 = always in
 # the dialog.
@@ -219,13 +222,13 @@ max_upload_gb = 20
 # Image property keys the metadata editor hides and Moonlight never writes. os_glance_* (Glance's
 # own) is always reserved. (IMAGE_RESERVED_CUSTOM_PROPERTIES)
 reserved_properties = []
-
-[console]
-# Instance Log and Console tabs. Both are Nova POSTs that don't change the instance (each
 # Property keys shown as small pills under each image's name (Images list, Launch Instance's
 # Source step), in this order; the value is the pill, the key shows on hover. An image without
 # the key gets no pill. Custom properties only. e.g. ["os_type", "os_patch_date"]
 pills = []
+
+[console]
+# Instance Log and Console tabs. Both are Nova POSTs that don't change the instance (each
 # console call makes a console token); sent only when this is true AND [writes] mode = "on".
 enabled = false
 # Remote console: auto (VNC, then SPICE) | vnc | spice. (CONSOLE_TYPE)

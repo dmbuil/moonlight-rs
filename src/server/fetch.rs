@@ -2003,7 +2003,27 @@ pub async fn router_detail(os: &AsyncOpenStack, project_id: &str, id: &str) -> R
         subnets: vec![],
     });
     let l = mapping::PortLookups::new(&n.networks, &n.subnets, &[], &[]);
-    Ok(timed(t, mapping::router_detail(&r?, &n.networks, l.ports(&soft(po)))))
+    let r = r?;
+    // The gateway's QoS policy (`qos-gateway-ip`), by name; unreadable ones keep their ID.
+    let qos = match r
+        .pointer("/external_gateway_info/qos_policy_id")
+        .and_then(Value::as_str)
+    {
+        Some(q) => get_one!(
+            os,
+            openstack_sdk::api::network::v2::qos::policy::get,
+            id,
+            q,
+            "QoS policy"
+        )
+        .await
+        .ok(),
+        None => None,
+    };
+    Ok(timed(
+        t,
+        mapping::router_detail(&r, &n.networks, l.ports(&soft(po)), qos.as_ref()),
+    ))
 }
 
 /// Security group detail: the group and its rules, remote groups named.

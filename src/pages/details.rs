@@ -459,6 +459,11 @@ fn router_overview(d: RouterDetail) -> impl IntoView {
         }
         _ => "-".into_any(),
     };
+    // The policy by name (not a link, user's choice), with the ID as a tooltip.
+    let qos = match d.gateway_qos.clone() {
+        Some(q) => view! { <span title=q.id>{q.name}</span> }.into_any(),
+        None => "-".into_any(),
+    };
     view! {
         <div class="cards">
             <Card title=K::Information>
@@ -474,6 +479,9 @@ fn router_overview(d: RouterDetail) -> impl IntoView {
                 <Kv label=K::ExternalNetwork>{ext}</Kv>
                 <Kv label=K::ExternalFixedIps>{lines(d.gateway_ips.iter().map(|(ip, sn)| if sn.is_empty() { ip.clone() } else { format!("{ip} · {} {sn}", t(i18n.lang(), K::Subnet)) }).collect())}</Kv>
                 <Kv label=K::Snat>{move || d.row.snat.map(|s| yes_no(i18n.lang(), s)).unwrap_or("-")}</Kv>
+                {needs::QOS_GATEWAY.met(&caps()).then(|| view! {
+                    <Kv label=K::QosPolicy>{qos}</Kv>
+                })}
             </Card>
         </div>
     }

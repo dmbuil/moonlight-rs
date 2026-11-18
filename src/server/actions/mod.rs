@@ -271,6 +271,7 @@ impl<'a> Exec<'a> {
             secret: self.secret,
             results: self.results,
             created: self.created,
+            cli: vec![],
         }
     }
 

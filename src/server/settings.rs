@@ -258,6 +258,9 @@ pub struct Ui {
     /// Show the REST requests an action sent (or, in dry-run, built) in its
     /// result.
     pub show_requests: bool,
+    /// Show the `openstack` CLI equivalent of an instance, network or router creation in its
+    /// result.
+    pub show_cli: bool,
     /// Bulk actions with this many items or more run in the background.
     pub background_batch_from: u32,
     /// Rows per page of the paged lists, 1–999; `0` = no paging.
@@ -286,6 +289,7 @@ impl Default for Ui {
             poll_interval_ms: Prefs::default().poll_interval_ms,
             show_error_details: false,
             show_requests: false,
+            show_cli: false,
             background_batch_from: Prefs::default().background_batch_from,
             page_size: Prefs::default().page_size,
             paged_lists: "admin".into(),
@@ -951,6 +955,7 @@ impl Settings {
             websso,
             show_error_details: self.ui.show_error_details,
             show_requests: self.ui.show_requests,
+            show_cli: self.ui.show_cli,
             max_list_items: self.ui.max_list_items,
             writes: WriteMode::parse(mode)
                 .ok_or_else(|| format!("[writes] mode must be off, dry-run or on (got {mode:?})"))?,
@@ -1013,11 +1018,6 @@ impl Settings {
                         .map(|k| k.trim().to_string())
                         .filter(|k| !k.is_empty())
                         .collect(),
-                    ..img.clone()
-                },
-                console: self.console.clone(),
-                admin: AdminPrefs {
-                    flavor_edit: self.admin.flavor_edit,
                     pills: {
                         let mut seen = std::collections::HashSet::new();
                         img.pills
@@ -1026,6 +1026,11 @@ impl Settings {
                             .filter(|k| !k.is_empty() && seen.insert(k.clone()))
                             .collect()
                     },
+                    ..img.clone()
+                },
+                console: self.console.clone(),
+                admin: AdminPrefs {
+                    flavor_edit: self.admin.flavor_edit,
                     filter_first,
                 },
             },
@@ -1296,11 +1301,6 @@ mod tests {
     }
 
     #[test]
-    fn admin_section_is_horizons_flavor_edit_and_filter_first() {
-        use crate::model::PagedList;
-        let none = parse("").unwrap().prefs.admin;
-        assert!(
-    #[test]
     fn image_pills_default_to_none_and_are_cleaned() {
         assert!(
             parse("").unwrap().prefs.images.pills.is_empty(),
@@ -1319,6 +1319,11 @@ mod tests {
         assert!(parse("[images]\npills = 1").is_err(), "must be a list");
     }
 
+    #[test]
+    fn admin_section_is_horizons_flavor_edit_and_filter_first() {
+        use crate::model::PagedList;
+        let none = parse("").unwrap().prefs.admin;
+        assert!(
             !none.flavor_edit && none.filter_first.is_empty(),
             "both off by default, as Horizon"
         );
@@ -1409,6 +1414,8 @@ mod tests {
         assert!(!c.show_error_details, "internal URIs stay in the log by default");
         assert!(!c.show_requests, "results without the REST requests by default");
         assert!(parse("[ui]\nshow_requests = true").unwrap().show_requests);
+        assert!(!c.show_cli, "no CLI equivalent by default");
+        assert!(parse("[ui]\nshow_cli = true").unwrap().show_cli);
         assert_eq!(
             parse("").unwrap().prefs.background_batch_from,
             10,

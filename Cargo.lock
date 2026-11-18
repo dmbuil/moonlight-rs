@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "moonlight"
-version = "0.4.11"
+version = "0.4.12"
 dependencies = [
  "axum",
  "base64 0.22.1",

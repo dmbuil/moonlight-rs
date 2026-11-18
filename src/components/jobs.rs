@@ -594,6 +594,7 @@ mod tests {
             secret: None,
             results,
             created: None,
+            cli: vec![],
         }
     }
 

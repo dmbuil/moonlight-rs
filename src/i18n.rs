@@ -1191,6 +1191,9 @@ translations! {
     TipSegmentationType => "How the instance tells the subport's traffic apart:\n- **vlan**: a VLAN ID you choose, 1-4094, unique within the trunk. It is independent of how Neutron builds the network: frames are retagged as they leave or enter the instance.\n- **inherit**: for ports on provider networks, the type and ID are taken from the network's own segmentation; for switches that can't retag, e.g. with bare-metal (Ironic) instances.", "Cómo distingue la instancia el tráfico del subpuerto:\n- **vlan**: un ID de VLAN que usted elige, 1-4094, único dentro del trunk. Es independiente de cómo construye Neutron la red: las tramas se reetiquetan al salir o entrar en la instancia.\n- **inherit**: para puertos de redes de proveedor, el tipo y el ID se toman de la segmentación de la propia red; para switches que no pueden reetiquetar, p. ej. con instancias bare metal (Ironic).";
     SubportNotParent => "A sub-port cannot be the parent port.", "Un subpuerto no puede ser el puerto padre.";
 
+    CliEquivalent => "Command Line equivalent", "Equivalente en línea de comandos";
+    CliEquivalentHelp => "You may use the following OpenStack CLI command(s) to perform the same action.",
+        "Puede usar los siguientes comandos de la CLI de OpenStack para realizar la misma acción.";
     // Network QoS
     NetworkQos => "Network QoS", "QoS de red";
     QosPolicy => "QoS Policy", "Política de QoS";
