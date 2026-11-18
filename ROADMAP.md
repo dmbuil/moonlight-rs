@@ -8507,15 +8507,24 @@ conflict) and, when a primary project and role were given, skips the role grant 
 > user's changes, 2026-11-17; CSS in `style/main.css`).
 > Eight tests in `cli.rs` (exact text of each case, quoting, masked secrets, unsupported
 > action) plus the `show_cli` setting test; both clippy variants clean, 644 of 644 tests
-> pass. Browser check (2026-11-18, test cloud with writes on, so a real throwaway network
-> `cli-check-129` + subnet was created and then deleted): *Create Network* with a subnet shows
-> the *Command Line equivalent* item closed under the two REST requests; it opens to the
-> explanation and the `NETWORK_ID=$(…)` chain; the copy icon turns into the check and the
-> clipboard holds exactly the text; phone width (390 px) renders fine. Seen: an empty subnet
-> name prints a trailing `''` argument (valid, but odd: omit it or use a placeholder).
-> **Left:** the *Launch Instance* and *Create Router* dialogs in the browser, the dark theme,
-> and the CLI option names against a current `python-openstackclient` (`--block-device`,
-> `--hint`, `router set --qos-policy`, `--provider-segment`) since none was run here.
+> pass. Browser check (2026-11-18, test cloud with writes on, throwaway resources created and
+> deleted with the user's go-ahead): *Create Network* with a subnet, *Create Router*, *Launch
+> Instance* (boot from a new 1 GB image volume: `--block-device source_type=image,…,
+> volume_size=1,delete_on_termination=false`, flavor by ID) and the delete dialogs of an
+> instance, a network and a router all show the *Command Line equivalent* item closed, open to
+> the right commands, and the copy icon turns into the check with the exact text in the
+> clipboard; phone width (390 px) fine. Deletion (`ServerDelete`, `NetworkDelete`,
+> `RouterDelete`, `VolumeDelete`, alone or in a `Batch`: one `openstack <kind> delete <id>…`
+> command, mixed kinds one per item; test `deleting_instances_networks_and_routers_…`) and
+> `VolumeCreate` (`openstack volume create --size … [--image|--snapshot|--source] [--type]
+> [--availability-zone] [--description] [name]`, name omitted when empty; test
+> `volumes_are_created_and_deleted`; options checked against 10.5.0; volume dialogs not tried
+> in the browser, only the unit tests). CLI option names checked
+> against `python-openstackclient` 10.5.0 (`--help`): all exist; `--config-drive true` is
+> deprecated, so `--use-config-drive` is printed. An empty subnet name prints a trailing `''`
+> on purpose (the positional name is required). The volume the launch created
+> (`delete_on_termination=false`) was deleted too: nothing is left on the test cloud.
+> **Left:** the dark theme.
 
 **Goal.** The result dialog of an action (dry-run or done) lists the REST requests today. Next
 to them it gets a collapsed *CLI equivalent* item, closed until clicked, holding the

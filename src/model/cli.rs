@@ -1,5 +1,6 @@
 //! The `openstack` CLI commands that do what an action does: the *CLI equivalent* of a result
-//! dialog (`[ui] show_cli`). Covers instance, network and router creation; any other action
+//! dialog (`[ui] show_cli`). Covers instance, network, router and volume creation and the
+//! deletion of instances, networks, routers and volumes (alone or as a batch); any other action
 //! yields nothing. Secrets never appear: the admin password is a placeholder and the
 //! customization script a file name.
 
@@ -162,8 +163,79 @@ pub fn cli_equivalent(action: &OsAction) -> Vec<String> {
             r.arg(spec.name.trim());
             router_chain(r, None)
         }
+        OsAction::VolumeCreate {
+            name,
+            description,
+            size_gb,
+            volume_type,
+            availability_zone,
+            source,
+            source_id,
+        } => {
+            let mut c = Cmd::new("openstack volume create");
+            c.opt("--size", &size_gb.to_string());
+            let src = source_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
+            match (source, src) {
+                (VolumeSource::Image, Some(i)) => c.opt("--image", i),
+                (VolumeSource::Snapshot, Some(i)) => c.opt("--snapshot", i),
+                (VolumeSource::Volume, Some(i)) => c.opt("--source", i),
+                _ => &mut c,
+            };
+            if let Some(t) = volume_type.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                c.opt("--type", t);
+            }
+            if let Some(z) = availability_zone.as_deref().map(str::trim).filter(|z| !z.is_empty()) {
+                c.opt("--availability-zone", z);
+            }
+            if let Some(d) = description.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+                c.opt("--description", d);
+            }
+            // The name is optional in the CLI; an unnamed volume has none.
+            if !name.trim().is_empty() {
+                c.arg(name.trim());
+            }
+            vec![c.render(None)]
+        }
+        OsAction::ServerDelete { .. }
+        | OsAction::NetworkDelete { .. }
+        | OsAction::RouterDelete { .. }
+        | OsAction::VolumeDelete { .. } => {
+            delete_command(std::slice::from_ref(action)).into_iter().collect()
+        }
+        OsAction::Batch(items) => {
+            let actions: Vec<OsAction> = items.iter().map(|(_, a)| a.clone()).collect();
+            // A batch of deletions of one kind is one command with every ID.
+            if let Some(c) = delete_command(&actions) {
+                return vec![c];
+            }
+            actions.iter().flat_map(cli_equivalent).collect()
+        }
         _ => vec![],
     }
+}
+
+/// `openstack <server|network|router|volume> delete <id>…` when every action deletes the same kind of
+/// resource (the CLI takes several IDs); `None` otherwise, or for no action.
+fn delete_id(a: &OsAction) -> Option<(&'static str, &str)> {
+    match a {
+        OsAction::ServerDelete { id } => Some(("server", id)),
+        OsAction::NetworkDelete { id } => Some(("network", id)),
+        OsAction::RouterDelete { id } => Some(("router", id)),
+        OsAction::VolumeDelete { id } => Some(("volume", id)),
+        _ => None,
+    }
+}
+
+fn delete_command(actions: &[OsAction]) -> Option<String> {
+    let (kind, _) = delete_id(actions.first()?)?;
+    let mut c = Cmd::new(&format!("openstack {kind} delete"));
+    for a in actions {
+        match delete_id(a) {
+            Some((k, id)) if k == kind => c.arg(id),
+            _ => return None,
+        };
+    }
+    Some(c.render(None))
 }
 
 /// The network command, plain when alone, else capturing its ID for the subnet's.
@@ -282,7 +354,7 @@ fn server_create(s: &LaunchSpec) -> Cmd {
         c.opt("--user-data", "./user-data.txt");
     }
     if s.config_drive {
-        c.opt("--config-drive", "true");
+        c.flag("--use-config-drive");
     }
     if s.admin_pass.as_deref().is_some_and(|p| !p.is_empty()) {
         c.opt("--password", "<password>");
@@ -382,7 +454,7 @@ mod tests {
             "--hint group=g1",
             "--availability-zone az1",
             "--user-data ./user-data.txt",
-            "--config-drive true",
+            "--use-config-drive",
             "--password '<password>'",
             "--min 2 \\\n  --max 2",
             "'my web'",
@@ -506,6 +578,55 @@ mod tests {
         assert_eq!(
             c,
             "openstack router create \\\n  --project p1 \\\n  --external-gateway ext \\\n  --disable-snat \\\n  --distributed \\\n  --no-ha \\\n  r"
+        );
+    }
+
+    #[test]
+    fn deleting_instances_networks_and_routers_is_one_command_with_every_id() {
+        let one = cli_equivalent(&OsAction::ServerDelete { id: "s1".into() });
+        assert_eq!(one, ["openstack server delete \\\n  s1"]);
+        let batch = |v: Vec<OsAction>| OsAction::Batch(v.into_iter().map(|a| ("n".to_string(), a)).collect());
+        let nets = cli_equivalent(&batch(vec![
+            OsAction::NetworkDelete { id: "n1".into() },
+            OsAction::NetworkDelete { id: "n2".into() },
+        ]));
+        assert_eq!(nets, ["openstack network delete \\\n  n1 \\\n  n2"]);
+        let routers = cli_equivalent(&batch(vec![OsAction::RouterDelete { id: "r 1".into() }]));
+        assert_eq!(routers, ["openstack router delete \\\n  'r 1'"]);
+        // Mixed kinds: one command per item; an item without an equivalent adds none.
+        let mixed = cli_equivalent(&batch(vec![
+            OsAction::ServerDelete { id: "s1".into() },
+            OsAction::RouterDelete { id: "r1".into() },
+            OsAction::ServerStart { id: "s".into() },
+        ]));
+        assert_eq!(mixed.len(), 2);
+        assert!(cli_equivalent(&OsAction::Batch(vec![])).is_empty());
+    }
+
+    #[test]
+    fn volumes_are_created_and_deleted() {
+        let make = |source, source_id: Option<&str>, name: &str| {
+            cli_equivalent(&OsAction::VolumeCreate {
+                name: name.into(),
+                description: Some("my data".into()),
+                size_gb: 10,
+                volume_type: Some("ssd".into()),
+                availability_zone: None,
+                source,
+                source_id: source_id.map(Into::into),
+            })
+        };
+        assert_eq!(
+            make(VolumeSource::Image, Some("img1"), "data"),
+            ["openstack volume create \\\n  --size 10 \\\n  --image img1 \\\n  --type ssd \\\n  --description 'my data' \\\n  data"]
+        );
+        assert!(make(VolumeSource::Snapshot, Some("s1"), "d")[0].contains("--snapshot s1"));
+        assert!(make(VolumeSource::Volume, Some("v1"), "d")[0].contains("--source v1"));
+        let empty = &make(VolumeSource::Empty, None, "")[0];
+        assert!(!empty.contains("--image") && !empty.ends_with("''"), "{empty}");
+        assert_eq!(
+            cli_equivalent(&OsAction::VolumeDelete { id: "v1".into() }),
+            ["openstack volume delete \\\n  v1"]
         );
     }
 
