@@ -144,6 +144,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 129 | 🚧 A *CLI equivalent* in the result dialog: the `openstack` commands for instance, network and router creation ([#19]) | P3 | M | — |
 | 130 | ✅ Image metadata pills under the image's name in Compute › Images and the *Launch Instance* › *Source* step, from a `[images]` list of property keys | — | M | 56 |
 | 131 | Glance image sharing: *Share Image* (members), *Unshare*, and *Accept* / *Reject* an image shared with the project ([#20]) | P3 | L | 56 |
+| 132 | 🐞 FIX: Instance snapshots of a volume-backed instance are listed as plain images (Compute › Images, *Launch Instance* › *Source*) ([#21]) | P2 | S | 56 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -165,6 +166,7 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#18]: https://github.com/dmbuil/moonlight-rs/issues/18
 [#19]: https://github.com/dmbuil/moonlight-rs/issues/19
 [#20]: https://github.com/dmbuil/moonlight-rs/issues/20
+[#21]: https://github.com/dmbuil/moonlight-rs/issues/21
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
@@ -8714,6 +8716,50 @@ Horizon parity. What the user gets:
 - Slices: (1) read-only *Shared with* card and the pending count; (2) *Share* and *Unshare*;
   (3) *Accept* / *Reject* and the pending banner; (4) the same card and actions in Admin ›
   Images.
+
+## 132. 🐞 FIX: Volume-backed instance snapshots are not recognised as *Instance Snapshot*
+
+> 🔗 **Issue:** [#21]
+
+**Goal.** A snapshot taken of a volume-backed instance must show as an *Instance Snapshot*:
+*Type* column of Compute › Images (and the detail page's *Type*, Admin › Images), and the
+*Instance Snapshot* list in the *Launch Instance* › *Source* step (it must also leave the plain
+*Image* list). Reported by the user (2026-11-20) on the test cloud's `whismur-snapshot-1` and
+`whismur-snapshot-2`: Horizon, opened side by side, did tell them apart, Moonlight showed plain
+images in both places.
+
+**What the data shows** (read-only `GET` of Horizon's `/dashboard/api/glance/images/`, the
+two images): Nova's volume-backed snapshot has **no `image_type` property**. It has
+`size: 0`, `disk_format: raw`, `base_image_ref: ""`, `root_device_name`, `bdm_v2: "True"`
+and a `block_device_mapping` string (JSON list) whose root entry is `source_type: snapshot`,
+`destination_type: volume`, `boot_index: 0`, `snapshot_id: <Cinder snapshot>`,
+`volume_size: 20`. It also copies the source image's properties (`os_distro`, `os_version`,
+`owner_specified.*`…) and `owner_user_name` / `owner_project_name`. Instance snapshots of an
+ephemeral instance do carry `image_type=snapshot` (that is what works today).
+
+**Implementation.**
+
+- One pure predicate `is_instance_snapshot(im: &Value) -> bool` in `src/server/mapping`
+  (shared by `image.rs` and `choices.rs`, tests next to it): `image_type == "snapshot"`, or a
+  `block_device_mapping` that parses (string or array) to an entry with `boot_index == 0`,
+  `source_type == "snapshot"`, `destination_type == "volume"`. Use it in `images_page`
+  (`is_snapshot`, `src/server/mapping/image.rs:35`) and in `image_choices`
+  (`src/server/mapping/choices.rs:39`, the `snapshots` split), and check any other
+  `image_type` reader (`rg 'image_type' src`; the Admin › Images list uses the same
+  `Image.is_snapshot`).
+- Open question to settle first: what Horizon keys on (its launch wizard and image table), so
+  Moonlight matches it. Read the open Horizon wizard's *Source* step (read-only) or Horizon's
+  source for `image_type` / `block_device_mapping`; if Horizon needs more than the BDM
+  (e.g. `base_image_ref` empty), copy its rule, not the guess above. A user-made image with a
+  BDM that boots from a snapshot (rare) would also match; accept it if Horizon does the same.
+- Launching from such a snapshot: check that *Launch Instance* with `source=instance_snapshot`
+  builds the right request for an image with `size: 0` and a BDM (Nova boots it by `imageRef`;
+  `min_disk`/*Create New Volume* defaults must not break). The CLI equivalent (item 129,
+  `src/model/cli.rs`) uses the same `source`.
+- Tests: mapper tests with both fixtures (ephemeral `image_type=snapshot`, volume-backed BDM
+  without `image_type`, plain image with a BDM of `source_type: image`, malformed BDM string);
+  `image_choices` split test. Browser check (dry-run, dialog opened and cancelled): Images list
+  *Type*, the wizard's *Instance Snapshot* source on the test cloud's two snapshots.
 
 ## Also pending (from the PoC)
 
