@@ -2,6 +2,37 @@
 
 use super::*;
 
+/// Whether a Glance image is an instance snapshot. Nova tags a snapshot of an ephemeral instance
+/// with `image_type=snapshot`, but a snapshot of a volume-backed instance has no `image_type`: it
+/// is a zero-size image whose `block_device_mapping` property (a JSON string) boots from a Cinder
+/// snapshot (`boot_index` 0, `source_type` snapshot, `destination_type` volume). A malformed
+/// mapping counts as not a snapshot.
+pub fn is_instance_snapshot(im: &Value) -> bool {
+    if s(im, "image_type").as_deref() == Some("snapshot") {
+        return true;
+    }
+    let parsed;
+    let bdm = match im.get("block_device_mapping") {
+        Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
+            Ok(v) => {
+                parsed = v;
+                &parsed
+            }
+            Err(_) => return false,
+        },
+        Some(v) => v,
+        None => return false,
+    };
+    bdm.as_array().is_some_and(|entries| {
+        entries.iter().any(|e| {
+            e.get("boot_index")
+                .is_some_and(|b| b.as_i64() == Some(0) || b.as_str() == Some("0"))
+                && s(e, "source_type").as_deref() == Some("snapshot")
+                && s(e, "destination_type").as_deref() == Some("volume")
+        })
+    })
+}
+
 /// Images with visibility and owner (`project_names` for owners other than
 /// `project_id`): the project's own first, then by name.
 pub fn images(
@@ -32,7 +63,7 @@ pub fn images_page(
         .map(|im| Image {
             id: s(im, "id").unwrap_or_default(),
             name: name_or_id(im),
-            is_snapshot: s(im, "image_type").as_deref() == Some("snapshot"),
+            is_snapshot: is_instance_snapshot(im),
             status: s(im, "status").unwrap_or_default(),
             visibility: s(im, "visibility").unwrap_or_default(),
             protected: b(im, "protected"),
@@ -166,6 +197,26 @@ mod tests {
         assert_eq!(out[0].name, "backup");
         assert!(out[0].is_snapshot && out[0].protected && out[0].owned_by_project);
         assert_eq!(out[1].size, Some(1024));
+    }
+
+    #[test]
+    fn volume_backed_snapshots_are_instance_snapshots_without_image_type() {
+        let bdm = r#"[{"source_type": "snapshot", "destination_type": "volume", "boot_index": 0, "snapshot_id": "s", "volume_size": 20}]"#;
+        let backed = json!({"id": "v", "size": 0, "bdm_v2": "True", "block_device_mapping": bdm});
+        let ephemeral = json!({"id": "e", "image_type": "snapshot"});
+        let from_image = json!({"id": "i", "block_device_mapping":
+            r#"[{"source_type": "image", "destination_type": "volume", "boot_index": 0}]"#});
+        let data_only = json!({"id": "d", "block_device_mapping":
+            r#"[{"source_type": "snapshot", "destination_type": "volume", "boot_index": 1}]"#});
+        let as_array = json!({"id": "a", "block_device_mapping":
+            [{"source_type": "snapshot", "destination_type": "volume", "boot_index": 0}]});
+        let malformed = json!({"id": "m", "block_device_mapping": "not json ["});
+        let plain = json!({"id": "p", "name": "ubuntu"});
+        let flags: Vec<bool> = [backed, ephemeral, from_image, data_only, as_array, malformed, plain]
+            .iter()
+            .map(is_instance_snapshot)
+            .collect();
+        assert_eq!(flags, [true, true, false, false, true, false, false]);
     }
 
     #[test]

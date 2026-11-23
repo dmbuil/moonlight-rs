@@ -36,7 +36,7 @@ pub fn image_choices(raw: &[Value], snapshots: bool, pills: &[String]) -> Vec<Ch
     sorted(
         raw.iter()
             .filter(|im| s(im, "status").as_deref() == Some("active"))
-            .filter(|im| (s(im, "image_type").as_deref() == Some("snapshot")) == snapshots)
+            .filter(|im| is_instance_snapshot(im) == snapshots)
             .filter_map(|im| {
                 let size = im.get("size").and_then(Value::as_u64);
                 Some(Choice {
@@ -703,6 +703,8 @@ mod tests {
                 "updated_at": "2026-09-25T14:09:00Z"}),
             json!({"id": "s1", "name": "Instalacion", "status": "active", "image_type": "snapshot", "size": 0}),
             json!({"id": "q", "name": "queued", "status": "queued"}),
+            json!({"id": "v1", "name": "backed", "status": "active", "size": 0, "block_device_mapping":
+                r#"[{"source_type": "snapshot", "destination_type": "volume", "boot_index": 0}]"#}),
         ];
         let imgs = image_choices(&raw, false, &[]);
         assert_eq!(imgs.len(), 1);
@@ -715,7 +717,10 @@ mod tests {
             (Some(20), Some(7_800_000_000))
         );
         let snaps = image_choices(&raw, true, &[]);
-        assert_eq!(snaps.iter().map(|c| c.value.as_str()).collect::<Vec<_>>(), vec!["s1"]);
+        assert_eq!(
+            snaps.iter().map(|c| c.value.as_str()).collect::<Vec<_>>(),
+            vec!["v1", "s1"]
+        );
     }
 
     #[test]

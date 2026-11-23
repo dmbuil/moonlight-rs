@@ -144,7 +144,12 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 129 | 🚧 A *CLI equivalent* in the result dialog: the `openstack` commands for instance, network and router creation ([#19]) | P3 | M | — |
 | 130 | ✅ Image metadata pills under the image's name in Compute › Images and the *Launch Instance* › *Source* step, from a `[images]` list of property keys | — | M | 56 |
 | 131 | Glance image sharing: *Share Image* (members), *Unshare*, and *Accept* / *Reject* an image shared with the project ([#20]) | P3 | L | 56 |
-| 132 | 🐞 FIX: Instance snapshots of a volume-backed instance are listed as plain images (Compute › Images, *Launch Instance* › *Source*) ([#21]) | P2 | S | 56 |
+| 132 | ✅ 🐞 FIX: Instance snapshots of a volume-backed instance are listed as plain images (Compute › Images, *Launch Instance* › *Source*) ([#21]) | — | S | 56 |
+| 133 | ✅ Images list: every row the same (tall) height, whether or not the image has metadata pills | — | XS | 130 |
+| 134 | ✅ Instances list: the *from volume* tag always on its own line under the image name | — | XS | — |
+| 135 | 🐞 FIX: *Launch Instance* with a server group fails with "OpenStack rejected the request" | P1 | S | — |
+| 136 | Router detail › *Interfaces*: row checkboxes and a *Delete Interfaces* button, as Horizon | P2 | S | — |
+| 137 | Network detail › *Subnets*: row checkboxes and a *Delete Subnets* button, as Horizon | P2 | S | — |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -172,7 +177,7 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130, 132, 133, 134**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8526,7 +8531,35 @@ conflict) and, when a primary project and role were given, skips the role grant 
 > deprecated, so `--use-config-drive` is printed. An empty subnet name prints a trailing `''`
 > on purpose (the positional name is required). The volume the launch created
 > (`delete_on_termination=false`) was deleted too: nothing is left on the test cloud.
-> **Left:** the dark theme.
+> More actions (2026-11-23, `simple_command` and `rule_create` in `cli.rs`; unit tests only, the
+> dialogs are the same ones already checked in the browser): the instance lifecycle (`server
+> start|stop|pause|unpause|suspend|resume|lock|unlock|shelve|unrescue`, `reboot --soft|--hard`,
+> `unshelve [--availability-zone]`, `rescue [--image]`, `set --name`, `image create --name`,
+> `resize --flavor`, `resize confirm|revert`, `rebuild --image`, `add|remove volume`), floating
+> IPs (`floating ip create` project and admin, `set --port`, `unset --port`), security groups
+> (`create`, `rule create` with `--dst-port n|min:max`, `--remote-ip|--remote-group`), key pairs
+> (the private key goes to `./name.pem`, the typed public key to `./name.pub`, never printed),
+> server groups, `volume set --size`, `volume snapshot create`; and the deletion of images,
+> subnets, ports, volume snapshots, security groups and rules, server groups, key pairs and
+> floating IPs joins the one-command-per-kind delete. Options not run against a real
+> `openstack` (not installed here). 658 of 658 tests pass, both clippy variants clean.
+> Router, port and Octavia actions (2026-11-23, tests `routers_gateways_ports_and_forwardings`,
+> `a_load_balancer_wizard_is_a_chain_through_variables`,
+> `octavia_parts_are_created_edited_and_deleted`; unit tests only): `router set|unset
+> --external-gateway`, `router add subnet`, `router remove port` (by the port, as the dialog),
+> `router set|unset --route destination=,gateway=`, `--no-route` for *Set routes*, and the router
+> edit (`--name`, `--enable|--disable`, SNAT through `--external-gateway … --enable-snat`,
+> `--distributed|--centralized`, `--ha|--no-ha`); `port create`, `port set` (security groups
+> as `--no-security-group` then one `--security-group` each), `floating ip port forwarding
+> create|set|delete`. Octavia (`openstack loadbalancer …`, python-octaviaclient): the wizard is a
+> chain (`LB_ID`, `LISTENER_ID`, `POOL_ID` captured with `-f value -c id`, `--wait` on each
+> part so the next sees an active balancer, the pool hangs from the balancer when there is no
+> listener); create, `set` and delete of listeners, pools, members (`member … <pool> <id>`) and
+> health monitors, `loadbalancer delete [--cascade]`, and the listener, pool and monitor
+> deletes join the one-command delete. Options written from the client's documentation, not
+> run (no `openstack` here). 661 of 661 tests pass, both clippy variants clean.
+> **Left:** the dark theme; the Octavia L7 policies and rules and *Set pool members*;
+> volume metadata/retype/upload to image, backups, QoS, Heat, and the Admin actions.
 
 **Goal.** The result dialog of an action (dry-run or done) lists the REST requests today. Next
 to them it gets a collapsed *CLI equivalent* item, closed until clicked, holding the
@@ -8720,6 +8753,18 @@ Horizon parity. What the user gets:
 ## 132. 🐞 FIX: Volume-backed instance snapshots are not recognised as *Instance Snapshot*
 
 > 🔗 **Issue:** [#21]
+>
+> ✅ **Done.** (2026-11-20) `is_instance_snapshot` in `src/server/mapping/image.rs`:
+> `image_type == "snapshot"`, or a `block_device_mapping` (JSON string or array) with an entry
+> `boot_index 0`, `source_type snapshot`, `destination_type volume`; malformed mappings are not
+> snapshots. Used by `images_page` (`Image.is_snapshot`, so Compute and Admin lists and the
+> detail *Type*) and `image_choices` (the *Instance Snapshot* / *Image* split). Tests: the
+> predicate (ephemeral, volume-backed, image-sourced BDM, non-boot entry, array form, malformed,
+> plain) and the split in `launch_images_split_snapshots_and_carry_sizing_facts`. Browser: the
+> test cloud's `whismur-snapshot-1` shows *Snapshot* in Compute › Images. Not checked: Horizon's
+> own rule (copied the BDM rule above, not read from its source) and the wizard's *Source* step
+> in the browser. Launching an instance snapshot already goes through `imageRef` (the `Image`
+> boot source), so the request needs no change.
 
 **Goal.** A snapshot taken of a volume-backed instance must show as an *Instance Snapshot*:
 *Type* column of Compute › Images (and the detail page's *Type*, Admin › Images), and the
@@ -8760,6 +8805,138 @@ ephemeral instance do carry `image_type=snapshot` (that is what works today).
   without `image_type`, plain image with a BDM of `source_type: image`, malformed BDM string);
   `image_choices` split test. Browser check (dry-run, dialog opened and cancelled): Images list
   *Type*, the wizard's *Instance Snapshot* source on the test cloud's two snapshots.
+
+## 133. Images list: all rows the same height, with or without pills
+
+> ✅ **Done.** (2026-11-20) `ImagePills` takes `reserve: bool`: with no pills it renders an empty
+> `div.image-pills.image-pills-reserved` (`min-height` of one pill, 18.5 px) instead of nothing.
+> Compute › Images passes `reserve = !prefs_tracked().images.pills.is_empty()`, so with
+> `pills = []` rows stay compact. Admin › Images has no pills; the *Launch Instance* pick table
+> (`pick.rs`) is untouched (same raggedness; ask the user if they want it). Test:
+> `image_pills_reserve_a_line_only_when_asked`. Browser (test cloud, `pills` set): 25 rows, all
+> 62.8 px, except the last (62.3: it has no bottom border; cell content heights are identical).
+> Not checked: `pills = []` live (config is the user's), phone width, dark theme.
+
+**Goal.** In Compute › Images (and Admin › Images if it shares the column), an image with
+metadata pills (item 130) makes its row taller than one without, so the list looks ragged. Every
+row gets the taller height, the one of a row with a line of pills, whatever the image's
+properties are. The user asked for the "big" height (2026-11-20). Only when `[images] pills` is
+configured: with no keys there are no pills and the rows stay as compact as today.
+
+**Implementation.**
+
+- The name cell is built in `src/pages/lists.rs` (`ImagesPage`, *Name* column): the link, then
+  `widgets::ImagePills` (`src/components/widgets.rs:411`), which renders `div.image-pills`
+  (`style/main.css:814`, `margin-top: 3px`, pills `line-height: 1.5`, 11px) and, I assume,
+  nothing when the list is empty. Check first whether it renders nothing or an empty div.
+- Preferred fix, CSS only: when the page has pills configured, reserve the line even for an image
+  without any: render the `div.image-pills` always (empty) with a `min-height` of one pill
+  (`calc(11px * 1.5 + 2px)` plus the margin), or give the cell a `min-height`. The widget must
+  know whether pills are configured at all (the prefs context, as item 130 does), so a
+  deployment with `pills = []` keeps today's compact rows. Alternative: a `.has-pills` class on
+  the table when the loaded rows include any pill, so only lists that show pills pay the height.
+- Do not touch the pick table of *Launch Instance* (`src/components/pick.rs:218`) unless the
+  user wants the same there: ask when building (it has the same raggedness).
+- Tests: a widget or model test that the reserved line is there for an empty pill list when pills
+  are configured and absent when not. Browser check (dry-run): Images list on the test cloud
+  with `pills` set; measure `getBoundingClientRect().height` of every row (all equal) and of a
+  list with `pills = []` (unchanged); phone width and dark theme.
+
+## 134. Instances list: the *from volume* tag always on the line under the image name
+
+> ✅ **Done.** (2026-11-20) `from_volume_cell(name, l, stacked)` in `src/pages/instances.rs`
+> renders the name and the tag; `image_cell` and `late_image_cell` use it. Lists (Compute and
+> Admin › Instances) pass `stacked = true`, which adds the class `from-volume`
+> (`.tag.from-volume { display: table; margin-top: 2px }` in `style/main.css`); the detail
+> page passes `false` and keeps the tag beside the name (the open question, settled as lists
+> only). Test: `from_volume_tag_is_stacked_only_in_lists`. Browser (test cloud): 6 rows, 6 tags,
+> `display: table`, every tag below its name. Not checked: narrow window, dark theme, Admin list,
+> and whether the taller boot-from-volume rows look ragged next to image-booted ones.
+
+**Goal.** In Compute › Instances, the *Image* column shows a boot-from-volume instance's image
+name followed by a `from volume` tag; the tag sits beside the name when both fit the column and
+drops under it when they do not, so rows look uneven. The tag goes on the next line always, even
+when it would fit beside the name (requested 2026-11-20). Rows of instances booted from an image
+stay one line; the instance list should keep working with the tag in the same position for every
+boot-from-volume row.
+
+**Implementation.**
+
+- The cell is `image_cell` in `src/pages/instances.rs:86` (`<span>{name}</span>" "<span
+  class="tag" …>`), and the same markup is repeated in `late_image_cell` (`:112`, paged lists,
+  Admin › Instances via `src/pages/admin.rs:307`). Make the tag a block: wrap both in one
+  helper (`from_volume_cell(name, l)`) that renders the name and
+  `<span class="tag from-volume">` with `display: table` (or `display: block; width:
+  fit-content`) and a small `margin-top`, so the tag is never inline with the name. Add the rule
+  next to `.tag` (`style/main.css:290`), colours as tokens only.
+- Open question: `image_cell` is also used by the instance detail page's *Image* row
+  (`src/pages/instance_detail.rs:302`), where one line is probably better. Ask the user, or
+  give `image_cell` a `stacked: bool` and pass `true` from the lists only (default
+  assumption: lists only, as the request says *Instances View*).
+- Table rows with a stacked tag are taller than image-booted ones; if that looks ragged, see
+  item 133 for the pattern (reserve the line), but do not add it unasked.
+- Tests: the helper's HTML contains the tag in its own block (as `image_pills_reserve_a_line_
+  only_when_asked` in `src/components/widgets.rs` does). Browser check (dry-run): Instances list
+  with boot-from-volume and image-booted rows, a wide and a narrow window, dark theme, and the
+  Admin list.
+
+## 135. FIX: *Launch Instance* with a server group fails
+
+**Goal.** Launching an instance with a server group chosen in the *Server Groups* step must
+work. Today the request is rejected ("OpenStack rejected the request"); without a server group
+it succeeds.
+
+**Implementation.**
+
+- Suspect: `server_create` in `src/server/actions/compute.rs` (~line 129) sends the scheduler
+  hint as a list, `os:scheduler_hints.group = ["<id>"]` (`OsSchedulerHintsBuilder::group(vec![…])`),
+  and its test asserts that list (~line 819). Nova's `os:scheduler_hints` schema takes `group` as
+  a single UUID string (a list is valid only for hints such as `different_host`), so a 400 is
+  expected. Check the SDK's `OsSchedulerHints` type: if `group` is `Vec`, serialise it as a
+  string (a custom `Serialize` on a `serde_json::Value` hint, or the SDK's own field if there is
+  a single-valued variant) rather than guessing.
+- Reproduce first, in dry-run: read the preview body in the result dialog (`[ui] show_requests`)
+  and compare with the Nova API reference. If the body is right, read the real 400 message
+  (the dialog's error detail) before changing anything: other causes are a server group on a
+  policy the scheduler cannot satisfy or the microversion (`group` hint needs none).
+- Test: update the dry-run test to assert the corrected body; add the exact error text to the
+  note once seen. Real check only on the test cloud, with the user's go-ahead (it creates an
+  instance): launch with a group, confirm it appears as a member on the group's detail page,
+  delete it.
+
+## 136. Router detail › *Interfaces*: select several and delete them at once
+
+**Goal.** Like Horizon's *Interfaces* tab: a checkbox per row, a select-all header and a
+*Delete Interfaces* button that removes the ticked interfaces after one confirmation. Today
+only the row menu's *Delete Interface* exists (`ops::interface_items`).
+
+**Implementation.**
+
+- The table is in `src/pages/details.rs` (~line 510, `ops::interface_items`). Give it a
+  `Select { key, picked }` as the lists do (`src/pages/lists.rs:64`), with a bulk button next
+  to the table built with `ops::bulk` (AGENTS.md §7: danger dialog listing the interfaces as
+  bullets, "Yes, I understand"), one `OsAction::RouterRemoveInterface { id, port_id }` per
+  interface in a `Batch`.
+- The gateway port (`network:router_gateway`) offers no delete, so it is not selectable (the
+  rule of `only_owned_networks_are_selectable_for_bulk_delete`, `lists.rs:1266`); a test
+  for it. Keep the row menu.
+- Browser check, dry-run: select two, open the dialog, see one request per interface.
+
+## 137. Network detail › *Subnets*: select several and delete them at once
+
+**Goal.** As item 136, for the *Subnets* tab of a network: checkboxes, select-all and a
+*Delete Subnets* button; the ticked subnets are deleted after one confirmation, like Horizon.
+
+**Implementation.**
+
+- `network_subnets` / `subnet_columns(owned)` in `src/pages/details.rs` (~lines 245-281): add
+  a `Select` and the bulk button (`ops::bulk`, one `OsAction::SubnetDelete { id }` per subnet
+  in a `Batch`; the CLI equivalent already joins them into one `openstack subnet delete`).
+- Only when the network is the project's (`owned`): another's subnets are read-only, so no
+  checkboxes there. Also check whether a subnets list outside the network detail exists
+  (Horizon has none) before adding more.
+- Test the selectable rule next to the page's other tests; browser check in dry-run: two
+  subnets, the dialog lists both, the preview shows two `DELETE /subnets/{id}`.
 
 ## Also pending (from the PoC)
 

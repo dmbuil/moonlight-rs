@@ -8,7 +8,7 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 
 use crate::api::*;
-use crate::components::dialog::{BulkButton, CreateButton, Dialog, RowActions, caps, data_version};
+use crate::components::dialog::{BulkButton, CreateButton, Dialog, RowActions, caps, data_version, prefs_tracked};
 use crate::components::ops;
 use crate::components::pager::{LateNames, PagerState, late_label, late_text, load_late, paged_table, use_list_query};
 use crate::components::table::{Col, DataTable, Select, available, col};
@@ -200,7 +200,7 @@ paged_page!(
             let (name, pills) = (i.name.clone(), i.pills.clone());
             view! {
                 <A href=href attr:class="strong" attr:title=title>{name}</A>
-                <ImagePills pills=pills/>
+                {move || view! { <ImagePills pills=pills.clone() reserve=!prefs_tracked().images.pills.is_empty()/> }}
             }
         })
         .sort_text(|i| i.name.clone()),

@@ -406,11 +406,16 @@ const PILL_VALUE_MAX: usize = 24;
 
 /// The `[images] pills` of an image: a small outlined pill per `(property, value)` under its
 /// name; nothing when there are none. The `title` is the property's name (the value, once the
-/// stylesheet has cut it short, too).
+/// stylesheet has cut it short, too). With `reserve` an image without pills still gets an empty
+/// line of the pills' height, so the rows of a list whose images have pills are all as tall.
 #[component]
-pub fn ImagePills(pills: Vec<(String, String)>) -> impl IntoView {
+pub fn ImagePills(pills: Vec<(String, String)>, #[prop(optional)] reserve: bool) -> impl IntoView {
     if pills.is_empty() {
-        return ().into_any();
+        return if reserve {
+            view! { <div class="image-pills image-pills-reserved" aria-hidden="true"></div> }.into_any()
+        } else {
+            ().into_any()
+        };
     }
     view! {
         <div class="image-pills">
@@ -867,6 +872,27 @@ pub fn InfoTip(#[prop(into)] text: String, #[prop(into)] label: String, #[prop(i
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_pills_reserve_a_line_only_when_asked() {
+        let html = |pills: Vec<(String, String)>, reserve: bool| {
+            Owner::new().with(|| {
+                view! { <ImagePills pills=pills reserve=reserve/> }
+                    .into_view()
+                    .to_html()
+            })
+        };
+        let one = vec![("os_type".to_string(), "linux".to_string())];
+        assert!(
+            html(vec![], true).contains("image-pills-reserved"),
+            "an empty line when pills are configured"
+        );
+        assert!(
+            !html(vec![], false).contains("image-pills"),
+            "nothing when none are configured"
+        );
+        assert!(html(one.clone(), true).contains("linux") && !html(one, true).contains("image-pills-reserved"));
+    }
 
     #[test]
     fn popovers_open_below_or_above_and_stay_on_screen() {

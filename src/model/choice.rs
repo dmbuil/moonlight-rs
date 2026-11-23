@@ -97,7 +97,7 @@ pub enum ChoiceSet {
     FreeFloatingIps,
     /// Launch wizard: bootable images (not instance snapshots), like Horizon's *Image*
     LaunchImages,
-    /// Launch wizard: images with `image_type=snapshot`
+    /// Launch wizard: instance snapshots (`image_type=snapshot`, or a volume-backed one)
     InstanceSnapshots,
     /// Launch wizard: project ports not attached to anything
     FreePorts,

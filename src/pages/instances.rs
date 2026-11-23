@@ -82,13 +82,20 @@ pub fn task_cell(i: &Instance, l: crate::i18n::Lang) -> AnyView {
     .into_any()
 }
 
-/// Image name; for boot-from-volume, the boot volume's image with a "from volume" tag.
-pub fn image_cell(i: &Instance, l: crate::i18n::Lang) -> AnyView {
+/// An image name followed by the "from volume" tag. `stacked` (the lists) puts the tag on its
+/// own line under the name always, so rows look alike whatever the column's width; the detail
+/// page keeps it beside the name.
+fn from_volume_cell(name: String, l: Lang, stacked: bool) -> AnyView {
+    let class = if stacked { "tag from-volume" } else { "tag" };
+    view! { <span>{name}</span>" "<span class=class title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span> }
+        .into_any()
+}
+
+/// Image name; for boot-from-volume, the boot volume's image with a "from volume" tag
+/// (see [`from_volume_cell`] for `stacked`).
+pub fn image_cell(i: &Instance, l: crate::i18n::Lang, stacked: bool) -> AnyView {
     match (&i.image_name, i.image_from_volume) {
-        (Some(n), true) => view! {
-            <span>{n.clone()}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span>
-        }
-        .into_any(),
+        (Some(n), true) => from_volume_cell(n.clone(), l, stacked),
         (Some(n), false) => n.clone().into_any(),
         (None, _) => "-".into_any(),
     }
@@ -102,16 +109,13 @@ pub type BootImages = RwSignal<HashMap<String, Option<String>>>;
 /// one [`BootImages`] fills in later (a placeholder until then).
 pub fn late_image_cell(i: &Instance, l: Lang, boot: BootImages) -> AnyView {
     if i.image_name.is_some() || i.boot_volume_ids.is_empty() {
-        return image_cell(i, l);
+        return image_cell(i, l, true);
     }
     let id = i.id.clone();
     (move || match boot.with(|m| m.get(&id).cloned()) {
         None => view! { <span class="muted" title=t(l, K::LoadingChoices)>"…"</span> }.into_any(),
         Some(None) => "-".into_any(),
-        Some(Some(n)) => {
-            view! { <span>{n}</span>" "<span class="tag" title=t(l, K::BootFromVolume)>{t(l, K::FromVolume)}</span> }
-                .into_any()
-        }
+        Some(Some(n)) => from_volume_cell(n, l, true),
     })
     .into_any()
 }
@@ -269,6 +273,25 @@ pub fn InstancesPage() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn from_volume_tag_is_stacked_only_in_lists() {
+        let html = |stacked| {
+            Owner::new().with(|| {
+                from_volume_cell("rhel".into(), Lang::EnUs, stacked)
+                    .into_view()
+                    .to_html()
+            })
+        };
+        assert!(
+            html(true).contains("tag from-volume"),
+            "lists put the tag on its own line"
+        );
+        assert!(
+            !html(false).contains("from-volume"),
+            "the detail page keeps it beside the name"
+        );
+    }
 
     #[test]
     fn boot_volumes_go_in_chunks_without_splitting_a_server() {

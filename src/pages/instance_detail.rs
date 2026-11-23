@@ -299,7 +299,7 @@ fn overview(d: InstanceDetail) -> impl IntoView {
     let status = d.base.status.clone();
     let flavor = d.flavor.clone();
     let server_id = d.base.id.clone();
-    let image = super::instances::image_cell(&d.base, i18n.lang());
+    let image = super::instances::image_cell(&d.base, i18n.lang(), false);
     view! {
         {d.fault.clone().map(|f| view! {
             <div class="alert alert-error" role="alert">
