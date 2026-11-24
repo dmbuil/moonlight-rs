@@ -4392,7 +4392,7 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
                 visible_networks(os, project_id)
             );
             let names = mapping::network_names(&soft(ne));
-            ch(&sn?, "id", |x| mapping::label_subnet(x, &names))
+            mapping::subnet_choices(&sn?, &names)
         }
         ChoiceSet::KeyPairs => mapping::keypair_choices(&keypairs_raw(os).await?),
         // Nova takes security groups by name in the launch request.

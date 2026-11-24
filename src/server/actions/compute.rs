@@ -133,8 +133,21 @@ pub(super) async fn launch(x: &mut Exec<'_>, s: &LaunchSpec) -> R<()> {
             .map_err(build_err)?;
         req.os_scheduler_hints(hints);
     }
-    x.create(req.build().map_err(build_err)?, "server").await?;
+    // The SDK types the `group` hint as a list, but Nova's `os:scheduler_hints.group` is one
+    // UUID string (a list is only valid for `different_host`, `same_host`…): sent as the SDK
+    // builds it, Nova answers 400 and the launch with a server group failed.
+    let req = reshaped(req.build().map_err(build_err)?, group_hint_as_string);
+    x.create(req, "server").await?;
     Ok(())
+}
+
+/// Turns `os:scheduler_hints.group: ["<id>"]` into `"<id>"`.
+fn group_hint_as_string(body: &mut Value) {
+    if let Some(g) = body.pointer_mut("/os:scheduler_hints/group")
+        && let Some(first) = g.as_array().and_then(|a| a.first()).cloned()
+    {
+        *g = first;
+    }
 }
 
 /// `ServerUpdate`: renames the instance, `PUT /servers/{id}`.
@@ -816,7 +829,11 @@ mod tests {
         assert_eq!(s["networks"], json!([{"uuid": "n1"}]), "empty network ids are dropped");
         assert_eq!(s["security_groups"], json!([{"name": "default"}]));
         assert_eq!(s["key_name"], "ops");
-        assert_eq!(b["os:scheduler_hints"]["group"], json!(["g1"]));
+        assert_eq!(
+            b["os:scheduler_hints"]["group"],
+            json!("g1"),
+            "Nova takes the server group as one UUID string, not a list"
+        );
         assert_eq!(s["OS-DCF:diskConfig"], "AUTO");
         assert!(s.get("user_data").is_none() && s.get("description").is_none());
     }

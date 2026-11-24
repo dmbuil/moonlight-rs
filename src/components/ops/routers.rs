@@ -40,14 +40,35 @@ pub fn add_interface_dialog(lang: Lang, router_id: &str) -> Dialog {
     Dialog::form(
         t(lang, K::AddInterface),
         t(lang, K::AddInterface),
-        vec![Field::select("subnet", t(lang, K::Subnet), Source::Set(ChoiceSet::Subnets)).required()],
+        vec![
+            Field::select("subnet", t(lang, K::Subnet), Source::Set(ChoiceSet::Subnets)).required(),
+            Field::text("ip", t(lang, K::IpAddress))
+                .help(t(lang, K::InterfaceIpHelp))
+                .tip(t(lang, K::TipInterfaceIp)),
+            // Not shown, but submitted: filled in `on_change` from the picked subnet.
+            Field::text("network", "").fixed(),
+        ],
         move |v| {
             Ok(OsAction::RouterAddInterface {
                 id: r.clone(),
                 subnet_id: req(v, "subnet", K::Subnet, lang)?,
+                ip_address: v.opt("ip"),
+                network_id: v.opt("network"),
             })
         },
     )
+    // The subnet's network (first cell of its choice) travels with the IP, to create the port.
+    .on_change(|field, vals, sets| {
+        if field == "subnet" {
+            let subnet = vals.get("subnet").cloned().unwrap_or_default();
+            let network = sets
+                .get(&ChoiceSet::Subnets)
+                .and_then(|l| l.iter().find(|c| c.value == subnet))
+                .and_then(|c| c.cells.first().cloned())
+                .unwrap_or_default();
+            vals.insert("network".into(), network);
+        }
+    })
 }
 
 /// A router's menu: set or clear the gateway, edit, add interface, delete.

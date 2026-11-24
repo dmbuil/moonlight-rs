@@ -406,8 +406,17 @@ pub enum OsAction {
     /// *Clear Gateway*: `PUT /v2.0/routers/{id}` with `"external_gateway_info": null`.
     RouterClearGateway { id: String },
     /// *Add Interface*: `PUT /v2.0/routers/{id}/add_router_interface` on a subnet (the port gets
-    /// the subnet's gateway IP).
-    RouterAddInterface { id: String, subnet_id: String },
+    /// the subnet's gateway IP). With `ip_address` (a second router on the subnet, whose gateway
+    /// IP the first one holds) a port with that fixed IP is created first, on `network_id`
+    /// (the subnet's network, required then), and added by `port_id`.
+    RouterAddInterface {
+        id: String,
+        subnet_id: String,
+        #[serde(default)]
+        ip_address: Option<String>,
+        #[serde(default)]
+        network_id: Option<String>,
+    },
     /// *Delete Interface*: `PUT /v2.0/routers/{id}/remove_router_interface` by port ID.
     RouterRemoveInterface { id: String, port_id: String },
     /// Atomic (`extraroute-atomic`): only this route changes.

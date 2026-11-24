@@ -147,9 +147,12 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 132 | ✅ 🐞 FIX: Instance snapshots of a volume-backed instance are listed as plain images (Compute › Images, *Launch Instance* › *Source*) ([#21]) | — | S | 56 |
 | 133 | ✅ Images list: every row the same (tall) height, whether or not the image has metadata pills | — | XS | 130 |
 | 134 | ✅ Instances list: the *from volume* tag always on its own line under the image name | — | XS | — |
-| 135 | 🐞 FIX: *Launch Instance* with a server group fails with "OpenStack rejected the request" | P1 | S | — |
-| 136 | Router detail › *Interfaces*: row checkboxes and a *Delete Interfaces* button, as Horizon | P2 | S | — |
-| 137 | Network detail › *Subnets*: row checkboxes and a *Delete Subnets* button, as Horizon | P2 | S | — |
+| 135 | 🚧 🐞 FIX: *Launch Instance* with a server group fails with "OpenStack rejected the request" | P1 | S | — |
+| 136 | ✅ Router detail › *Interfaces*: row checkboxes and a *Delete Interfaces* button, as Horizon | — | S | — |
+| 137 | ✅ Network detail › *Subnets*: row checkboxes and a *Delete Subnets* button, as Horizon | — | S | — |
+| 138 | ✅ *Add Interface* to a router with an optional *IP Address*, so a second router can use the same subnet | — | S | — |
+| 139 | *Associate Floating IP* on a load balancer, as Horizon: from the list row too, picking a free IP or allocating one from a pool ([#22]) | P2 | S | 54 |
+| 140 | *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner ([#23]) | P2 | S | 44 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -172,12 +175,14 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#19]: https://github.com/dmbuil/moonlight-rs/issues/19
 [#20]: https://github.com/dmbuil/moonlight-rs/issues/20
 [#21]: https://github.com/dmbuil/moonlight-rs/issues/21
+[#22]: https://github.com/dmbuil/moonlight-rs/issues/22
+[#23]: https://github.com/dmbuil/moonlight-rs/issues/23
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130, 132, 133, 134**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130, 132, 133, 134, 136, 137, 138**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -8882,6 +8887,17 @@ boot-from-volume row.
 
 ## 135. FIX: *Launch Instance* with a server group fails
 
+> 🚧 **In progress.** Fixed in code, not yet launched for real. Cause (from the SDK source and
+> Nova's schema, not from the cloud's error text): `create_219::OsSchedulerHints.group` is a
+> `Vec`, so the body carried `"group": ["<id>"]`, while Nova takes one UUID string. New
+> `Reshaped<E>` / `reshaped(endpoint, fix)` in `src/server/actions/mod.rs`: a `RestEndpoint`
+> that delegates everything (path, microversion, response key, headers) to the typed endpoint
+> and passes only the body through a function; `server_create` uses it with
+> `group_hint_as_string` (`src/server/actions/compute.rs`), so the preview shows what is sent.
+> The launch test asserts `"group": "g1"`. 663 of 663 tests pass, both clippy variants clean.
+> **Left:** a real launch with a server group on the test cloud (creates an instance: needs the
+> user's go-ahead), confirm it is listed on the group's detail page, delete it.
+
 **Goal.** Launching an instance with a server group chosen in the *Server Groups* step must
 work. Today the request is rejected ("OpenStack rejected the request"); without a server group
 it succeeds.
@@ -8906,6 +8922,17 @@ it succeeds.
 
 ## 136. Router detail › *Interfaces*: select several and delete them at once
 
+> ✅ **Done.** `interface_bulk_key` and the `Select` in `router_interfaces`
+> (`src/pages/details.rs`): a checkbox per row and a header checkbox; the gateway port
+> (`network:router_gateway`) has none; *Delete Interfaces (n)* (`K::DeleteInterfaces`, both
+> languages) opens `ops::bulk_delete`, which now takes any `Fn(String) -> OsAction` so it can
+> capture the router's ID: one `RouterRemoveInterface` per port in a `Batch`, labelled by fixed
+> IPs. Test `the_gateway_port_is_not_selectable_for_bulk_interface_delete`. Browser (test
+> cloud, writes on, a dummy router and two throwaway networks created and removed with the
+> user's go-ahead): two interfaces selected, the dialog lists both, submitting sent two
+> `PUT …/remove_router_interface` with their `port_id`, the table emptied, and the *Command
+> Line equivalent* is there. The row menu is unchanged. Not checked: phone width, dark theme.
+
 **Goal.** Like Horizon's *Interfaces* tab: a checkbox per row, a select-all header and a
 *Delete Interfaces* button that removes the ticked interfaces after one confirmation. Today
 only the row menu's *Delete Interface* exists (`ops::interface_items`).
@@ -8924,6 +8951,14 @@ only the row menu's *Delete Interface* exists (`ops::interface_items`).
 
 ## 137. Network detail › *Subnets*: select several and delete them at once
 
+> ✅ **Done.** `subnet_bulk_key`, `subnet_search` and the `Select` in `network_subnets`
+> (`src/pages/details.rs`), only when the project owns the network (another's subnets stay
+> read-only, with no checkbox column): *Delete Subnets (n)* (`K::DeleteSubnets`) with one
+> `SubnetDelete` per subnet in a `Batch`. Test `subnets_are_selected_by_id_and_labelled_by_name`.
+> Browser (test cloud): on a network of another project the tab is read-only; on an owned one,
+> two of three subnets selected and deleted, two `DELETE /subnets/{id}`, one left. A stale
+> browser bundle first hid the button: reload without cache after a rebuild.
+
 **Goal.** As item 136, for the *Subnets* tab of a network: checkboxes, select-all and a
 *Delete Subnets* button; the ticked subnets are deleted after one confirmation, like Horizon.
 
@@ -8937,6 +8972,146 @@ only the row menu's *Delete Interface* exists (`ops::interface_items`).
   (Horizon has none) before adding more.
 - Test the selectable rule next to the page's other tests; browser check in dry-run: two
   subnets, the dialog lists both, the preview shows two `DELETE /subnets/{id}`.
+
+## 138. *Add Interface* with an optional *IP Address* (a second router on the same subnet)
+
+> ✅ **Done.** Built: `OsAction::RouterAddInterface` has `ip_address` and `network_id`
+> (both `#[serde(default)]`); `router_add_interface` (`src/server/actions/router.rs`) without an
+> IP is the old single `PUT`, with one it validates the address, creates the port
+> (`POST /ports`, `fixed_ips: [{subnet_id, ip_address}]` on `network_id`) and adds it by
+> `port_id`, deleting the port again if the `PUT` fails. The dialog
+> (`ops::add_interface_dialog`) has an optional *IP Address* (`K::InterfaceIpHelp`,
+> `K::TipInterfaceIp`) and a hidden fixed `network` field that `on_change` fills from the first
+> cell of the picked subnet's choice (`mapping::subnet_choices`, which now puts the network ID
+> there; only submitted fields reach the action, hence the field). CLI equivalent: `PORT_ID=$(openstack
+> port create --network … --fixed-ip subnet=…,ip-address=… '' -f value -c id)` then `router
+> add port`. Tests: the two dry-run shapes, the invalid address and the missing network, the CLI
+> chain, `subnet_choices`; 664 of 664 pass, both clippy variants and `cargo doc` clean. Browser
+> (test cloud, writes on, dummy routers and a network created and removed): router A on a subnet,
+> router B without an IP got the 409 (generic text), with `10.251.1.9` the dialog sent the
+> `POST /ports` and the `PUT` and B listed the interface. Horizon's dialog was read on 2026-11-24
+> (read-only, form URL by GET): *Subnet* (required) and *IP Address (optional)*, whose text says
+> that blank uses the subnet's gateway IP and, if that is in use, another address of the subnet
+> must be given. Same as Moonlight.
+> 2026-11-24: the 409 has a readable message: `router_add_interface` rewords the error detail
+> (`in_use`, `src/server/actions/router.rs`) to "the subnet's gateway IP is already used by
+> another router: enter an IP Address" (no IP) or "the IP address is already in use in this
+> subnet" (with one), only for HTTP 409, kind kept. It is applied after `errors::public`, so it
+> shows with `[ui] show_error_details` on or off. Unit test only: the 409 was not provoked
+> again in the browser. Browser (dialog opened, not submitted): at 375 px the dialog is 343 px
+> wide with no horizontal overflow, and in the dark theme (`data-theme=dark`) the dialog, input
+> and footnote are legible. 665 of 665 tests pass, both clippy variants clean.
+
+**Goal.** Neutron allows several routers on one network or subnet, as long as their interfaces
+have different IPs. *Add Interface* in Moonlight takes only the subnet, so the interface gets
+the subnet's gateway IP; when another router already has it, Neutron answers 409 and the
+dialog says only "OpenStack rejected the request" (seen on the test cloud, 2026-11-23). Horizon
+has an optional *IP Address* field in its *Add Interface* dialog (from memory; read it in the
+production Horizon, read-only, before building, §1.4): blank means the gateway IP, filled
+means that fixed IP. Moonlight gets the same field.
+
+**Implementation.**
+
+- `OsAction::RouterAddInterface` (`src/model/action.rs`) gains `#[serde(default)] ip_address:
+  Option<String>`; `add_interface_dialog` (`src/components/ops/routers.rs:38`, opened from
+  the router menu and the Interfaces tab in `src/pages/details.rs`) gets an optional text
+  field `ip` with a one-line footnote and an (i) tip (blank = the subnet's gateway IP; the IP
+  must be inside the subnet's CIDR and free).
+- `router_add_interface` (`src/server/actions/router.rs:133`): without an IP, as today. With
+  one, Horizon's way: `POST /ports` on the subnet's network with `fixed_ips:
+  [{subnet_id, ip_address}]` (`x.create`, which returns a placeholder ID in dry-run), then
+  `PUT add_router_interface` with `port_id`. The subnet's network ID is needed: look the
+  subnet up with a GET (as `fetch.rs`) or carry it in the choice; prefer carrying it
+  (`ChoiceSet::Subnets` cells) over an extra request. If the second call fails, the port is
+  left behind: delete it (`OsAction`-free, through `Exec`) and say so in the error.
+- Validate the address (`std::net::IpAddr`) before sending; `AppError::invalid` otherwise.
+- CLI equivalent (`src/model/cli.rs`, item 129): with an IP, `openstack port create --network
+  … --fixed-ip subnet=…,ip-address=…` capturing `PORT_ID`, then `openstack router add port
+  <router> "$PORT_ID"`; without one, the existing `router add subnet`.
+- Better error: map the 409's detail (`IpAddressInUse`, `RouterInterfaceInUseByFloatingIP`…)
+  to a readable message if `server::errors::classify` can see it; check how the 409 reaches
+  the dialog (it showed only the generic text).
+- Tests: dry-run for both shapes (exact bodies of the port and of the interface request), the
+  invalid address, the CLI chain. Browser check on the test cloud (writes on): a dummy router
+  with an interface on a subnet that already has one, without IP (409 expected, readable
+  message), then with a free IP (works); delete the dummies afterwards.
+
+## 139. *Associate Floating IP* on a load balancer, as Horizon
+
+> 🔗 **Issue:** [#22]
+
+**Goal.** In Horizon, a load balancer's row menu has *Associate Floating IP*, whose dialog picks
+an existing free IP or allocates one from a pool and attaches it to the VIP port. In Moonlight
+it cannot be done from the list, and the detail page's dialog only lists the free floating IPs
+already allocated to the project, so a project with none cannot give a load balancer a public
+address without leaving the page. Same behaviour as the instance's dialog: both ways, from the
+list row and from the detail header.
+
+**Implementation.**
+
+- Today: `load_balancer_menu` (`src/components/ops/octavia.rs`) adds *Associate* / *Disassociate
+  Floating IP* only when it gets the `LoadBalancerDetail` (detail header); the row menu
+  (`load_balancer_items`, used by `src/pages/lists.rs`) passes `None`, so the list has neither.
+  The association dialog is a single `Field::select` over `ChoiceSet::FreeFloatingIps` and sends
+  `OsAction::FloatingIpAssociate { id, port_id: vip_port_id }`.
+- `LoadBalancerRow` (`src/model/lb.rs`) lacks the VIP port and the floating IP, which only
+  `LoadBalancerDetail` has (`server/mapping/octavia.rs`: matched from `x.floating_ips` by
+  `port_id`). Add `vip_port_id` (a `load_balancer_row` field, `vip_port_id` is in the Octavia
+  list) and the floating IP `(id, address)` to the row; the list fetcher in `server/fetch.rs`
+  then needs the project's floating IPs (one extra GET, only with Octavia and `router`).
+  Open question: show the floating IP as a column in the list, as Horizon does.
+- Dialog: reuse the shape of `ops::associate_ip_dialog` (`src/components/ops/instances.rs:544`,
+  *Allocate new IP* check, *Pool* select, existing-IP select, `OsAction::FloatingIpAllocate
+  { port_id: Some(vip_port) }` or `FloatingIpAssociate`); extract a helper taking a fixed port
+  instead of the port select. Gate as the instance's (needs the Neutron `router` extension).
+- Disassociate stays as is (`FloatingIpDisassociate`), now also on the row.
+- CLI equivalent (item 129, `src/model/cli.rs`): `FloatingIpAllocate` with a port already has
+  one; check it covers the load balancer case.
+- Tests: the dialog builds both actions (as `associate_ip_picks_an_existing_ip_or_allocates_one`),
+  the row mapping carries the port and the IP, the dry-run shapes already exist. Browser check
+  on the test cloud (writes on): create a throwaway load balancer, associate by allocating,
+  disassociate, delete it and the IP.
+
+## 140. *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner
+
+> 🔗 **Issue:** [#23]
+
+**Goal.** Horizon's *Create Port* (Network › Networks › network › Ports) takes the name, admin
+state, device ID, device owner, MAC address, a fixed IP or subnet, the VNIC type, port security
+and, with port security on, the security groups. Moonlight's dialog has only name, admin state and
+one optional fixed IP, so a port with a chosen MAC, a `direct` VNIC (SR-IOV) or port security off
+(needed for appliances, NAT or VRRP) cannot be created without the CLI. Moonlight gets the same
+fields, with the same defaults as Horizon (VNIC *Normal*, port security on).
+
+**Implementation.**
+
+- `OsAction::PortCreate` (`src/model/action.rs:349`) gains `#[serde(default)]` fields:
+  `mac_address`, `device_id`, `device_owner` (`Option<String>`), `vnic_type: Option<String>`,
+  `port_security: Option<bool>` and `security_group_ids: Option<Vec<String>>` (`None` = not
+  sent, so the cloud's defaults apply, as in `PortUpdate`).
+- `port_create` (`src/server/actions/network.rs:361`): the SDK's `port::create::PortBuilder` has
+  `mac_address`, `device_id`, `device_owner`, `binding_vnic_type` (the enum `PortUpdate` already
+  maps by its serde names), `port_security_enabled` and `security_groups`; set each only when
+  present. Validate the MAC (six hex pairs, `:` separated) and reject a multicast one
+  (`AppError::invalid`) before sending; `device_owner` free text, trimmed.
+- `create_port_dialog` (`src/components/ops/networks.rs:549`): add the fields in Horizon's order,
+  after *Fixed IP*. Reuse `VNIC_TYPES` and the gating of `edit_port_dialog`
+  (`src/components/ops/instances.rs:750`; extract the shared field builders): VNIC type only with
+  `needs::PORT_BINDING`, port security only with `needs::PORT_SECURITY`. Security groups as the
+  second step of the edit dialog (`ChoiceSet::SecurityGroupIds`, `enabled_if` port security),
+  turning the dialog into a two-step form like *Edit Port*. Footnotes and (i) tips in EN and ES
+  (`K::TipVnicType` and `K::TipPortSecurity` exist). Open questions: Horizon's *Binding host*
+  (admin only, hidden by default: leave out) and *Specify subnet*, which is a different
+  fixed-IP mode (`fixed_ips: [{subnet_id}]`): do it if cheap, else a follow-up.
+- Make sure no other caller breaks: `PortCreate` is also built in `src/server/actions/router.rs`
+  (item 138 tests) and the CLI mapping `src/model/cli.rs:540`.
+- CLI equivalent (item 129): add `--mac-address`, `--device`, `--device-owner`, `--vnic-type`,
+  `--enable-port-security` / `--disable-port-security` and one `--security-group` per group to
+  `openstack port create`.
+- Tests: dry-run with every field and with none (exact bodies, `binding:vnic_type`,
+  `port_security_enabled`), the invalid and the multicast MAC, the dialog gating when the cloud
+  lacks `binding` or `port-security`, the CLI line. Browser check on the test cloud (writes on):
+  a port with a MAC and port security off, read it back in the port's detail, delete it.
 
 ## Also pending (from the PoC)
 

@@ -464,7 +464,7 @@ details.raw-schema summary { cursor: pointer; color: var(--accent); margin-botto
 .btn-danger:hover { background: var(--danger-dark); }
 .btn-danger-ghost { color: var(--danger-ink); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.subtable-actions { display: flex; justify-content: flex-end; margin: 4px 0 -2px; }
+.subtable-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; margin: 4px 0 -2px; }
 .subtable-title { margin: 22px 0 4px; font-size: 14px; font-weight: 700; color: var(--ink); }
 td.actions, th.actions { width: 1%; white-space: nowrap; text-align: right; }
 /* Bulk selection */

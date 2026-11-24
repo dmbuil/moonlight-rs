@@ -132,17 +132,81 @@ pub(super) async fn router_clear_gateway(x: &mut Exec<'_>, id: &str) -> R<()> {
 
 /// `OsAction::RouterAddInterface`: `PUT /v2.0/routers/{id}/add_router_interface` on a
 /// subnet (Neutron creates the port with the subnet's gateway IP).
-pub(super) async fn router_add_interface(x: &mut Exec<'_>, id: &str, subnet_id: &str) -> R<()> {
+///
+/// With an `ip_address`, as Horizon: `POST /v2.0/ports` on the subnet's network with that fixed
+/// IP, then the same `PUT` with the new `port_id`. Adding by subnet alone would take the
+/// gateway IP, which another router on the subnet already holds (409). A port left behind by a
+/// failed `PUT` is deleted again.
+pub(super) async fn router_add_interface(
+    x: &mut Exec<'_>,
+    id: &str,
+    subnet_id: &str,
+    ip_address: &Option<String>,
+    network_id: &Option<String>,
+) -> R<()> {
     use openstack_sdk::api::network::v2::router::add_router_interface as m;
-    x.send(
-        m::Request::builder()
-            .id(id)
+    let Some(ip) = opt(ip_address) else {
+        x.send(
+            m::Request::builder()
+                .id(id)
+                .subnet_id(subnet_id)
+                .build()
+                .map_err(build_err)?,
+        )
+        .await
+        .map_err(|e| {
+            in_use(
+                e,
+                "the subnet's gateway IP is already used by another router: enter an IP Address",
+            )
+        })?;
+        return Ok(());
+    };
+    ip.parse::<std::net::IpAddr>()
+        .map_err(|_| AppError::invalid(format!("not an IP address: {ip}")))?;
+    let net = opt(network_id).ok_or_else(|| AppError::invalid("the subnet's network is needed to pick an address"))?;
+    let port = {
+        use openstack_sdk::api::network::v2::port::create as p;
+        let fixed = p::FixedIpsBuilder::default()
             .subnet_id(subnet_id)
+            .ip_address(ip.to_string())
             .build()
-            .map_err(build_err)?,
-    )
-    .await?;
-    Ok(())
+            .map_err(build_err)?;
+        let body = p::PortBuilder::default()
+            .network_id(net)
+            .fixed_ips(vec![fixed])
+            .build()
+            .map_err(build_err)?;
+        x.create(p::Request::builder().port(body).build().map_err(build_err)?, "port")
+            .await?
+    };
+    let added = x
+        .send(
+            m::Request::builder()
+                .id(id)
+                .port_id(port.as_str())
+                .build()
+                .map_err(build_err)?,
+        )
+        .await;
+    if added.is_err() {
+        // The port would stay behind, holding the address; its own failure adds nothing to report.
+        let _ = super::network::port_delete(x, &port).await;
+    }
+    added.map_err(|e| in_use(e, "the IP address is already in use in this subnet"))
+}
+
+/// Neutron answers 409 (`IpAddressInUse`) when the address an interface needs is taken; the
+/// generic "OpenStack rejected the request" hides that, so name the cause. Other errors pass.
+fn in_use(e: AppError, why: &str) -> AppError {
+    if e.kind == ErrorKind::OpenStack(409) {
+        AppError {
+            detail: format!("Add Interface: {why}"),
+            ..e
+        }
+    } else {
+        e
+    }
 }
 
 /// `OsAction::RouterRemoveInterface`: `PUT /v2.0/routers/{id}/remove_router_interface` by
@@ -342,6 +406,8 @@ mod tests {
         let r = dry(OsAction::RouterAddInterface {
             id: id("r"),
             subnet_id: id("s"),
+            ip_address: None,
+            network_id: None,
         })
         .await;
         assert_eq!(
@@ -349,6 +415,31 @@ mod tests {
             ("PUT", "/routers/r/add_router_interface")
         );
         assert_eq!(body(&r[0]), json!({"subnet_id": "s"}));
+        assert_eq!(r.len(), 1, "without an IP there is no port to create");
+        // With an IP (a second router on the subnet): the port first, then it is added by ID.
+        let with_ip = |ip: &str, network: Option<&str>| OsAction::RouterAddInterface {
+            id: id("r"),
+            subnet_id: id("s"),
+            ip_address: Some(id(ip)),
+            network_id: network.map(id),
+        };
+        let r = dry(with_ip(" 10.0.0.9 ", Some("n"))).await;
+        assert_eq!(r.len(), 2);
+        assert_eq!((r[0].method.as_str(), r[0].path.as_str()), ("POST", "/ports"));
+        assert_eq!(
+            body(&r[0]),
+            json!({"port": {"network_id": "n", "fixed_ips": [{"subnet_id": "s", "ip_address": "10.0.0.9"}]}})
+        );
+        assert_eq!(r[1].path, "/routers/r/add_router_interface");
+        assert_eq!(body(&r[1]), json!({"port_id": "<new port id>"}));
+        assert!(
+            dry_err(with_ip("not-an-ip", Some("n"))).await,
+            "an address that is not one"
+        );
+        assert!(
+            dry_err(with_ip("10.0.0.9", None)).await,
+            "the network is needed for the port"
+        );
         let r = dry(OsAction::RouterRemoveInterface {
             id: id("r"),
             port_id: id("p"),
@@ -457,5 +548,21 @@ mod tests {
             json!({"router": {"routes": []}}),
             "removing the last route sends an empty list"
         );
+    }
+}
+
+#[cfg(test)]
+mod in_use_tests {
+    use super::*;
+
+    #[test]
+    fn a_409_names_the_cause_and_other_errors_pass() {
+        let conflict = AppError::new(ErrorKind::OpenStack(409), "OpenStack rejected the request");
+        let e = in_use(conflict, "the IP address is already in use in this subnet");
+        assert_eq!(e.kind, ErrorKind::OpenStack(409));
+        assert!(e.detail.contains("already in use"), "{}", e.detail);
+
+        let other = AppError::new(ErrorKind::OpenStack(500), "boom");
+        assert_eq!(in_use(other.clone(), "x"), other, "only a 409 is reworded");
     }
 }

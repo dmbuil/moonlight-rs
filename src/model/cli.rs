@@ -196,6 +196,21 @@ pub fn cli_equivalent(action: &OsAction) -> Vec<String> {
             }
             vec![c.render(None)]
         }
+        // A chosen IP: the port is made first, as the dialog does, then added by its ID.
+        OsAction::RouterAddInterface {
+            id,
+            subnet_id,
+            ip_address: Some(ip),
+            network_id: Some(net),
+        } if !ip.trim().is_empty() && !net.trim().is_empty() => {
+            let mut port = Cmd::new("openstack port create");
+            port.opt("--network", net.trim())
+                .opt("--fixed-ip", &format!("subnet={subnet_id},ip-address={}", ip.trim()))
+                .arg("");
+            let mut add = Cmd::new("openstack router add port");
+            add.arg(id).raw("\"$PORT_ID\"");
+            vec![port.render(Some("PORT_ID")), add.render(None)]
+        }
         _ if delete_id(action).is_some() => delete_command(std::slice::from_ref(action)).into_iter().collect(),
         OsAction::Batch(items) => {
             let actions: Vec<OsAction> = items.iter().map(|(_, a)| a.clone()).collect();
@@ -450,7 +465,12 @@ fn simple_command(action: &OsAction) -> Option<Cmd> {
             c.flag("--external-gateway").arg(id);
             c
         }
-        OsAction::RouterAddInterface { id, subnet_id } => {
+        OsAction::RouterAddInterface {
+            id,
+            subnet_id,
+            ip_address,
+            ..
+        } if non_empty(ip_address).is_none() => {
             let mut c = Cmd::new("openstack router add subnet");
             c.arg(id).arg(subnet_id);
             c
@@ -1696,9 +1716,24 @@ mod tests {
         assert_eq!(
             c(OsAction::RouterAddInterface {
                 id: r("r1"),
-                subnet_id: r("sn1")
+                subnet_id: r("sn1"),
+                ip_address: None,
+                network_id: None
             }),
             "openstack router add subnet \\\n  r1 \\\n  sn1"
+        );
+        let with_ip = cli_equivalent(&OsAction::RouterAddInterface {
+            id: r("r1"),
+            subnet_id: r("sn1"),
+            ip_address: Some(r(" 10.0.0.9 ")),
+            network_id: Some(r("n1")),
+        });
+        assert_eq!(
+            with_ip,
+            [
+                "PORT_ID=$(openstack port create \\\n  --network n1 \\\n  --fixed-ip subnet=sn1,ip-address=10.0.0.9 \\\n  '' \\\n  -f value -c id)",
+                "openstack router add port \\\n  r1 \\\n  \"$PORT_ID\""
+            ]
         );
         assert_eq!(
             c(OsAction::RouterRemoveInterface {

@@ -10,9 +10,9 @@ use leptos_router::hooks::use_params_map;
 
 use super::lists::{admin_state, attachments, link, moving_status, status_pill};
 use crate::api::*;
-use crate::components::dialog::{CreateButton, MenuItem, RowActions, caps, data_version};
+use crate::components::dialog::{BulkButton, CreateButton, MenuItem, RowActions, caps, data_version};
 use crate::components::ops;
-use crate::components::table::{DataTable, TimingChip, col};
+use crate::components::table::{DataTable, Select, TimingChip, col};
 use crate::components::widgets::{
     Copyable, Skeleton, dash, poll_while_busy, render, short_time, snapshot_busy, volume_busy,
 };
@@ -266,19 +266,44 @@ fn subnet_columns(owned: bool) -> Vec<crate::components::table::Col<SubnetRow>> 
     cols
 }
 
-/// Network detail › *Subnets*: the network's subnets, with *Create Subnet* when the project
-/// owns the network.
+/// The text the subnets' filter box searches.
+fn subnet_search(s: &SubnetRow) -> String {
+    format!("{} {} {}", s.name, s.id, s.cidr)
+}
+
+/// A subnet's bulk-delete entry, `(id, name)`; the name falls back to the ID.
+fn subnet_bulk_key(s: &SubnetRow) -> Option<(String, String)> {
+    let name = if s.name.trim().is_empty() {
+        s.id.clone()
+    } else {
+        s.name.clone()
+    };
+    Some((s.id.clone(), name))
+}
+
+/// Network detail › *Subnets*: the network's subnets, with *Create Subnet* and the bulk
+/// *Delete Subnets* when the project owns the network (another's subnets are read-only).
 fn network_subnets(d: NetworkDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (id, owned) = (d.row.id.clone(), d.row.owned);
+    let select = Select {
+        key: subnet_bulk_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         {owned.then(|| view! {
             <div class="subtable-actions">
+                <BulkButton label=K::DeleteSubnets picked=select.picked
+                    open=Arc::new(|l, items| ops::bulk_delete(l, K::DeleteSubnets, items, |id| OsAction::SubnetDelete { id }))/>
                 <CreateButton label=Signal::derive(move || i18n.t(K::CreateSubnet).to_string())
                     open=Arc::new(move || ops::create_subnet_dialog(i18n.lang(), &id))/>
             </div>
         })}
-        <DataTable rows=d.subnets columns=subnet_columns(owned) search=|s: &SubnetRow| format!("{} {} {}", s.name, s.id, s.cidr)/>
+        {if owned {
+            view! { <DataTable rows=d.subnets columns=subnet_columns(owned) search=subnet_search select=select/> }.into_any()
+        } else {
+            view! { <DataTable rows=d.subnets columns=subnet_columns(owned) search=subnet_search/> }.into_any()
+        }}
     }
 }
 
@@ -487,12 +512,27 @@ fn router_overview(d: RouterDetail) -> impl IntoView {
     }
 }
 
-/// Router detail › *Interfaces*: the router's ports with *Add Interface* and each interface's
-/// menu.
+/// An interface's bulk-delete entry, `(port id, fixed IPs)`; `None` for the gateway port, which
+/// is cleared with *Clear Gateway*, not deleted as an interface.
+fn interface_bulk_key(p: &PortRow) -> Option<(String, String)> {
+    if p.device_owner.as_deref() == Some("network:router_gateway") {
+        return None;
+    }
+    let label = p.fixed_ips.join(", ");
+    Some((p.id.clone(), if label.is_empty() { p.id.clone() } else { label }))
+}
+
+/// Router detail › *Interfaces*: the router's ports with *Add Interface*, the bulk *Delete
+/// Interfaces* and each interface's menu.
 fn router_interfaces(d: RouterDetail) -> impl IntoView {
     let i18n = use_i18n();
     let rid = d.row.id.clone();
     let rid2 = rid.clone();
+    let rid3 = rid.clone();
+    let select = Select {
+        key: interface_bulk_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     let columns = vec![
         col(K::Name, |p: &PortRow, _| {
             link(format!("/project/networks/ports/{}", p.id), port_label(p))
@@ -513,10 +553,12 @@ fn router_interfaces(d: RouterDetail) -> impl IntoView {
     ];
     view! {
         <div class="subtable-actions">
+            <BulkButton label=K::DeleteInterfaces picked=select.picked
+                open=Arc::new(move |l, items| ops::bulk_delete(l, K::DeleteInterfaces, items, |port_id| OsAction::RouterRemoveInterface { id: rid3.clone(), port_id }))/>
             <CreateButton label=Signal::derive(move || i18n.t(K::AddInterface).to_string())
                 open=Arc::new(move || ops::add_interface_dialog(i18n.lang(), &rid))/>
         </div>
-        <DataTable rows=d.interfaces columns=columns search=port_search/>
+        <DataTable rows=d.interfaces columns=columns search=port_search select=select/>
     }
 }
 
@@ -885,5 +927,69 @@ pub fn KeyPairDetailPage() -> impl IntoView {
                 }
             })}
         </Transition>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn port(owner: Option<&str>, ips: &[&str]) -> PortRow {
+        PortRow {
+            id: "p1".into(),
+            name: String::new(),
+            network_id: "n1".into(),
+            network_name: None,
+            fixed_ips: ips.iter().map(|s| s.to_string()).collect(),
+            subnet_ids: vec![],
+            mac: String::new(),
+            status: "ACTIVE".into(),
+            admin_up: true,
+            device_owner: owner.map(Into::into),
+            device_id: None,
+            device_name: None,
+            security_groups: vec![],
+            vnic_type: None,
+            description: None,
+            port_security: true,
+            security_group_ids: vec![],
+        }
+    }
+
+    #[test]
+    fn the_gateway_port_is_not_selectable_for_bulk_interface_delete() {
+        assert_eq!(
+            interface_bulk_key(&port(Some("network:router_interface"), &["10.0.0.1", "10.0.1.1"])),
+            Some(("p1".into(), "10.0.0.1, 10.0.1.1".into()))
+        );
+        assert_eq!(
+            interface_bulk_key(&port(Some("network:router_gateway"), &["203.0.113.4"])),
+            None
+        );
+        assert_eq!(
+            interface_bulk_key(&port(None, &[])),
+            Some(("p1".into(), "p1".into())),
+            "no fixed IP: the port ID labels the entry"
+        );
+    }
+
+    #[test]
+    fn subnets_are_selected_by_id_and_labelled_by_name() {
+        let subnet = |name: &str| SubnetRow {
+            id: "s1".into(),
+            name: name.into(),
+            network_id: "n1".into(),
+            network_name: None,
+            cidr: "10.0.0.0/24".into(),
+            ip_version: 4,
+            gateway_ip: None,
+            enable_dhcp: true,
+            allocation_pools: vec![],
+            dns_nameservers: vec![],
+            host_routes: vec![],
+            description: None,
+        };
+        assert_eq!(subnet_bulk_key(&subnet("web")), Some(("s1".into(), "web".into())));
+        assert_eq!(subnet_bulk_key(&subnet(" ")), Some(("s1".into(), "s1".into())));
     }
 }

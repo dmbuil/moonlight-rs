@@ -180,6 +180,67 @@ impl RestEndpoint for JsonRequest {
     }
 }
 
+/// A typed endpoint whose body is adjusted after the SDK built it, for the places where the
+/// SDK's generated type is looser than the service: everything else (path, microversion,
+/// response key, headers) is the inner endpoint's. The preview shows the adjusted body.
+pub struct Reshaped<E> {
+    inner: E,
+    fix: fn(&mut Value),
+}
+
+impl<E: RestEndpoint> RestEndpoint for Reshaped<E> {
+    fn method(&self) -> http::Method {
+        self.inner.method()
+    }
+    fn endpoint(&self) -> Cow<'static, str> {
+        self.inner.endpoint()
+    }
+    fn service_type(&self) -> openstack_sdk::types::ServiceType {
+        self.inner.service_type()
+    }
+    fn parameters(&self) -> openstack_sdk::api::QueryParams<'_> {
+        self.inner.parameters()
+    }
+    fn body(&self) -> Result<Option<(&'static str, Vec<u8>)>, openstack_sdk::api::BodyError> {
+        let Some((mime, bytes)) = self.inner.body()? else {
+            return Ok(None);
+        };
+        match serde_json::from_slice::<Value>(&bytes) {
+            Ok(mut v) => {
+                (self.fix)(&mut v);
+                Ok(Some((mime, serde_json::to_vec(&v).expect("JSON value serialises"))))
+            }
+            Err(_) => Ok(Some((mime, bytes))),
+        }
+    }
+    fn response_key(&self) -> Option<Cow<'static, str>> {
+        self.inner.response_key()
+    }
+    fn response_list_item_key(&self) -> Option<Cow<'static, str>> {
+        self.inner.response_list_item_key()
+    }
+    fn response_headers(&self) -> std::collections::HashMap<&str, &str> {
+        self.inner.response_headers()
+    }
+    fn request_headers(&self) -> Option<&http::HeaderMap> {
+        self.inner.request_headers()
+    }
+    fn api_version(&self) -> Option<openstack_sdk::types::ApiVersion> {
+        self.inner.api_version()
+    }
+    fn min_version(&self) -> Option<openstack_sdk::types::ApiVersion> {
+        self.inner.min_version()
+    }
+    fn max_version(&self) -> Option<openstack_sdk::types::ApiVersion> {
+        self.inner.max_version()
+    }
+}
+
+/// `endpoint` with its body passed through `fix` (see [`Reshaped`]).
+pub fn reshaped<E: RestEndpoint>(endpoint: E, fix: fn(&mut Value)) -> Reshaped<E> {
+    Reshaped { inner: endpoint, fix }
+}
+
 /// An SDK enum from its wire name (`"HTTP"`, `"ROUND_ROBIN"`…): every Octavia
 /// module has its own copy of these enums, all deserialisable from the API's strings.
 fn enum_of<T: serde::de::DeserializeOwned>(v: &str, what: &str) -> R<T> {
@@ -769,7 +830,12 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
         } => router::router_update(x, id, name, admin_up, snat, distributed, ha).await?,
         RouterSetGateway { id, network_id } => router::router_set_gateway(x, id, network_id).await?,
         RouterClearGateway { id } => router::router_clear_gateway(x, id).await?,
-        RouterAddInterface { id, subnet_id } => router::router_add_interface(x, id, subnet_id).await?,
+        RouterAddInterface {
+            id,
+            subnet_id,
+            ip_address,
+            network_id,
+        } => router::router_add_interface(x, id, subnet_id, ip_address, network_id).await?,
         RouterRemoveInterface { id, port_id } => router::router_remove_interface(x, id, port_id).await?,
         RouterAddRoute {
             id,

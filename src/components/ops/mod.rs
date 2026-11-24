@@ -196,13 +196,19 @@ pub fn allowed(status: &str, locked: Option<bool>, busy: bool) -> Vec<Op> {
 
 /// Confirmation for a bulk delete: lists every selected name and runs one
 /// [`OsAction::Batch`], so the server reports each item separately.
-pub fn bulk_delete(lang: Lang, title: K, items: Vec<(String, String)>, make: fn(String) -> OsAction) -> Dialog {
+pub fn bulk_delete(lang: Lang, title: K, items: Vec<(String, String)>, make: impl Fn(String) -> OsAction) -> Dialog {
     bulk(lang, title, items, make, true)
 }
 
 /// A bulk action over `(id, name)` pairs; destructive ones are red and warn
 /// that they cannot be undone.
-pub fn bulk(lang: Lang, title: K, items: Vec<(String, String)>, make: fn(String) -> OsAction, danger: bool) -> Dialog {
+pub fn bulk(
+    lang: Lang,
+    title: K,
+    items: Vec<(String, String)>,
+    make: impl Fn(String) -> OsAction,
+    danger: bool,
+) -> Dialog {
     let names: Vec<String> = items.iter().map(|(_, n)| n.clone()).collect();
     let too_many = items.len() > MAX_BATCH;
     let batch = OsAction::Batch(items.into_iter().map(|(id, n)| (n, make(id))).collect());

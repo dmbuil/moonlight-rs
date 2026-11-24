@@ -339,6 +339,8 @@ translations! {
     InstanceName => "Instance Name", "Nombre de la instancia";
     ImageName => "Image Name", "Nombre de la imagen";
     IpAddress => "IP Address", "Dirección IP";
+    InterfaceIpHelp => "Optional; empty uses the subnet's gateway address.", "Opcional; vacío usa la dirección de puerta de enlace de la subred.";
+    TipInterfaceIp => "The address the router gets on this subnet.\nEmpty: the subnet's gateway address (`192.168.0.1` for `192.168.0.0/24`). Fill it in when another router already has that address on the subnet: Neutron refuses two interfaces with the same IP.\nIt must be inside the subnet's range and free.", "La dirección que el router tendrá en esta subred.\nVacío: la dirección de puerta de enlace de la subred (`192.168.0.1` para `192.168.0.0/24`). Indíquela si otro router ya tiene esa dirección en la subred: Neutron no admite dos interfaces con la misma IP.\nDebe estar dentro del rango de la subred y libre.";
     Flavor => "Flavor", "Sabor";
     KeyPair => "Key Pair", "Par de claves";
     Task => "Task", "Tarea";
@@ -1695,6 +1697,8 @@ translations! {
     DeleteVolumes => "Delete Volumes", "Eliminar volúmenes";
     DeleteSnapshots => "Delete Volume Snapshots", "Eliminar instantáneas de volumen";
     DeleteNetworks => "Delete Networks", "Eliminar redes";
+    DeleteInterfaces => "Delete Interfaces", "Eliminar interfaces";
+    DeleteSubnets => "Delete Subnets", "Eliminar subredes";
     DeleteRouters => "Delete Routers", "Eliminar routers";
     DeleteSecurityGroups => "Delete Security Groups", "Eliminar grupos de seguridad";
     ReleaseIps => "Release Floating IPs", "Liberar IP flotantes";

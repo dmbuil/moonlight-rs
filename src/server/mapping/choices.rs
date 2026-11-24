@@ -608,6 +608,18 @@ pub fn label_subnet(sn: &Value, net_names: &HashMap<String, String>) -> String {
     format!("{}: {} ({})", net, s(sn, "cidr").unwrap_or_default(), name_or_id(sn))
 }
 
+/// The subnets as choices, labelled as [`label_subnet`], with the subnet's network ID in the
+/// first cell (a router interface with a chosen IP needs it to create its port).
+pub fn subnet_choices(subnets: &[Value], net_names: &HashMap<String, String>) -> Vec<Choice> {
+    let mut out = super::choices(subnets, "id", |x| label_subnet(x, net_names));
+    for c in &mut out {
+        if let Some(sn) = subnets.iter().find(|x| s(x, "id").as_deref() == Some(c.value.as_str())) {
+            c.cells = vec![s(sn, "network_id").unwrap_or_default()];
+        }
+    }
+    out
+}
+
 /// A port choice label: the server it belongs to (or the port's name) and its
 /// first address.
 pub fn label_port(p: &Value, server_names: &HashMap<String, String>) -> String {
@@ -646,6 +658,19 @@ pub fn server_names(servers: &[Value]) -> HashMap<String, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn subnet_choices_carry_their_network_id_for_the_interface_port() {
+        let subnets = [
+            json!({"id": "s2", "name": "b", "cidr": "10.0.2.0/24", "network_id": "n2"}),
+            json!({"id": "s1", "name": "a", "cidr": "10.0.1.0/24", "network_id": "n1"}),
+        ];
+        let names = HashMap::from([("n1".to_string(), "net1".to_string())]);
+        let got = subnet_choices(&subnets, &names);
+        let pairs: Vec<_> = got.iter().map(|c| (c.value.as_str(), c.cells.clone())).collect();
+        assert_eq!(pairs, [("s2", vec!["n2".to_string()]), ("s1", vec!["n1".to_string()])]);
+        assert_eq!(got[1].label, "net1: 10.0.1.0/24 (a)");
+    }
 
     #[test]
     fn lb_zones_are_the_enabled_ones_by_name() {
