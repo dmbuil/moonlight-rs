@@ -151,8 +151,10 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 136 | ✅ Router detail › *Interfaces*: row checkboxes and a *Delete Interfaces* button, as Horizon | — | S | — |
 | 137 | ✅ Network detail › *Subnets*: row checkboxes and a *Delete Subnets* button, as Horizon | — | S | — |
 | 138 | ✅ *Add Interface* to a router with an optional *IP Address*, so a second router can use the same subnet | — | S | — |
-| 139 | *Associate Floating IP* on a load balancer, as Horizon: from the list row too, picking a free IP or allocating one from a pool ([#22]) | P2 | S | 54 |
-| 140 | *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner ([#23]) | P2 | S | 44 |
+| 139 | *Associate Floating IP* on a load balancer, as Horizon: from the list row too, picking a free IP or allocating one from a pool, and from Network › Floating IPs ([#22], [#24], [#25]) | P2 | M | 54 |
+| 140 | *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner ([#23], [#26]) | P2 | S | 44 |
+| 141 | Network detail › *Ports*: row checkboxes and a *Delete Ports* button, as Horizon ([#27]) | P2 | S | 137 |
+| 142 | Load balancer detail: row checkboxes and bulk delete on *Listeners*, *Pools*, *Members*, *Health Monitors* and *L7 Policies*, as Horizon ([#28]) | P2 | M | 54 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -177,6 +179,11 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 [#21]: https://github.com/dmbuil/moonlight-rs/issues/21
 [#22]: https://github.com/dmbuil/moonlight-rs/issues/22
 [#23]: https://github.com/dmbuil/moonlight-rs/issues/23
+[#24]: https://github.com/dmbuil/moonlight-rs/issues/24
+[#25]: https://github.com/dmbuil/moonlight-rs/issues/25
+[#26]: https://github.com/dmbuil/moonlight-rs/issues/26
+[#27]: https://github.com/dmbuil/moonlight-rs/issues/27
+[#28]: https://github.com/dmbuil/moonlight-rs/issues/28
 
 Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
@@ -9038,7 +9045,7 @@ means that fixed IP. Moonlight gets the same field.
 
 ## 139. *Associate Floating IP* on a load balancer, as Horizon
 
-> 🔗 **Issue:** [#22]
+> 🔗 **Issue:** [#22], [#24] (from Network › Floating IPs), [#25] (from the load balancer row)
 
 **Goal.** In Horizon, a load balancer's row menu has *Associate Floating IP*, whose dialog picks
 an existing free IP or allocates one from a pool and attaches it to the VIP port. In Moonlight
@@ -9065,6 +9072,15 @@ list row and from the detail header.
   { port_id: Some(vip_port) }` or `FloatingIpAssociate`); extract a helper taking a fixed port
   instead of the port select. Gate as the instance's (needs the Neutron `router` extension).
 - Disassociate stays as is (`FloatingIpDisassociate`), now also on the row.
+- From the floating IP's side ([#24], 2026-11-25): Network › Floating IPs › *Associate*
+  (`floating_ip_items`, `src/components/ops/floating_ips.rs:206`) offers only instance ports,
+  because `ChoiceSet::AssociablePorts` (`src/server/fetch.rs:4572`) goes through
+  `mapping::instance_port_choices` (`src/server/mapping/choices.rs`), which keeps only
+  `device_owner` `compute:*`. Horizon also lists the load balancers' VIP ports there (device
+  owner `Octavia`), labelled by the load balancer's name and VIP address. Add those ports
+  (only for the floating IP dialog, not `InstancePorts`; same `without_fip` and
+  `fip_topology_check` filters), labelled from the Octavia list when it is available. Same
+  for the admin panel's `AllAssociablePorts` if cheap. Test the mapping with a VIP port.
 - CLI equivalent (item 129, `src/model/cli.rs`): `FloatingIpAllocate` with a port already has
   one; check it covers the load balancer case.
 - Tests: the dialog builds both actions (as `associate_ip_picks_an_existing_ip_or_allocates_one`),
@@ -9074,7 +9090,8 @@ list row and from the detail header.
 
 ## 140. *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner
 
-> 🔗 **Issue:** [#23]
+> 🔗 **Issue:** [#23], [#26] (same request from a tester: port security off and several
+> security groups at creation)
 
 **Goal.** Horizon's *Create Port* (Network › Networks › network › Ports) takes the name, admin
 state, device ID, device owner, MAC address, a fixed IP or subnet, the VNIC type, port security
@@ -9112,6 +9129,64 @@ fields, with the same defaults as Horizon (VNIC *Normal*, port security on).
   `port_security_enabled`), the invalid and the multicast MAC, the dialog gating when the cloud
   lacks `binding` or `port-security`, the CLI line. Browser check on the test cloud (writes on):
   a port with a MAC and port security off, read it back in the port's detail, delete it.
+
+## 141. Network detail › *Ports*: select several and delete them at once
+
+> 🔗 **Issue:** [#27]
+
+**Goal.** As items 136 and 137, for the *Ports* tab of a network: a checkbox per row, a
+select-all header and a *Delete Ports* button that deletes the ticked ports after one
+confirmation, like Horizon's. Today only the row menu's *Delete Port* exists
+(`ops::port_items`, `src/components/ops/networks.rs:570`).
+
+**Implementation.**
+
+- `network_ports` / `port_columns` in `src/pages/details.rs` (~lines 312-354): add a `Select`
+  with a `port_bulk_key` (label `port_label`, as `subnet_bulk_key` / `interface_bulk_key`) and
+  the bulk button next to *Create Port*: `ops::bulk_delete(l, K::DeletePorts, items, |id|
+  OsAction::PortDelete { id })` in a `Batch`. New `K::DeletePorts` in EN and ES.
+- Which ports are selectable: Horizon lets every port be ticked, but deleting a router
+  interface (`network:router_interface*`), the gateway (`network:router_gateway`), the DHCP
+  port or an Octavia VIP through `DELETE /ports` fails or breaks the owner. Leave out the
+  ports whose `device_owner` starts with `network:` or is `Octavia` (the row menu should match:
+  check what `port_items` offers today), and the whole column when the network is not the
+  project's (as item 137's `owned`). A test for the rule.
+- CLI equivalent (item 129): check the `Batch` of `PortDelete` joins into one `openstack port
+  delete`, as subnets do.
+- Browser check on the test cloud (writes on): two throwaway ports on a dummy network, both
+  selected, the dialog lists both, two `DELETE /ports/{id}`; delete the network afterwards.
+
+## 142. Load balancer detail: select several resources and delete them at once
+
+> 🔗 **Issue:** [#28]
+
+**Goal.** Horizon's load balancer detail has checkboxes and a *Delete* button on its
+*Listeners*, *Pools*, *Members*, *Health Monitors* and *L7 Policies* tables. Moonlight's tabs
+(`src/pages/load_balancers.rs`: `listeners`, `pools`, `members`, `monitors`, `l7`) only have each
+row's *Delete* in its menu. Add the same bulk delete to each tab, as items 136, 137 and 141.
+
+**Implementation.**
+
+- Each tab's `DataTable` gets a `Select` keyed by the resource's ID and labelled by name (or
+  ID), and a bulk button next to its *Create* button (`create_button`), built with
+  `ops::bulk_delete`: `ListenerDelete { id }`, `PoolDelete { id }`, `MemberDelete { pool_id,
+  id }` (the key carries both: capture the pool in the closure or encode `pool_id/id`),
+  `MonitorDelete { id }`, `L7PolicyDelete { id }`; L7 rules too if cheap
+  (`L7RuleDelete { policy_id, id }`). New `K::Delete…` plural labels in EN and ES. Members
+  span pools: one `Select` over the merged table.
+- **Octavia locks the load balancer.** Every write leaves it in `PENDING_UPDATE` for a few
+  seconds and Octavia answers 409 (*immutable*) to the next one, so `batch`
+  (`src/server/actions/mod.rs:1183`, sequential, no wait) would fail all but the first
+  delete. Before each item after the first, poll `GET /v2/lbaas/loadbalancers/{id}` until
+  `provisioning_status` is `ACTIVE` (bounded, e.g. 60 s; skipped in dry-run), or retry the
+  409 with backoff. Decide where it lives: an Octavia-aware step in `batch` keyed on
+  `Plugin::LoadBalancer` actions, or a dedicated `OsAction::LbBatch { lb_id, items }`.
+  Horizon does the same wait in its Angular delete service. Test the wait with the mock
+  executor (two deletes, the second after an `ACTIVE` read).
+- Deleting a pool removes its members and monitor; a listener with a default pool or L7
+  policies may be refused: keep the per-item error in the result dialog (`ItemResult`).
+- Browser check on the test cloud (writes on): a throwaway load balancer with two listeners
+  and two pools, delete both of each at once, then the load balancer.
 
 ## Also pending (from the PoC)
 
