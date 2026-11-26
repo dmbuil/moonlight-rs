@@ -796,7 +796,11 @@ list_page!(
         col(K::Description, |l: &LoadBalancerRow, _| dash(l.description.clone())),
         col(
             K::IpAddress,
-            |l: &LoadBalancerRow, _| view! { <span class="mono">{dash(l.vip_address.clone())}</span> }
+            // The VIP's floating IP below it, as Horizon's instances list shows them.
+            |l: &LoadBalancerRow, _| view! {
+                <span class="mono">{dash(l.vip_address.clone())}</span>
+                {l.floating_ip.clone().map(|f| view! { <br/><span class="mono">{f}</span> })}
+            }
         )
         .sort_text(|l| l.vip_address.clone().unwrap_or_default()),
         col(
@@ -817,10 +821,11 @@ list_page!(
         actions_col(|l, b: &LoadBalancerRow| ops::load_balancer_items(l, b)),
     ],
     |l: &LoadBalancerRow| format!(
-        "{} {} {} {}",
+        "{} {} {} {} {}",
         l.name,
         l.id,
         l.vip_address.as_deref().unwrap_or(""),
+        l.floating_ip.as_deref().unwrap_or(""),
         l.description.as_deref().unwrap_or("")
     ),
     &[(K::CreateLoadBalancer, ops::create_load_balancer_dialog)],

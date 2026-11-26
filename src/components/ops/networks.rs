@@ -544,34 +544,89 @@ pub fn subnet_items(lang: Lang, s: &SubnetRow) -> Vec<MenuItem> {
     items
 }
 
-/// *Create Port* on `network_id`.
+/// Horizon's *Create Port* on `network_id`, two steps. *Info*: name, admin state, device ID and
+/// owner, MAC address, subnet and fixed IP, VNIC type (needs `binding`) and port security (needs
+/// `port-security`); *Security Groups*, open while port security is on. Blank fields aren't
+/// sent, so Neutron's defaults apply; no group picked means the project's `default` one.
 pub fn create_port_dialog(lang: Lang, network_id: &str) -> Dialog {
     let n = network_id.to_string();
-    Dialog::form(
-        t(lang, K::CreatePort),
-        t(lang, K::CreatePort),
-        vec![
-            Field::text("name", t(lang, K::Name)),
-            Field::check("admin_up", t(lang, K::EnableAdminState), true),
-            Field::text("fixed_ip", t(lang, K::FixedIpOptional)),
-        ],
-        move |v| {
-            Ok(OsAction::PortCreate {
-                network_id: n.clone(),
-                name: v.get("name"),
-                admin_up: v.flag("admin_up"),
-                fixed_ip: v.opt("fixed_ip"),
-            })
-        },
-    )
+    let caps = caps();
+    let mut fields = vec![
+        Field::text("name", t(lang, K::Name)),
+        Field::check("admin_up", t(lang, K::EnableAdminState), true),
+        Field::text("device_id", t(lang, K::DeviceId)).tip(t(lang, K::TipPortDevice)),
+        Field::text("device_owner", t(lang, K::DeviceOwner)).tip(t(lang, K::TipPortDevice)),
+        Field::text("mac", t(lang, K::MacAddress)).help(t(lang, K::MacAddressHelp)),
+        // The network's own subnets (first cell of a `Subnets` choice is its network).
+        Field::select("subnet", t(lang, K::Subnet), Source::Of(ChoiceSet::Subnets, n.clone()))
+            .help(t(lang, K::PortSubnetHelp)),
+        Field::text("fixed_ip", t(lang, K::FixedIpOptional)),
+    ];
+    let mut info = vec![
+        "name",
+        "admin_up",
+        "device_id",
+        "device_owner",
+        "mac",
+        "subnet",
+        "fixed_ip",
+    ];
+    if needs::PORT_BINDING.met(&caps) {
+        fields.push(super::instances::vnic_type_field(lang, None));
+        info.push("vnic_type");
+    }
+    if needs::PORT_SECURITY.met(&caps) {
+        fields.push(super::instances::port_security_field(lang, true));
+        info.push("port_security");
+    }
+    fields.push(super::instances::port_groups_field(lang));
+    let steps = vec![
+        Step::new(t(lang, K::StepInfo), &info).help(t(lang, K::CreatePortInfoHelp)),
+        Step::new(t(lang, K::SecurityGroups), &["groups"])
+            .help(t(lang, K::CreatePortGroupsHelp))
+            .enabled_if(super::instances::port_groups_on),
+    ];
+    Dialog::form(t(lang, K::CreatePort), t(lang, K::CreatePort), fields, move |v| {
+        // A field the cloud doesn't offer, or the switched-off groups step, isn't submitted.
+        let groups = v.list("groups");
+        Ok(OsAction::PortCreate {
+            network_id: n.clone(),
+            name: v.get("name"),
+            admin_up: v.flag("admin_up"),
+            fixed_ip: v.opt("fixed_ip"),
+            subnet_id: v.opt("subnet"),
+            mac_address: v.opt("mac"),
+            device_id: v.opt("device_id"),
+            device_owner: v.opt("device_owner"),
+            vnic_type: v.opt("vnic_type"),
+            port_security: v.0.contains_key("port_security").then(|| v.flag("port_security")),
+            security_group_ids: (!groups.is_empty()).then_some(groups),
+        })
+    })
+    .wizard(steps)
+    .sized(DialogSize::Medium)
 }
 
-/// A port's menu (edit, delete).
+/// Whether *Delete Port* is offered for `p`. Ports that Neutron or Octavia manage are not: a
+/// router's interface or gateway (`network:router_*`, removed from the router instead; Neutron
+/// refuses the `DELETE`), the DHCP port (`network:dhcp`, recreated by the agent) and a load
+/// balancer's VIP (`Octavia`, whose deletion breaks the load balancer). Horizon hides it for
+/// `network:*` owners too.
+pub fn port_deletable(p: &PortRow) -> bool {
+    !p.device_owner
+        .as_deref()
+        .is_some_and(|o| o.starts_with("network:") || o == "Octavia")
+}
+
+/// A port's menu: *Edit Port*, and *Delete Port* when [`port_deletable`].
 pub fn port_items(lang: Lang, p: &PortRow) -> Vec<MenuItem> {
     let (i, settings) = (p.id.clone(), p.settings());
     let mut items = vec![MenuItem::dialog(t(lang, K::EditPort), move || {
         edit_port_dialog(lang, &i, &settings, false)
     })];
+    if !port_deletable(p) {
+        return items;
+    }
     let (i, label) = (
         p.id.clone(),
         if p.name.is_empty() {
@@ -596,6 +651,75 @@ mod tests {
     use super::super::testing::*;
     use super::*;
     use crate::components::dialog::Kind;
+
+    #[test]
+    fn create_port_sends_only_what_was_filled() {
+        let d = create_port_dialog(Lang::EnUs, "n1");
+        let names: Vec<&str> = d.fields.iter().map(|f| f.name).collect();
+        for f in [
+            "mac",
+            "device_id",
+            "device_owner",
+            "subnet",
+            "fixed_ip",
+            "vnic_type",
+            "port_security",
+            "groups",
+        ] {
+            assert!(names.contains(&f), "{f} in {names:?}");
+        }
+        assert_eq!(
+            (d.build)(&vals(&[("name", "p"), ("admin_up", "true"), ("port_security", "true")])).unwrap(),
+            OsAction::PortCreate {
+                network_id: "n1".into(),
+                name: "p".into(),
+                admin_up: true,
+                fixed_ip: None,
+                subnet_id: None,
+                mac_address: None,
+                device_id: None,
+                device_owner: None,
+                vnic_type: None,
+                port_security: Some(true),
+                security_group_ids: None,
+            },
+            "no group picked: not sent, Neutron applies the default group"
+        );
+        let full = (d.build)(&vals(&[
+            ("name", "vrrp"),
+            ("admin_up", "true"),
+            ("mac", "fa:16:3e:00:11:22"),
+            ("subnet", "s1"),
+            ("vnic_type", "direct"),
+            ("port_security", "false"),
+        ]))
+        .unwrap();
+        let OsAction::PortCreate {
+            mac_address,
+            subnet_id,
+            vnic_type,
+            port_security,
+            security_group_ids,
+            ..
+        } = full
+        else {
+            panic!("{full:?}")
+        };
+        assert_eq!(mac_address.as_deref(), Some("fa:16:3e:00:11:22"));
+        assert_eq!(subnet_id.as_deref(), Some("s1"));
+        assert_eq!(vnic_type.as_deref(), Some("direct"));
+        assert_eq!(port_security, Some(false));
+        assert_eq!(security_group_ids, None);
+        let g = (d.build)(&vals(&[("port_security", "true"), ("groups", "g1,g2")])).unwrap();
+        assert!(
+            matches!(&g, OsAction::PortCreate { security_group_ids: Some(ids), .. } if ids == &["g1", "g2"]),
+            "{g:?}"
+        );
+        assert!(
+            !super::super::instances::port_groups_on(&[("port_security".to_string(), "false".to_string())].into()),
+            "port security off closes the groups step"
+        );
+    }
 
     #[test]
     fn subnet_dialogs_follow_the_network_settings() {

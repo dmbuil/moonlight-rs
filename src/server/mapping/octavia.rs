@@ -45,15 +45,20 @@ pub(super) fn status(v: &Value, k: &str) -> String {
     s(v, k).unwrap_or_else(|| "UNKNOWN".into())
 }
 
-/// Load balancer rows (Octavia), with VIP and statuses.
-pub fn load_balancers(raw: &[Value]) -> Vec<LoadBalancerRow> {
-    let mut out: Vec<_> = raw.iter().map(load_balancer_row).collect();
+/// Load balancer rows (Octavia), with VIP and statuses; `floating_ips` (the project's) give each
+/// VIP's floating IP.
+pub fn load_balancers(raw: &[Value], floating_ips: &[Value]) -> Vec<LoadBalancerRow> {
+    let mut out: Vec<_> = raw.iter().map(|l| load_balancer_row(l, floating_ips)).collect();
     out.sort_by_key(|l| l.name.to_lowercase());
     out
 }
 
 /// One row of [`load_balancers`].
-fn load_balancer_row(l: &Value) -> LoadBalancerRow {
+fn load_balancer_row(l: &Value, floating_ips: &[Value]) -> LoadBalancerRow {
+    let vip_port_id = s_ne(l, "vip_port_id");
+    let fip = vip_port_id
+        .as_ref()
+        .and_then(|port| floating_ips.iter().find(|f| s(f, "port_id").as_ref() == Some(port)));
     LoadBalancerRow {
         id: s(l, "id").unwrap_or_default(),
         name: name_or_id(l),
@@ -64,6 +69,9 @@ fn load_balancer_row(l: &Value) -> LoadBalancerRow {
         provisioning_status: status(l, "provisioning_status"),
         admin_up: b(l, "admin_state_up"),
         provider: s_ne(l, "provider"),
+        floating_ip: fip.and_then(|f| s(f, "floating_ip_address")),
+        floating_ip_id: fip.and_then(|f| s(f, "id")),
+        vip_port_id,
     }
 }
 
@@ -213,19 +221,16 @@ pub fn load_balancer_detail(l: &Value, x: LbInputs) -> LoadBalancerDetail {
     monitors.sort_by(|a, b| by_name(&a.name, &b.name));
 
     let l7policies = l7_policies(x.l7policies, x.l7rules, &listener_names, &pool_names);
-    let vip_port_id = s_ne(l, "vip_port_id");
-    let fip = vip_port_id
-        .as_ref()
-        .and_then(|port| x.floating_ips.iter().find(|f| s(f, "port_id").as_ref() == Some(port)));
+    let row = load_balancer_row(l, x.floating_ips);
     LoadBalancerDetail {
-        row: load_balancer_row(l),
         project_id: s(l, "project_id").unwrap_or_default(),
         flavor_id: s_ne(l, "flavor_id"),
         vip_network: s_ne(l, "vip_network_id").map(|id| named(id, &net_names)),
         vip_subnet: s_ne(l, "vip_subnet_id").map(|id| named(id, &subnet_names)),
-        floating_ip: fip.and_then(|f| s(f, "floating_ip_address")),
-        floating_ip_id: fip.and_then(|f| s(f, "id")),
-        vip_port_id,
+        floating_ip: row.floating_ip.clone(),
+        floating_ip_id: row.floating_ip_id.clone(),
+        vip_port_id: row.vip_port_id.clone(),
+        row,
         created: s_ne(l, "created_at"),
         updated: s_ne(l, "updated_at"),
         listeners,
@@ -341,8 +346,23 @@ mod tests {
     fn load_balancer_list_rows() {
         let (lb, ..) = octavia();
         let unnamed = json!({"id": "lb-0", "name": "", "admin_state_up": false});
-        let rows = load_balancers(&[lb, unnamed]);
+        let fips = [
+            json!({"id": "f0", "port_id": "other", "floating_ip_address": "203.0.113.1"}),
+            json!({"id": "f1", "port_id": "port-vip", "floating_ip_address": "203.0.113.9"}),
+            json!({"id": "f2", "port_id": null, "floating_ip_address": "203.0.113.2"}),
+        ];
+        let rows = load_balancers(&[lb.clone(), unnamed.clone()], &fips);
         assert_eq!(rows[0].name, "lb-0", "unnamed: falls back to the ID");
+        assert_eq!(rows[0].vip_port_id, None);
+        assert_eq!(rows[0].floating_ip_id, None, "no VIP port: no floating IP");
+        assert_eq!(rows[1].vip_port_id.as_deref(), Some("port-vip"));
+        assert_eq!(
+            rows[1].floating_ip.as_deref(),
+            Some("203.0.113.9"),
+            "matched by the VIP port"
+        );
+        assert_eq!(rows[1].floating_ip_id.as_deref(), Some("f1"));
+        assert_eq!(load_balancers(&[lb], &[])[0].floating_ip, None);
         assert_eq!(rows[0].operating_status, "UNKNOWN");
         let r = &rows[1];
         assert_eq!(

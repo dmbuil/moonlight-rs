@@ -542,43 +542,67 @@ pub(super) fn instance_item(lang: Lang, inst: &Instance, op: Op) -> MenuItem {
 /// a new one from a pool (allocated and associated in one request), to one of
 /// the instance's ports.
 pub fn associate_ip_dialog(lang: Lang, server_id: &str) -> Dialog {
+    let mut fields = associate_ip_fields(lang);
+    fields.push(
+        Field::select(
+            "port",
+            t(lang, K::PortToAssociate),
+            Source::Of(ChoiceSet::AssociablePorts, server_id.to_string()),
+        )
+        .required()
+        // Search box however few ports there are.
+        .searchable(),
+    );
     Dialog::form(
         t(lang, K::AssociateFloatingIp),
         t(lang, K::Associate),
-        vec![
-            Field::check("allocate", t(lang, K::AllocateNewIp), false),
-            Field::select("ip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps))
-                .required()
-                .when("allocate", "false"),
-            Field::select("pool", t(lang, K::Pool), Source::Set(ChoiceSet::ExternalNetworks))
-                .required()
-                .when("allocate", "true"),
-            Field::select(
-                "port",
-                t(lang, K::PortToAssociate),
-                Source::Of(ChoiceSet::AssociablePorts, server_id.to_string()),
-            )
-            .required()
-            // Search box however few ports there are.
-            .searchable(),
-        ],
-        move |v| {
-            let port_id = req(v, "port", K::PortToAssociate, lang)?;
-            Ok(if v.flag("allocate") {
-                OsAction::FloatingIpAllocate {
-                    network_id: req(v, "pool", K::Pool, lang)?,
-                    description: None,
-                    port_id: Some(port_id),
-                    qos_policy_id: None,
-                }
-            } else {
-                OsAction::FloatingIpAssociate {
-                    id: req(v, "ip", K::FloatingIp, lang)?,
-                    port_id,
-                }
-            })
-        },
+        fields,
+        move |v| associate_ip_action(v, lang, req(v, "port", K::PortToAssociate, lang)?),
     )
+}
+
+/// *Associate Floating IP* to a port that is already known (a load balancer's VIP port): the
+/// same choice of an existing free IP or a new one from a pool, without the port field.
+pub fn associate_ip_to_port_dialog(lang: Lang, port_id: &str) -> Dialog {
+    let port_id = port_id.to_string();
+    Dialog::form(
+        t(lang, K::AssociateFloatingIp),
+        t(lang, K::Associate),
+        associate_ip_fields(lang),
+        move |v| associate_ip_action(v, lang, port_id.clone()),
+    )
+}
+
+/// The fields every *Associate Floating IP* dialog starts with: *Allocate new IP*, then the
+/// existing IP or the pool, depending on it.
+fn associate_ip_fields(lang: Lang) -> Vec<Field> {
+    vec![
+        Field::check("allocate", t(lang, K::AllocateNewIp), false),
+        Field::select("ip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps))
+            .required()
+            .when("allocate", "false"),
+        Field::select("pool", t(lang, K::Pool), Source::Set(ChoiceSet::ExternalNetworks))
+            .required()
+            .when("allocate", "true"),
+    ]
+}
+
+/// What the dialogs of [`associate_ip_fields`] send for `port_id`: a new IP from the pool
+/// (allocated and associated in one request) or an existing one.
+fn associate_ip_action(v: &Values, lang: Lang, port_id: String) -> Result<OsAction, String> {
+    Ok(if v.flag("allocate") {
+        OsAction::FloatingIpAllocate {
+            network_id: req(v, "pool", K::Pool, lang)?,
+            description: None,
+            port_id: Some(port_id),
+            qos_policy_id: None,
+        }
+    } else {
+        OsAction::FloatingIpAssociate {
+            id: req(v, "ip", K::FloatingIp, lang)?,
+            port_id,
+        }
+    })
 }
 
 /// *Attach Interface*: a network (with an optional fixed IP) or an existing free port.
@@ -760,6 +784,43 @@ const VNIC_TYPES: &[(&str, K)] = &[
     ("remote-managed", K::VnicRemoteManaged),
 ];
 
+/// The port dialogs' *VNIC Type* (`vnic_type`), on `current` (`normal` when `None`). Needs
+/// [`needs::PORT_BINDING`].
+pub(super) fn vnic_type_field(lang: Lang, current: Option<&str>) -> Field {
+    let mut types: Vec<(String, String)> = VNIC_TYPES
+        .iter()
+        .map(|(v, k)| (v.to_string(), t(lang, *k).to_string()))
+        .collect();
+    // Keep a type Horizon doesn't list (e.g. `accelerator-direct`) selectable.
+    if let Some(v) = current.filter(|v| !VNIC_TYPES.iter().any(|(x, _)| x == v)) {
+        types.push((v.to_string(), v.to_string()));
+    }
+    Field::select("vnic_type", t(lang, K::VnicType), Source::Static(types))
+        .value(current.unwrap_or("normal"))
+        .required()
+        .tip(t(lang, K::TipVnicType))
+}
+
+/// The port dialogs' *Port Security* check (`port_security`). Needs [`needs::PORT_SECURITY`].
+pub(super) fn port_security_field(lang: Lang, on: bool) -> Field {
+    Field::check("port_security", t(lang, K::PortSecurity), on).tip(t(lang, K::TipPortSecurity))
+}
+
+/// The port dialogs' *Security Groups* (`groups`, IDs), for their second step.
+pub(super) fn port_groups_field(lang: Lang) -> Field {
+    Field::pick_many(
+        "groups",
+        t(lang, K::SecurityGroups),
+        Source::Set(ChoiceSet::SecurityGroupIds),
+    )
+}
+
+/// Whether the port dialogs' *Security Groups* step is open: port security is on, or the cloud
+/// has no `port-security` (no field).
+pub(super) fn port_groups_on(v: &Vals) -> bool {
+    v.get("port_security").is_none_or(|p| p == "true")
+}
+
 /// Horizon's *Edit Port*, two tabs: *Info* (name, admin state, VNIC type, port
 /// security) and *Security Groups* (an *Allocated / Available* picker, switched
 /// off while port security is off). `groups_first` opens it on the second tab,
@@ -775,48 +836,19 @@ pub fn edit_port_dialog(lang: Lang, port_id: &str, current: &PortSettings, group
     ];
     let mut info = vec!["name", "admin_up"];
     if needs::PORT_BINDING.met(&caps) {
-        let mut types: Vec<(String, String)> = VNIC_TYPES
-            .iter()
-            .map(|(v, k)| (v.to_string(), t(lang, *k).to_string()))
-            .collect();
-        // Keep a type Horizon doesn't list (e.g. `accelerator-direct`) selectable.
-        if let Some(v) = current
-            .vnic_type
-            .as_ref()
-            .filter(|v| !VNIC_TYPES.iter().any(|(x, _)| x == v))
-        {
-            types.push((v.clone(), v.clone()));
-        }
-        let value = current.vnic_type.clone().unwrap_or_else(|| "normal".into());
-        fields.push(
-            Field::select("vnic_type", t(lang, K::VnicType), Source::Static(types))
-                .value(value)
-                .required()
-                .tip(t(lang, K::TipVnicType)),
-        );
+        fields.push(vnic_type_field(lang, current.vnic_type.as_deref()));
         info.push("vnic_type");
     }
     if needs::PORT_SECURITY.met(&caps) {
-        fields.push(
-            Field::check("port_security", t(lang, K::PortSecurity), current.port_security)
-                .tip(t(lang, K::TipPortSecurity)),
-        );
+        fields.push(port_security_field(lang, current.port_security));
         info.push("port_security");
     }
-    fields.push(
-        Field::pick_many(
-            "groups",
-            t(lang, K::SecurityGroups),
-            Source::Set(ChoiceSet::SecurityGroupIds),
-        )
-        .value(current.security_group_ids.join(",")),
-    );
-    let groups_on: fn(&Vals) -> bool = |v| v.get("port_security").is_none_or(|p| p == "true");
+    fields.push(port_groups_field(lang).value(current.security_group_ids.join(",")));
     let steps = vec![
         Step::new(t(lang, K::StepInfo), &info).help(t(lang, K::EditPortInfoHelp)),
         Step::new(t(lang, K::SecurityGroups), &["groups"])
             .help(t(lang, K::EditPortGroupsHelp))
-            .enabled_if(groups_on),
+            .enabled_if(port_groups_on),
     ];
     // A disabled step can't be shown: with port security off, start on *Info*.
     let first = usize::from(groups_first && current.port_security);
@@ -1250,6 +1282,29 @@ mod tests {
             (get("source"), get("source_id")),
             ("volume".to_string(), "v1".to_string())
         );
+    }
+
+    #[test]
+    fn associate_ip_to_a_known_port_has_no_port_field() {
+        let d = associate_ip_to_port_dialog(Lang::EnUs, "vip");
+        assert!(d.fields.iter().all(|f| f.name != "port"), "the port is fixed");
+        assert_eq!(
+            (d.build)(&vals(&[("allocate", "false"), ("ip", "f1")])).unwrap(),
+            OsAction::FloatingIpAssociate {
+                id: "f1".into(),
+                port_id: "vip".into()
+            }
+        );
+        assert_eq!(
+            (d.build)(&vals(&[("allocate", "true"), ("pool", "ext")])).unwrap(),
+            OsAction::FloatingIpAllocate {
+                network_id: "ext".into(),
+                description: None,
+                port_id: Some("vip".into()),
+                qos_policy_id: None
+            }
+        );
+        assert!((d.build)(&vals(&[("allocate", "true")])).is_err(), "a pool is needed");
     }
 
     #[test]

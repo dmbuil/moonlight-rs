@@ -1498,14 +1498,23 @@ pub async fn qos_policy(os: &AsyncOpenStack, project_id: &str, id: &str) -> R<Ti
 /// Octavia lists every project's load balancers to admins: filter by project.
 pub async fn load_balancers(os: &AsyncOpenStack, project_id: &str) -> R<Timed<Vec<LoadBalancerRow>>> {
     let t = Instant::now();
-    let raw = list_where!(
-        os,
-        openstack_sdk::api::load_balancer::v2::loadbalancer::list,
-        "loadbalancers",
-        |b| b.project_id(project_id)
-    )
-    .await?;
-    Ok(timed(t, mapping::load_balancers(&raw)))
+    // The floating IPs only decorate the rows (and tell *Associate* from *Disassociate*), so a
+    // cloud without them, or a failure, leaves the list as it was.
+    let (raw, fips) = tokio::join!(
+        list_where!(
+            os,
+            openstack_sdk::api::load_balancer::v2::loadbalancer::list,
+            "loadbalancers",
+            |b| b.project_id(project_id)
+        ),
+        list_where!(
+            os,
+            openstack_sdk::api::network::v2::floatingip::list,
+            "floatingips",
+            |b| b.tenant_id(project_id)
+        )
+    );
+    Ok(timed(t, mapping::load_balancers(&raw?, &soft(fips))))
 }
 
 /// A load balancer with its listeners, pools, members and monitors. Two rounds:
@@ -4573,7 +4582,20 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
                     .tenant_id(project_id))
                 .await
             };
-            let (po, sv, fi, ro) = tokio::join!(
+            // Load balancer names label their VIP ports; only with the Octavia plugin.
+            let lbs = async {
+                if !associate || !super::config::state().config.plugins.contains(&Plugin::LoadBalancer) {
+                    return Ok(Vec::new());
+                }
+                list_where!(
+                    os,
+                    openstack_sdk::api::load_balancer::v2::loadbalancer::list,
+                    "loadbalancers",
+                    |b| b.project_id(project_id)
+                )
+                .await
+            };
+            let (po, sv, fi, ro, lb) = tokio::join!(
                 list_where!(os, ports, "ports?tenant_id", |b| b.tenant_id(project_id)),
                 servers_brief(os),
                 list_where!(
@@ -4582,11 +4604,17 @@ pub async fn choices(os: &AsyncOpenStack, project_id: &str, set: ChoiceSet) -> R
                     "floatingips",
                     |b| b.tenant_id(project_id)
                 ),
-                routers
+                routers,
+                lbs
             );
-            let (po, names) = (po?, mapping::server_names(&soft(sv)));
+            let (po, mut names) = (po?, mapping::server_names(&soft(sv)));
             let reachable = topology.then(|| mapping::externally_reachable_networks(&po, &soft(ro)));
-            mapping::instance_port_choices(&po, &soft(fi), &names, associate, reachable.as_ref())
+            if associate {
+                names.extend(mapping::lb_vip_names(&soft(lb)));
+                mapping::associable_port_choices(&po, &soft(fi), &names, reachable.as_ref())
+            } else {
+                mapping::instance_port_choices(&po, &soft(fi), &names, false, reachable.as_ref())
+            }
         }
         ChoiceSet::FirewallRules => {
             mapping::firewall_rule_choices(&fwaas_list(os, project_id, "firewall_rules").await?)

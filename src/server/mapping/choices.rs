@@ -269,20 +269,61 @@ pub fn instance_port_choices(
     without_fip: bool,
     reachable: Option<&std::collections::HashSet<String>>,
 ) -> Vec<Choice> {
+    port_choices(ports, fips, servers, without_fip, reachable, false)
+}
+
+/// The ports a floating IP can be associated to: the instances' ports and, as Horizon, the load
+/// balancers' VIP ports (`device_owner` `Octavia`). `names` maps server IDs and VIP port IDs
+/// ([`lb_vip_names`]) to names; a VIP without one is labelled by its port's name.
+pub fn associable_port_choices(
+    ports: &[Value],
+    fips: &[Value],
+    names: &HashMap<String, String>,
+    reachable: Option<&std::collections::HashSet<String>>,
+) -> Vec<Choice> {
+    port_choices(ports, fips, names, true, reachable, true)
+}
+
+/// VIP port ID → load balancer name, for [`associable_port_choices`]' labels.
+pub fn lb_vip_names(lbs: &[Value]) -> HashMap<String, String> {
+    lbs.iter()
+        .filter_map(|l| Some((s_ne(l, "vip_port_id")?, name_or_id(l))))
+        .collect()
+}
+
+/// [`instance_port_choices`], plus the load balancers' VIP ports when `vips`.
+fn port_choices(
+    ports: &[Value],
+    fips: &[Value],
+    names: &HashMap<String, String>,
+    without_fip: bool,
+    reachable: Option<&std::collections::HashSet<String>>,
+    vips: bool,
+) -> Vec<Choice> {
     let taken: std::collections::HashSet<String> = fips.iter().filter_map(|f| s_ne(f, "port_id")).collect();
+    let is_vip = |p: &Value| vips && s(p, "device_owner").as_deref() == Some("Octavia");
     sorted(
         ports
             .iter()
-            .filter(|p| s(p, "device_owner").is_some_and(|o| o.starts_with("compute:")))
+            .filter(|p| s(p, "device_owner").is_some_and(|o| o.starts_with("compute:")) || is_vip(p))
             .filter(|p| reachable.is_none_or(|r| s(p, "network_id").is_some_and(|n| r.contains(&n))))
             .filter_map(|p| {
                 let id = s(p, "id")?;
                 if without_fip && taken.contains(&id) {
                     return None;
                 }
+                let label = if is_vip(p) {
+                    let ip = arr(p, "fixed_ips")
+                        .first()
+                        .and_then(|f| s(f, "ip_address"))
+                        .unwrap_or_default();
+                    format!("{}: {ip}", names.get(&id).cloned().unwrap_or_else(|| name_or_id(p)))
+                } else {
+                    label_port(p, names)
+                };
                 Some(Choice {
                     value: id,
-                    label: label_port(p, servers),
+                    label,
                     cells: vec![
                         s(p, "device_id").unwrap_or_default(),
                         strs(p, "security_groups").join(","),
@@ -314,7 +355,7 @@ pub fn owned_port_choices(
 ) -> Vec<Choice> {
     let by_id: HashMap<String, &Value> = ports.iter().filter_map(|p| Some((s(p, "id")?, p))).collect();
     let mut out = Vec::new();
-    for c in instance_port_choices(ports, fips, servers, true, None) {
+    for c in associable_port_choices(ports, fips, servers, None) {
         let Some(p) = by_id.get(&c.value) else { continue };
         let owner = s_ne(p, "project_id")
             .or_else(|| s_ne(p, "tenant_id"))
@@ -841,6 +882,42 @@ mod tests {
         assert_eq!(
             (ips.len(), ips[0].value.as_str(), ips[0].label.as_str()),
             (1, "f2", "1.2.3.5")
+        );
+    }
+
+    #[test]
+    fn load_balancer_vips_can_take_a_floating_ip_but_are_no_instance_port() {
+        let ports = vec![
+            json!({"id": "p1", "device_owner": "compute:nova", "device_id": "s1",
+                   "fixed_ips": [{"ip_address": "10.0.0.5"}]}),
+            json!({"id": "vip1", "name": "octavia-lb-l1", "device_owner": "Octavia", "device_id": "lb-l1",
+                   "fixed_ips": [{"ip_address": "10.0.0.9"}]}),
+            json!({"id": "vip2", "name": "octavia-lb-l2", "device_owner": "Octavia", "device_id": "lb-l2",
+                   "fixed_ips": [{"ip_address": "10.0.0.10"}]}),
+            json!({"id": "vip3", "name": "octavia-lb-l3", "device_owner": "Octavia", "device_id": "lb-l3",
+                   "fixed_ips": [{"ip_address": "10.0.0.11"}]}),
+        ];
+        let fips = vec![json!({"id": "f1", "port_id": "vip3"})];
+        let mut names = HashMap::from([("s1".to_string(), "web".to_string())]);
+        names.extend(lb_vip_names(&[
+            json!({"id": "l1", "name": "front", "vip_port_id": "vip1"}),
+            json!({"id": "l9", "name": "no-vip", "vip_port_id": null}),
+        ]));
+        let got = associable_port_choices(&ports, &fips, &names, None);
+        let labels: Vec<(&str, &str)> = got.iter().map(|c| (c.value.as_str(), c.label.as_str())).collect();
+        assert_eq!(
+            labels,
+            [
+                ("vip1", "front: 10.0.0.9"),
+                ("vip2", "octavia-lb-l2: 10.0.0.10"),
+                ("p1", "web: 10.0.0.5")
+            ],
+            "VIPs by load balancer name (port name without the Octavia list); vip3 has an IP"
+        );
+        assert_eq!(
+            instance_port_choices(&ports, &[], &names, false, None).len(),
+            1,
+            "an instance's ports never include a VIP"
         );
     }
 

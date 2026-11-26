@@ -565,20 +565,19 @@ pub fn create_load_balancer_dialog(lang: Lang) -> Dialog {
     .wizard(steps)
 }
 
-/// Header and row menu of a load balancer. `fip`: its VIP's floating IP
-/// `(id, address)`, known on the detail page only.
+/// The row menu of a load balancer; *Associate* / *Disassociate Floating IP* depend on the row's
+/// VIP port and floating IP.
 pub fn load_balancer_items(lang: Lang, l: &LoadBalancerRow) -> Vec<MenuItem> {
-    load_balancer_menu(lang, l, None)
+    load_balancer_menu(lang, l)
 }
 
 /// The load balancer detail header's menu.
 pub fn load_balancer_detail_items(lang: Lang, d: &LoadBalancerDetail) -> Vec<MenuItem> {
-    load_balancer_menu(lang, &d.row, Some(d))
+    load_balancer_menu(lang, &d.row)
 }
 
-/// The load balancer's menu, shared by the row and the detail header; `d` (the detail page) adds
-/// the entries that need its listeners and pools.
-fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDetail>) -> Vec<MenuItem> {
+/// The load balancer's menu, shared by the row and the detail header.
+fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow) -> Vec<MenuItem> {
     let mut items = Vec::new();
     let (i, n, desc, up) = (
         l.id.clone(),
@@ -606,40 +605,24 @@ fn load_balancer_menu(lang: Lang, l: &LoadBalancerRow, d: Option<&LoadBalancerDe
             },
         )
     }));
-    if let Some(d) = d {
-        match (d.floating_ip_id.clone(), d.vip_port_id.clone()) {
-            (Some(fip), _) => {
-                let ip = d.floating_ip.clone().unwrap_or_default();
-                items.push(MenuItem::danger(t(lang, K::DisassociateFloatingIp), move || {
-                    Dialog::confirm(
-                        lang,
-                        t(lang, K::DisassociateFloatingIp),
-                        ip.clone(),
-                        OsAction::FloatingIpDisassociate { id: fip.clone() },
-                    )
-                }));
-            }
-            (None, Some(port)) => {
-                items.push(MenuItem::dialog(t(lang, K::AssociateFloatingIp), move || {
-                    let port = port.clone();
-                    Dialog::form(
-                        t(lang, K::AssociateFloatingIp),
-                        t(lang, K::Associate),
-                        vec![
-                            Field::select("fip", t(lang, K::FloatingIp), Source::Set(ChoiceSet::FreeFloatingIps))
-                                .required(),
-                        ],
-                        move |v| {
-                            Ok(OsAction::FloatingIpAssociate {
-                                id: req(v, "fip", K::FloatingIp, lang)?,
-                                port_id: port.clone(),
-                            })
-                        },
-                    )
-                }));
-            }
-            _ => {}
+    match (l.floating_ip_id.clone(), l.vip_port_id.clone()) {
+        (Some(fip), _) => {
+            let ip = l.floating_ip.clone().unwrap_or_default();
+            items.push(MenuItem::danger(t(lang, K::DisassociateFloatingIp), move || {
+                Dialog::confirm(
+                    lang,
+                    t(lang, K::DisassociateFloatingIp),
+                    ip.clone(),
+                    OsAction::FloatingIpDisassociate { id: fip.clone() },
+                )
+            }));
         }
+        (None, Some(port)) => {
+            items.push(MenuItem::dialog(t(lang, K::AssociateFloatingIp), move || {
+                super::instances::associate_ip_to_port_dialog(lang, &port)
+            }));
+        }
+        _ => {}
     }
     let (i, n) = (l.id.clone(), l.name.clone());
     items.push(MenuItem::danger(t(lang, K::DeleteLoadBalancer), move || {
@@ -663,6 +646,50 @@ mod tests {
     use super::super::testing::*;
     use super::*;
     use crate::components::dialog::Kind;
+
+    fn lb_row(port: Option<&str>, fip: Option<(&str, &str)>) -> LoadBalancerRow {
+        LoadBalancerRow {
+            id: "lb1".into(),
+            name: "lb".into(),
+            description: None,
+            vip_address: None,
+            availability_zone: None,
+            operating_status: "ONLINE".into(),
+            provisioning_status: "ACTIVE".into(),
+            admin_up: true,
+            provider: None,
+            vip_port_id: port.map(Into::into),
+            floating_ip: fip.map(|f| f.1.into()),
+            floating_ip_id: fip.map(|f| f.0.into()),
+        }
+    }
+
+    #[test]
+    fn the_row_menu_offers_associate_or_disassociate_by_the_vip_floating_ip() {
+        let labels = |l: &LoadBalancerRow| -> Vec<String> {
+            load_balancer_items(Lang::EnUs, l)
+                .into_iter()
+                .map(|m| m.label)
+                .collect()
+        };
+        let assoc = t(Lang::EnUs, K::AssociateFloatingIp);
+        let dis = t(Lang::EnUs, K::DisassociateFloatingIp);
+        let free = labels(&lb_row(Some("vip"), None));
+        assert!(
+            free.contains(&assoc.to_string()) && !free.contains(&dis.to_string()),
+            "{free:?}"
+        );
+        let used = labels(&lb_row(Some("vip"), Some(("f1", "203.0.113.9"))));
+        assert!(
+            used.contains(&dis.to_string()) && !used.contains(&assoc.to_string()),
+            "{used:?}"
+        );
+        let none = labels(&lb_row(None, None));
+        assert!(
+            !none.contains(&assoc.to_string()),
+            "no VIP port, nothing to associate: {none:?}"
+        );
+    }
 
     #[test]
     fn load_balancer_wizard_builds_one_spec_and_skips_what_is_switched_off() {

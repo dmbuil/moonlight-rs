@@ -340,16 +340,35 @@ fn port_search(p: &PortRow) -> String {
     )
 }
 
-/// Network detail › *Ports*: the network's ports and *Create Port*.
+/// A port's bulk-delete entry, `(id, label)`; `None` for the ports that have no *Delete Port*
+/// either (router interfaces and gateway, DHCP, a load balancer's VIP: [`ops::port_deletable`]).
+fn port_bulk_key(p: &PortRow) -> Option<(String, String)> {
+    ops::port_deletable(p).then(|| (p.id.clone(), port_label(p)))
+}
+
+/// Network detail › *Ports*: the network's ports with *Create Port* and, when the project owns
+/// the network, the bulk *Delete Ports*.
 fn network_ports(d: NetworkDetail) -> impl IntoView {
     let i18n = use_i18n();
-    let id = d.row.id.clone();
+    let (id, owned) = (d.row.id.clone(), d.row.owned);
+    let select = Select {
+        key: port_bulk_key,
+        picked: RwSignal::new(Vec::new()),
+    };
     view! {
         <div class="subtable-actions">
+            {owned.then(|| view! {
+                <BulkButton label=K::DeletePorts picked=select.picked
+                    open=Arc::new(|l, items| ops::bulk_delete(l, K::DeletePorts, items, |id| OsAction::PortDelete { id }))/>
+            })}
             <CreateButton label=Signal::derive(move || i18n.t(K::CreatePort).to_string())
                 open=Arc::new(move || ops::create_port_dialog(i18n.lang(), &id))/>
         </div>
-        <DataTable rows=d.ports columns=port_columns() search=port_search/>
+        {if owned {
+            view! { <DataTable rows=d.ports columns=port_columns() search=port_search select=select/> }.into_any()
+        } else {
+            view! { <DataTable rows=d.ports columns=port_columns() search=port_search/> }.into_any()
+        }}
     }
 }
 
@@ -971,6 +990,30 @@ mod tests {
             Some(("p1".into(), "p1".into())),
             "no fixed IP: the port ID labels the entry"
         );
+    }
+
+    #[test]
+    fn only_ports_with_a_delete_are_selectable_for_bulk_port_delete() {
+        let mut p = port(Some("compute:nova"), &["10.0.0.5"]);
+        p.name = "web".into();
+        assert_eq!(port_bulk_key(&p), Some(("p1".into(), "web".into())));
+        assert_eq!(
+            port_bulk_key(&port(None, &[])),
+            Some(("p1".into(), "(p1)".into())),
+            "unnamed: Horizon's short ID"
+        );
+        for owner in [
+            "network:router_interface",
+            "network:router_gateway",
+            "network:dhcp",
+            "Octavia",
+        ] {
+            assert_eq!(
+                port_bulk_key(&port(Some(owner), &[])),
+                None,
+                "{owner} is managed by its owner"
+            );
+        }
     }
 
     #[test]

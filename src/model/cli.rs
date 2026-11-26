@@ -542,14 +542,46 @@ fn simple_command(action: &OsAction) -> Option<Cmd> {
             name,
             admin_up,
             fixed_ip,
+            subnet_id,
+            mac_address,
+            device_id,
+            device_owner,
+            vnic_type,
+            port_security,
+            security_group_ids,
         } => {
             let mut c = Cmd::new("openstack port create");
             c.opt("--network", network_id);
             if !admin_up {
                 c.flag("--disable");
             }
-            if let Some(ip) = non_empty(fixed_ip) {
-                c.opt("--fixed-ip", &format!("ip-address={ip}"));
+            match (non_empty(subnet_id), non_empty(fixed_ip)) {
+                (Some(s), Some(ip)) => c.opt("--fixed-ip", &format!("subnet={s},ip-address={ip}")),
+                (Some(s), None) => c.opt("--fixed-ip", &format!("subnet={s}")),
+                (None, Some(ip)) => c.opt("--fixed-ip", &format!("ip-address={ip}")),
+                (None, None) => &mut c,
+            };
+            if let Some(m) = non_empty(mac_address) {
+                c.opt("--mac-address", &m);
+            }
+            if let Some(d) = non_empty(device_id) {
+                c.opt("--device", &d);
+            }
+            if let Some(o) = non_empty(device_owner) {
+                c.opt("--device-owner", &o);
+            }
+            if let Some(v) = non_empty(vnic_type) {
+                c.opt("--vnic-type", &v);
+            }
+            match port_security {
+                Some(true) => c.flag("--enable-port-security"),
+                Some(false) => c.flag("--disable-port-security"),
+                None => &mut c,
+            };
+            if *port_security != Some(false) {
+                for g in security_group_ids.iter().flatten() {
+                    c.opt("--security-group", g);
+                }
             }
             c.arg(name.trim());
             c
@@ -1782,9 +1814,32 @@ mod tests {
                 network_id: r("n1"),
                 name: r("db"),
                 admin_up: false,
-                fixed_ip: Some(r("10.0.0.5"))
+                fixed_ip: Some(r("10.0.0.5")),
+                subnet_id: None,
+                mac_address: None,
+                device_id: None,
+                device_owner: None,
+                vnic_type: None,
+                port_security: None,
+                security_group_ids: None,
             }),
             "openstack port create \\\n  --network n1 \\\n  --disable \\\n  --fixed-ip ip-address=10.0.0.5 \\\n  db"
+        );
+        assert_eq!(
+            c(OsAction::PortCreate {
+                network_id: r("n1"),
+                name: r("vrrp"),
+                admin_up: true,
+                fixed_ip: None,
+                subnet_id: Some(r("s1")),
+                mac_address: Some(r("fa:16:3e:00:11:22")),
+                device_id: Some(r("vm1")),
+                device_owner: Some(r("compute:nova")),
+                vnic_type: Some(r("direct")),
+                port_security: Some(true),
+                security_group_ids: Some(vec![r("g1"), r("g2")]),
+            }),
+            "openstack port create \\\n  --network n1 \\\n  --fixed-ip subnet=s1 \\\n  --mac-address fa:16:3e:00:11:22 \\\n  --device vm1 \\\n  --device-owner compute:nova \\\n  --vnic-type direct \\\n  --enable-port-security \\\n  --security-group g1 \\\n  --security-group g2 \\\n  vrrp"
         );
         let set = c(OsAction::PortUpdate {
             id: r("p1"),

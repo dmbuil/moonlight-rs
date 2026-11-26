@@ -14,6 +14,14 @@ pub struct LoadBalancerRow {
     pub provisioning_status: String,
     pub admin_up: bool,
     pub provider: Option<String>,
+    /// The VIP's Neutron port, which a floating IP is associated to.
+    #[serde(default)]
+    pub vip_port_id: Option<String>,
+    /// The floating IP on the VIP port, if any: its address, and its ID to disassociate it.
+    #[serde(default)]
+    pub floating_ip: Option<String>,
+    #[serde(default)]
+    pub floating_ip_id: Option<String>,
 }
 
 /// Listener and pool protocols offered. `HTTPS` passes TLS through to the members.

@@ -827,6 +827,12 @@ translations! {
     Mtu => "MTU", "MTU";
     PortSecurity => "Port Security", "Seguridad de puertos";
     DeviceOwner => "Device Owner", "Propietario del dispositivo";
+    DeviceId => "Device ID", "ID del dispositivo";
+    MacAddressHelp => "Blank: Neutron generates one.", "En blanco: Neutron genera una.";
+    PortSubnetHelp => "Blank: any subnet of the network.", "En blanco: cualquier subred de la red.";
+    TipPortDevice => "What uses the port: the device's ID (an instance, a router…) and its kind, such as `compute:nova`.\nUsually left blank: attaching the port to an instance fills both.", "Lo que usa el puerto: el ID del dispositivo (una instancia, un router…) y su tipo, como `compute:nova`.\nNormalmente se deja en blanco: al conectar el puerto a una instancia se rellenan los dos.";
+    CreatePortInfoHelp => "Blank fields take Neutron's defaults.", "Los campos en blanco toman los valores por defecto de Neutron.";
+    CreatePortGroupsHelp => "The security groups applied to the port; with none picked, the project's default group. Only while Port Security is on.", "Los grupos de seguridad aplicados al puerto; si no elige ninguno, el grupo por defecto del proyecto. Solo con la seguridad de puertos activada.";
     AttachedDevice => "Attached Device", "Dispositivo adjunto";
     VnicType => "VNIC Type", "Tipo de VNIC";
     StepInfo => "Info", "Información";
@@ -1699,6 +1705,13 @@ translations! {
     DeleteNetworks => "Delete Networks", "Eliminar redes";
     DeleteInterfaces => "Delete Interfaces", "Eliminar interfaces";
     DeleteSubnets => "Delete Subnets", "Eliminar subredes";
+    DeletePorts => "Delete Ports", "Eliminar puertos";
+    DeleteListeners => "Delete Listeners", "Eliminar listeners";
+    DeletePools => "Delete Pools", "Eliminar pools";
+    DeleteMembers => "Delete Members", "Eliminar miembros";
+    DeleteHealthMonitors => "Delete Health Monitors", "Eliminar monitores de estado";
+    DeleteL7Policies => "Delete L7 Policies", "Eliminar políticas L7";
+    DeleteL7Rules => "Delete L7 Rules", "Eliminar reglas L7";
     DeleteRouters => "Delete Routers", "Eliminar routers";
     DeleteSecurityGroups => "Delete Security Groups", "Eliminar grupos de seguridad";
     ReleaseIps => "Release Floating IPs", "Liberar IP flotantes";

@@ -358,29 +358,93 @@ pub(super) async fn subnet_delete(x: &mut Exec<'_>, id: &str) -> R<()> {
     Ok(())
 }
 
-/// `OsAction::PortCreate`: `POST /v2.0/ports`, with one fixed IP when given (Neutron picks
-/// the subnet).
-pub(super) async fn port_create(
-    x: &mut Exec<'_>,
-    network_id: &str,
-    name: &str,
-    admin_up: &bool,
-    fixed_ip: &Option<String>,
-) -> R<()> {
+/// `OsAction::PortCreate`: `POST /v2.0/ports`. The optional fields are sent only when set, so
+/// Neutron's defaults apply otherwise: any free address of any subnet, a generated MAC, the
+/// `normal` VNIC, the network's port security and the project's `default` security group.
+///
+/// The MAC is checked here (six hex pairs, not multicast) so the user gets a clear message
+/// instead of Neutron's 400.
+pub(super) async fn port_create(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
     use openstack_sdk::api::network::v2::port::create as m;
+    let OsAction::PortCreate {
+        network_id,
+        name,
+        admin_up,
+        fixed_ip,
+        subnet_id,
+        mac_address,
+        device_id,
+        device_owner,
+        vnic_type,
+        port_security,
+        security_group_ids,
+    } = action
+    else {
+        return Err(AppError::invalid("not a port creation"));
+    };
     let mut b = m::PortBuilder::default();
-    b.network_id(network_id).name(name.trim()).admin_state_up(*admin_up);
-    if let Some(ip) = opt(fixed_ip) {
-        let f = m::FixedIpsBuilder::default()
-            .ip_address(ip.to_string())
-            .build()
-            .map_err(build_err)?;
-        b.fixed_ips(vec![f]);
+    b.network_id(network_id.as_str())
+        .name(name.trim())
+        .admin_state_up(*admin_up);
+    let (ip, subnet) = (opt(fixed_ip), opt(subnet_id));
+    if ip.is_some() || subnet.is_some() {
+        let mut f = m::FixedIpsBuilder::default();
+        if let Some(ip) = ip {
+            f.ip_address(ip.to_string());
+        }
+        if let Some(subnet) = subnet {
+            f.subnet_id(subnet.to_string());
+        }
+        b.fixed_ips(vec![f.build().map_err(build_err)?]);
+    }
+    if let Some(mac) = opt(mac_address) {
+        b.mac_address(unicast_mac(mac).map_err(AppError::invalid)?);
+    }
+    if let Some(d) = opt(device_id) {
+        b.device_id(d.to_string());
+    }
+    if let Some(o) = opt(device_owner) {
+        b.device_owner(o.to_string());
+    }
+    if let Some(v) = opt(vnic_type) {
+        // The SDK's enum has the API's spellings as serde names.
+        let t: m::BindingVnicType = serde_json::from_value(Value::String(v.to_string()))
+            .map_err(|_| AppError::invalid(format!("unknown VNIC type: {v}")))?;
+        b.binding_vnic_type(t);
+    }
+    if let Some(on) = port_security {
+        b.port_security_enabled(*on);
+    }
+    // Neutron refuses security groups on a port without port security.
+    if let Some(groups) = security_group_ids
+        .as_ref()
+        .filter(|g| !g.is_empty() && *port_security != Some(false))
+    {
+        b.security_groups(groups.iter().map(|g| Cow::from(g.as_str())).collect::<Vec<_>>());
     }
     let body = b.build().map_err(build_err)?;
     x.create(m::Request::builder().port(body).build().map_err(build_err)?, "port")
         .await?;
     Ok(())
+}
+
+/// A MAC address as Neutron takes it (`aa:bb:cc:dd:ee:ff`, lower case), from one written with
+/// `:` or `-`. A multicast address (low bit of the first byte set) is refused: Neutron rejects it.
+pub(super) fn unicast_mac(mac: &str) -> Result<String, String> {
+    let parts: Vec<&str> = mac.trim().split([':', '-']).collect();
+    let bytes: Option<Vec<u8>> = (parts.len() == 6)
+        .then(|| {
+            parts
+                .iter()
+                .map(|p| (p.len() == 2).then(|| u8::from_str_radix(p, 16).ok()).flatten())
+                .collect()
+        })
+        .flatten();
+    match bytes {
+        None => Err(format!("not a MAC address (aa:bb:cc:dd:ee:ff): {}", mac.trim())),
+        Some(b) if b[0] & 1 == 1 => Err(format!("a multicast MAC address can't be a port's: {}", mac.trim())),
+        Some(b) => Ok(b.iter().map(|x| format!("{x:02x}")).collect::<Vec<_>>().join(":")),
+    }
 }
 
 /// `OsAction::PortUpdate`: `PUT /v2.0/ports/{id}` with only the fields that are `Some`.
@@ -1419,5 +1483,125 @@ mod tests {
             security_group_ids: None,
         };
         assert!(dry_err(bad).await, "unknown VNIC type is refused before sending");
+    }
+
+    /// A *Create Port* on network `n` named `p` with every optional field unset.
+    fn plain_port() -> OsAction {
+        OsAction::PortCreate {
+            network_id: id("n"),
+            name: id("p"),
+            admin_up: true,
+            fixed_ip: None,
+            subnet_id: None,
+            mac_address: None,
+            device_id: None,
+            device_owner: None,
+            vnic_type: None,
+            port_security: None,
+            security_group_ids: None,
+        }
+    }
+
+    /// [`plain_port`] changed by `f`.
+    fn port_with(f: impl FnOnce(&mut OsAction)) -> OsAction {
+        let mut a = plain_port();
+        f(&mut a);
+        a
+    }
+
+    #[tokio::test]
+    async fn port_create_sends_only_the_fields_given() {
+        let r = dry(plain_port()).await;
+        assert_eq!((r[0].method.as_str(), r[0].path.as_str()), ("POST", "/ports"));
+        assert_eq!(
+            body(&r[0]),
+            json!({"port": {"network_id": "n", "name": "p", "admin_state_up": true}}),
+            "nothing optional: Neutron's defaults"
+        );
+        let r = dry(port_with(|a| {
+            if let OsAction::PortCreate {
+                fixed_ip,
+                subnet_id,
+                mac_address,
+                device_id,
+                device_owner,
+                vnic_type,
+                port_security,
+                security_group_ids,
+                ..
+            } = a
+            {
+                *fixed_ip = Some(id("10.0.0.5"));
+                *subnet_id = Some(id("s1"));
+                *mac_address = Some(id("FA-16-3E-00-11-22"));
+                *device_id = Some(id(" vm1 "));
+                *device_owner = Some(id("compute:nova"));
+                *vnic_type = Some(id("direct"));
+                *port_security = Some(true);
+                *security_group_ids = Some(vec![id("g1"), id("g2")]);
+            }
+        }))
+        .await;
+        assert_eq!(
+            body(&r[0]),
+            json!({"port": {
+                "network_id": "n",
+                "name": "p",
+                "admin_state_up": true,
+                "fixed_ips": [{"ip_address": "10.0.0.5", "subnet_id": "s1"}],
+                "mac_address": "fa:16:3e:00:11:22",
+                "device_id": "vm1",
+                "device_owner": "compute:nova",
+                "binding:vnic_type": "direct",
+                "port_security_enabled": true,
+                "security_groups": ["g1", "g2"]
+            }})
+        );
+        let r = dry(port_with(|a| {
+            if let OsAction::PortCreate { subnet_id, .. } = a {
+                *subnet_id = Some(id("s1"));
+            }
+        }))
+        .await;
+        assert_eq!(
+            body(&r[0])["port"]["fixed_ips"],
+            json!([{"subnet_id": "s1"}]),
+            "any IP of that subnet"
+        );
+        let r = dry(port_with(|a| {
+            if let OsAction::PortCreate {
+                port_security,
+                security_group_ids,
+                ..
+            } = a
+            {
+                *port_security = Some(false);
+                *security_group_ids = Some(vec![id("g1")]);
+            }
+        }))
+        .await;
+        assert_eq!(
+            body(&r[0])["port"].get("security_groups"),
+            None,
+            "port security off: Neutron refuses security groups"
+        );
+        assert_eq!(body(&r[0])["port"]["port_security_enabled"], false);
+    }
+
+    #[tokio::test]
+    async fn port_create_refuses_a_bad_or_multicast_mac() {
+        let mac = |m: &str| {
+            let m = m.to_string();
+            port_with(move |a| {
+                if let OsAction::PortCreate { mac_address, .. } = a {
+                    *mac_address = Some(m);
+                }
+            })
+        };
+        assert!(dry_err(mac("fa:16:3e:00:11")).await, "five pairs");
+        assert!(dry_err(mac("fa:16:3e:00:11:zz")).await, "not hex");
+        assert!(dry_err(mac("01:00:5e:00:00:01")).await, "multicast");
+        assert_eq!(unicast_mac("FA:16:3E:0A:0B:0C").as_deref(), Ok("fa:16:3e:0a:0b:0c"));
+        assert!(unicast_mac("fa:16:3e:0a:0b:c").is_err(), "a pair is two digits");
     }
 }

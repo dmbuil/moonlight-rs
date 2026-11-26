@@ -345,12 +345,32 @@ pub enum OsAction {
     },
     /// *Delete Subnet*: `DELETE /v2.0/subnets/{id}`.
     SubnetDelete { id: String },
-    /// *Create Port*: `POST /v2.0/ports`, with one fixed IP when given (Neutron picks the subnet).
+    /// *Create Port*: `POST /v2.0/ports`; only the optional fields that are `Some` are sent.
     PortCreate {
         network_id: String,
         name: String,
         admin_up: bool,
         fixed_ip: Option<String>,
+        /// The subnet the fixed IP (or, without one, any free address) is taken from.
+        #[serde(default)]
+        subnet_id: Option<String>,
+        /// `aa:bb:cc:dd:ee:ff`; `None` lets Neutron generate one.
+        #[serde(default)]
+        mac_address: Option<String>,
+        /// What the port is attached to (an instance's ID, …) and who owns it (`compute:nova`, …).
+        #[serde(default)]
+        device_id: Option<String>,
+        #[serde(default)]
+        device_owner: Option<String>,
+        /// `binding:vnic_type` (`normal`, `direct`…); needs `binding`. `None`: the cloud's default.
+        #[serde(default)]
+        vnic_type: Option<String>,
+        /// Needs `port-security`; `None`: the network's setting.
+        #[serde(default)]
+        port_security: Option<bool>,
+        /// `None` (or empty): Neutron applies the project's `default` group.
+        #[serde(default)]
+        security_group_ids: Option<Vec<String>>,
     },
     /// *Edit Port*: only the `Some` fields are sent (see [`PortSettings::changes`]).
     PortUpdate {

@@ -795,12 +795,7 @@ pub async fn apply(x: &mut Exec<'_>, action: &OsAction) -> R<()> {
             dns_nameservers,
         } => network::subnet_update(x, id, name, enable_dhcp, dns_nameservers).await?,
         SubnetDelete { id } => network::subnet_delete(x, id).await?,
-        PortCreate {
-            network_id,
-            name,
-            admin_up,
-            fixed_ip,
-        } => network::port_create(x, network_id, name, admin_up, fixed_ip).await?,
+        PortCreate { .. } => network::port_create(x, action).await?,
         PortUpdate {
             id,
             name,
@@ -1178,6 +1173,27 @@ pub async fn revoke_token(x: &mut Exec<'_>, token: &str) -> R<()> {
     .await
 }
 
+/// How long to wait before sending `action` again after `err`, on its `attempt`-th retry
+/// (from 0); `None`: don't. Every write to a load balancer's listeners, pools, members, monitors
+/// or L7 policies leaves it `PENDING_UPDATE` for a few seconds, and Octavia answers 409
+/// (*immutable*) to the next write meanwhile, so a batch of them would fail all but the first.
+/// The refused request changed nothing, so it is sent again: after 1, 2, 3, then every 5
+/// seconds, about a minute in all. Horizon's delete waits for `ACTIVE` the same way.
+fn octavia_lock_retry(action: &OsAction, err: &AppError, attempt: u32) -> Option<std::time::Duration> {
+    const MAX_RETRIES: u32 = 14;
+    let locks = matches!(
+        action,
+        OsAction::ListenerDelete { .. }
+            | OsAction::PoolDelete { .. }
+            | OsAction::MemberDelete { .. }
+            | OsAction::MonitorDelete { .. }
+            | OsAction::L7PolicyDelete { .. }
+            | OsAction::L7RuleDelete { .. }
+    );
+    (locks && err.kind == ErrorKind::OpenStack(409) && attempt < MAX_RETRIES)
+        .then(|| std::time::Duration::from_secs(u64::from((attempt + 1).min(5))))
+}
+
 /// Runs each item, recording its result instead of stopping at the first
 /// failure, so one undeletable resource doesn't block the rest.
 async fn batch(x: &mut Exec<'_>, items: &[(String, OsAction)]) -> R<()> {
@@ -1191,8 +1207,21 @@ async fn batch(x: &mut Exec<'_>, items: &[(String, OsAction)]) -> R<()> {
         return Err(AppError::invalid("batches cannot be nested"));
     }
     for (label, action) in items {
-        // Boxed: `apply` is recursive through here.
-        let r = Box::pin(apply(x, action)).await;
+        let mut attempt = 0;
+        let r = loop {
+            let sent = x.requests.len();
+            // Boxed: `apply` is recursive through here.
+            let r = Box::pin(apply(x, action)).await;
+            match r.as_ref().err().and_then(|e| octavia_lock_retry(action, e, attempt)) {
+                Some(wait) => {
+                    // The refused request changed nothing: show the one that goes through.
+                    x.requests.truncate(sent);
+                    attempt += 1;
+                    tokio::time::sleep(wait).await;
+                }
+                None => break r,
+            }
+        };
         x.results.push(ItemResult {
             label: label.clone(),
             error: r.err().map(|e| e.to_string()),
@@ -1249,6 +1278,45 @@ mod tests {
         assert!(
             missing.is_empty(),
             "OsAction variants without a dry-run test: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn octavia_deletes_wait_out_the_load_balancer_lock() {
+        let conflict = AppError::new(ErrorKind::OpenStack(409), "immutable");
+        let pool = OsAction::PoolDelete { id: "p1".into() };
+        let waits: Vec<u64> = (0..)
+            .map_while(|n| octavia_lock_retry(&pool, &conflict, n))
+            .map(|d| d.as_secs())
+            .collect();
+        assert_eq!(&waits[..5], [1, 2, 3, 4, 5], "a short wait first");
+        let total: u64 = waits.iter().sum();
+        assert!((55..=70).contains(&total), "about a minute in all: {total} s");
+        let member = OsAction::MemberDelete {
+            pool_id: "p1".into(),
+            id: "m1".into(),
+        };
+        assert!(octavia_lock_retry(&member, &conflict, 0).is_some());
+        let other = AppError::new(ErrorKind::OpenStack(400), "bad");
+        assert_eq!(
+            octavia_lock_retry(&pool, &other, 0),
+            None,
+            "only the lock's 409 is retried"
+        );
+        let net = OsAction::NetworkDelete { id: "n1".into() };
+        assert_eq!(
+            octavia_lock_retry(&net, &conflict, 0),
+            None,
+            "a network in use stays a failure"
+        );
+        let lb = OsAction::LoadBalancerDelete {
+            id: "l1".into(),
+            cascade: true,
+        };
+        assert_eq!(
+            octavia_lock_retry(&lb, &conflict, 0),
+            None,
+            "deleting load balancers doesn't lock another"
         );
     }
 

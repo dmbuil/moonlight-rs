@@ -12,9 +12,9 @@ use leptos_router::components::A;
 use super::details::{Card, DetailHeader, Kv, Tabs, mono, param, yes_no};
 use super::lists::{admin_state, link, status_pill};
 use crate::api::*;
-use crate::components::dialog::{CreateButton, Dialog, RowActions, data_version};
+use crate::components::dialog::{BulkButton, CreateButton, Dialog, RowActions, data_version};
 use crate::components::ops;
-use crate::components::table::{DataTable, col};
+use crate::components::table::{DataTable, Select, col};
 use crate::components::widgets::{Copyable, Skeleton, dash, poll_while_busy, render, short_time};
 use crate::i18n::{K, Lang, use_i18n};
 use crate::model::*;
@@ -135,15 +135,108 @@ fn overview(d: LoadBalancerDetail) -> impl IntoView {
     }
 }
 
-/// The create button above a tab's table.
+/// A tab's create button, for [`tab_actions`].
 fn create_button(label: K, open: impl Fn() -> Dialog + Send + Sync + 'static) -> AnyView {
     let i18n = use_i18n();
+    view! { <CreateButton label=Signal::derive(move || i18n.t(label).to_string()) open=Arc::new(open)/> }.into_any()
+}
+
+/// The buttons above a tab's table: the bulk delete of the ticked rows (`label`, one `make`
+/// action per selection key, in a batch that waits out Octavia's lock between them) and the
+/// create button, if any.
+fn tab_actions(
+    label: K,
+    picked: RwSignal<Vec<(String, String)>>,
+    make: fn(String) -> OsAction,
+    create: Option<AnyView>,
+) -> AnyView {
     view! {
         <div class="subtable-actions">
-            <CreateButton label=Signal::derive(move || i18n.t(label).to_string()) open=Arc::new(open)/>
+            <BulkButton label=label picked=picked
+                open=Arc::new(move |l, items| ops::bulk_delete(l, label, items, make))/>
+            {create}
         </div>
     }
     .into_any()
+}
+
+/// A selection entry `(id, label)`: the name, or the ID when it has none.
+fn named_key(id: &str, name: &str) -> Option<(String, String)> {
+    let label = if name.trim().is_empty() { id } else { name };
+    Some((id.to_string(), label.to_string()))
+}
+
+/// The key of a resource that lives under another (a pool's member, a policy's rule):
+/// `parent/id`. Octavia's IDs are UUIDs, so `/` can't be part of one.
+fn pair_key(parent: &str, id: &str) -> String {
+    format!("{parent}/{id}")
+}
+
+/// [`pair_key`] back into `(parent, id)`.
+fn split_pair(key: &str) -> (String, String) {
+    let (parent, id) = key.split_once('/').unwrap_or(("", key));
+    (parent.to_string(), id.to_string())
+}
+
+/// A listener's bulk-delete entry.
+fn listener_key(l: &LbListener) -> Option<(String, String)> {
+    named_key(&l.id, &l.name)
+}
+
+/// A pool's bulk-delete entry.
+fn pool_key(p: &LbPool) -> Option<(String, String)> {
+    named_key(&p.id, &p.name)
+}
+
+/// A member's bulk-delete entry, keyed by [`pair_key`] with its pool, which the delete's path
+/// needs; unnamed members are labelled `address:port`, as they are added.
+fn member_key(m: &LbMember) -> Option<(String, String)> {
+    let label = if m.name.trim().is_empty() {
+        match m.port {
+            Some(port) => format!("{}:{port}", m.address),
+            None => m.address.clone(),
+        }
+    } else {
+        m.name.clone()
+    };
+    Some((pair_key(&m.pool.id, &m.id), label))
+}
+
+/// A health monitor's bulk-delete entry.
+fn monitor_key(m: &LbMonitor) -> Option<(String, String)> {
+    named_key(&m.id, &m.name)
+}
+
+/// An L7 policy's bulk-delete entry.
+fn policy_key(p: &LbL7Policy) -> Option<(String, String)> {
+    named_key(&p.id, &p.name)
+}
+
+/// An L7 rule's bulk-delete entry, keyed by [`pair_key`] with its policy. Rules have no name:
+/// the policy's, then what the rule matches.
+fn rule_key((p, r): &(LbL7Policy, LbL7Rule)) -> Option<(String, String)> {
+    let what = [
+        r.rule_type.as_str(),
+        r.key.as_deref().unwrap_or(""),
+        r.compare_type.as_str(),
+        r.value.as_str(),
+    ]
+    .into_iter()
+    .filter(|s| !s.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ");
+    Some((
+        pair_key(&p.id, &r.id),
+        format!("{}: {what}", named_key(&p.id, &p.name)?.1),
+    ))
+}
+
+/// A fresh, empty selection over a tab's rows.
+fn select<T>(key: fn(&T) -> Option<(String, String)>) -> Select<T> {
+    Select {
+        key,
+        picked: RwSignal::new(Vec::new()),
+    }
 }
 
 /// *Listeners*: protocol and port, default pool (a link to *Pools*), connection limit,
@@ -151,6 +244,7 @@ fn create_button(label: K, open: impl Fn() -> Dialog + Send + Sync + 'static) ->
 fn listeners(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.listeners.clone(), d.clone(), d.clone());
+    let sel = select(listener_key);
     let columns = vec![
         col(
             K::Name,
@@ -183,8 +277,9 @@ fn listeners(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
         .class("actions"),
     ];
     view! {
-        {create_button(K::CreateListener, move || ops::listener_dialog(i18n.lang(), &dd, None))}
-        <DataTable rows=rows columns=columns search=|l: &LbListener| format!("{} {} {:?}", l.name, l.protocol, l.port)/>
+        {tab_actions(K::DeleteListeners, sel.picked, |id| OsAction::ListenerDelete { id },
+            Some(create_button(K::CreateListener, move || ops::listener_dialog(i18n.lang(), &dd, None))))}
+        <DataTable rows=rows columns=columns select=sel search=|l: &LbListener| format!("{} {} {:?}", l.name, l.protocol, l.port)/>
     }
 }
 
@@ -193,6 +288,7 @@ fn listeners(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
 fn pools(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.pools.clone(), d.clone(), d.clone());
+    let sel = select(pool_key);
     let columns = vec![
         col(
             K::Name,
@@ -225,8 +321,9 @@ fn pools(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
         .class("actions"),
     ];
     view! {
-        {create_button(K::CreatePool, move || ops::pool_dialog(i18n.lang(), &dd, None))}
-        <DataTable rows=rows columns=columns search=|p: &LbPool| format!("{} {} {}", p.name, p.protocol, p.algorithm)/>
+        {tab_actions(K::DeletePools, sel.picked, |id| OsAction::PoolDelete { id },
+            Some(create_button(K::CreatePool, move || ops::pool_dialog(i18n.lang(), &dd, None))))}
+        <DataTable rows=rows columns=columns select=sel search=|p: &LbPool| format!("{} {} {}", p.name, p.protocol, p.algorithm)/>
     }
 }
 
@@ -235,6 +332,7 @@ fn pools(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
 fn members(d: LoadBalancerDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.members.clone(), d.clone(), d.clone());
+    let sel = select(member_key);
     // Members go into a pool: none yet, no button.
     let can_add = !d.pools.is_empty();
     let columns = vec![
@@ -267,8 +365,11 @@ fn members(d: LoadBalancerDetail) -> impl IntoView {
         .class("actions"),
     ];
     view! {
-        {can_add.then(|| create_button(K::AddMember, move || ops::member_dialog(i18n.lang(), &dd, None)))}
-        <DataTable rows=rows columns=columns search=|m: &LbMember| format!("{} {} {} {:?}", m.name, m.pool.name, m.address, m.port)/>
+        {tab_actions(K::DeleteMembers, sel.picked, |key| {
+            let (pool_id, id) = split_pair(&key);
+            OsAction::MemberDelete { pool_id, id }
+        }, can_add.then(|| create_button(K::AddMember, move || ops::member_dialog(i18n.lang(), &dd, None))))}
+        <DataTable rows=rows columns=columns select=sel search=|m: &LbMember| format!("{} {} {} {:?}", m.name, m.pool.name, m.address, m.port)/>
     }
 }
 
@@ -277,6 +378,7 @@ fn members(d: LoadBalancerDetail) -> impl IntoView {
 fn monitors(d: LoadBalancerDetail) -> impl IntoView {
     let i18n = use_i18n();
     let (rows, dd, da) = (d.monitors.clone(), d.clone(), d.clone());
+    let sel = select(monitor_key);
     // One monitor per pool: only pools without one can get a new monitor.
     let can_add = d.pools.iter().any(|p| p.monitor.is_none());
     let columns = vec![
@@ -305,8 +407,9 @@ fn monitors(d: LoadBalancerDetail) -> impl IntoView {
         .class("actions"),
     ];
     view! {
-        {can_add.then(|| create_button(K::CreateHealthMonitor, move || ops::monitor_dialog(i18n.lang(), &dd, None)))}
-        <DataTable rows=rows columns=columns search=|m: &LbMonitor| format!("{} {}", m.name, m.kind)/>
+        {tab_actions(K::DeleteHealthMonitors, sel.picked, |id| OsAction::MonitorDelete { id },
+            can_add.then(|| create_button(K::CreateHealthMonitor, move || ops::monitor_dialog(i18n.lang(), &dd, None))))}
+        <DataTable rows=rows columns=columns select=sel search=|m: &LbMonitor| format!("{} {}", m.name, m.kind)/>
     }
 }
 
@@ -327,6 +430,7 @@ fn l7(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     let (dp, da, dr, dra) = (d.clone(), d.clone(), d.clone(), d.clone());
     let can_create = !ops::l7_listeners(&d).is_empty();
     let can_add_rule = !d.l7policies.is_empty();
+    let (policy_sel, rule_sel) = (select(policy_key), select(rule_key));
     let policies = d.l7policies.clone();
     let rules: Vec<(LbL7Policy, LbL7Rule)> = d
         .l7policies
@@ -369,10 +473,85 @@ fn l7(d: LoadBalancerDetail, tab: RwSignal<usize>) -> impl IntoView {
     ];
     view! {
         <p class="muted">{move || i18n.t(if can_create { K::L7PoliciesHelp } else { K::L7NeedsHttpListener })}</p>
-        {can_create.then(|| create_button(K::CreateL7Policy, move || ops::l7_policy_dialog(i18n.lang(), &dp, None)))}
-        <DataTable rows=policies columns=policy_columns search=|p: &LbL7Policy| format!("{} {} {}", p.name, p.listener.name, p.action)/>
+        {tab_actions(K::DeleteL7Policies, policy_sel.picked, |id| OsAction::L7PolicyDelete { id },
+            can_create.then(|| create_button(K::CreateL7Policy, move || ops::l7_policy_dialog(i18n.lang(), &dp, None))))}
+        <DataTable rows=policies columns=policy_columns select=policy_sel search=|p: &LbL7Policy| format!("{} {} {}", p.name, p.listener.name, p.action)/>
         <h3 class="subtable-title">{move || i18n.t(K::L7Rules)}</h3>
-        {can_add_rule.then(|| create_button(K::AddL7Rule, move || ops::l7_rule_dialog(i18n.lang(), &dr, None, None)))}
-        <DataTable rows=rules columns=rule_columns search=|(p, r): &(LbL7Policy, LbL7Rule)| format!("{} {} {}", p.name, r.rule_type, r.value)/>
+        {tab_actions(K::DeleteL7Rules, rule_sel.picked, |key| {
+            let (policy_id, id) = split_pair(&key);
+            OsAction::L7RuleDelete { policy_id, id }
+        }, can_add_rule.then(|| create_button(K::AddL7Rule, move || ops::l7_rule_dialog(i18n.lang(), &dr, None, None))))}
+        <DataTable rows=rules columns=rule_columns select=rule_sel search=|(p, r): &(LbL7Policy, LbL7Rule)| format!("{} {} {}", p.name, r.rule_type, r.value)/>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn r(id: &str, name: &str) -> Ref {
+        Ref {
+            id: id.into(),
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn members_and_rules_carry_their_parent_in_the_selection_key() {
+        let mut m = LbMember {
+            id: "m1".into(),
+            name: String::new(),
+            pool: r("p1", "web"),
+            address: "10.0.0.5".into(),
+            port: Some(80),
+            weight: None,
+            subnet: None,
+            backup: false,
+            operating_status: "ONLINE".into(),
+            provisioning_status: "ACTIVE".into(),
+            admin_up: true,
+            monitor_address: None,
+            monitor_port: None,
+        };
+        let (key, label) = member_key(&m).unwrap();
+        assert_eq!(
+            (key.as_str(), label.as_str()),
+            ("p1/m1", "10.0.0.5:80"),
+            "unnamed: address and port"
+        );
+        assert_eq!(split_pair(&key), ("p1".into(), "m1".into()));
+        m.name = "app-1".into();
+        assert_eq!(member_key(&m).unwrap().1, "app-1");
+        let rule = LbL7Rule {
+            id: "r1".into(),
+            rule_type: "HEADER".into(),
+            compare_type: "EQUAL_TO".into(),
+            key: Some("X-Env".into()),
+            value: "beta".into(),
+            invert: false,
+            operating_status: "ONLINE".into(),
+            provisioning_status: "ACTIVE".into(),
+            admin_up: true,
+        };
+        let policy = LbL7Policy {
+            id: "l7p".into(),
+            name: String::new(),
+            description: None,
+            listener: r("li", "http"),
+            action: "REJECT".into(),
+            position: Some(1),
+            redirect_pool: None,
+            redirect_url: None,
+            operating_status: "ONLINE".into(),
+            provisioning_status: "ACTIVE".into(),
+            admin_up: true,
+            rules: vec![],
+        };
+        assert_eq!(
+            rule_key(&(policy, rule)),
+            Some(("l7p/r1".into(), "l7p: HEADER X-Env EQUAL_TO beta".into())),
+            "rules have no name: the policy (its ID when unnamed) and what the rule matches"
+        );
+        assert_eq!(named_key("i", " "), Some(("i".into(), "i".into())));
     }
 }

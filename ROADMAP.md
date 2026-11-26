@@ -151,10 +151,10 @@ Read `AGENTS.md` first (safety rules, recipes, gotchas).
 | 136 | ✅ Router detail › *Interfaces*: row checkboxes and a *Delete Interfaces* button, as Horizon | — | S | — |
 | 137 | ✅ Network detail › *Subnets*: row checkboxes and a *Delete Subnets* button, as Horizon | — | S | — |
 | 138 | ✅ *Add Interface* to a router with an optional *IP Address*, so a second router can use the same subnet | — | S | — |
-| 139 | *Associate Floating IP* on a load balancer, as Horizon: from the list row too, picking a free IP or allocating one from a pool, and from Network › Floating IPs ([#22], [#24], [#25]) | P2 | M | 54 |
-| 140 | *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner ([#23], [#26]) | P2 | S | 44 |
-| 141 | Network detail › *Ports*: row checkboxes and a *Delete Ports* button, as Horizon ([#27]) | P2 | S | 137 |
-| 142 | Load balancer detail: row checkboxes and bulk delete on *Listeners*, *Pools*, *Members*, *Health Monitors* and *L7 Policies*, as Horizon ([#28]) | P2 | M | 54 |
+| 139 | ✅ *Associate Floating IP* on a load balancer, as Horizon: from the list row too, picking a free IP or allocating one from a pool, and from Network › Floating IPs ([#22], [#24], [#25]) | — | M | 54 |
+| 140 | ✅ *Create Port* to Horizon parity: port security, MAC address, VNIC type, device ID and owner ([#23], [#26]) | — | S | 44 |
+| 141 | ✅ Network detail › *Ports*: row checkboxes and a *Delete Ports* button, as Horizon ([#27]) | — | S | 137 |
+| 142 | ✅ Load balancer detail: row checkboxes and bulk delete on *Listeners*, *Pools*, *Members*, *Health Monitors* and *L7 Policies*, as Horizon ([#28]) | — | M | 54 |
 
 [#1]: https://github.com/dmbuil/moonlight-rs/issues/1
 [#2]: https://github.com/dmbuil/moonlight-rs/issues/2
@@ -189,7 +189,8 @@ Done: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 2
 26, 27, 28, 29, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52,
 53, 55, 54, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 78, 80, 81, 82, 83, 84,
 85, 86, 87, 88, 89, 92, 96, 98, 99, 100, 101, 104, 105, 106, 107, 109, 110, 111, 58, 112, 113,
-114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130, 132, 133, 134, 136, 137, 138**.
+114, 97, 115, 116, 117, 118, 119, 121, 122, 123, 124, 125, 126, 127, 130, 132, 133, 134, 136, 137,
+138, 141, 140, 139, 142**.
 Next: **35**.
 
 ⏸ = postponed: it cannot be done for now (see the item's note); it is not in `Next:`.
@@ -9046,6 +9047,28 @@ means that fixed IP. Moonlight gets the same field.
 ## 139. *Associate Floating IP* on a load balancer, as Horizon
 
 > 🔗 **Issue:** [#22], [#24] (from Network › Floating IPs), [#25] (from the load balancer row)
+>
+> ✅ **Done.** `LoadBalancerRow` (`src/model/lb.rs`) carries `vip_port_id`, `floating_ip` and
+> `floating_ip_id`; `fetch::load_balancers` also lists the project's floating IPs (one more GET in
+> parallel, `soft`), and `mapping::load_balancer_row` matches them by VIP port (the detail reuses
+> it). `load_balancer_menu` (`src/components/ops/octavia.rs`) gives the row and the header the
+> same *Associate* / *Disassociate Floating IP*; the dialog is `associate_ip_to_port_dialog`
+> (`src/components/ops/instances.rs`), sharing `associate_ip_fields` / `associate_ip_action` with
+> the instance's: *Allocate a new IP from a pool* or a free IP. The list's *IP Address* shows
+> the floating IP under the VIP, and its search finds it. Floating IPs › *Associate*:
+> `ChoiceSet::AssociablePorts` now goes through `mapping::associable_port_choices`, which adds
+> the VIP ports (`device_owner` `Octavia`) labelled by load balancer name (`lb_vip_names`, from
+> the Octavia list, only with the plugin; port name otherwise); the admin
+> `AllAssociablePorts` too. An instance's own dialog never lists them (their `device_id` is not
+> the server). Tests: `the_row_menu_offers_associate_or_disassociate_by_the_vip_floating_ip`,
+> `associate_ip_to_a_known_port_has_no_port_field`, `load_balancer_list_rows`,
+> `load_balancer_vips_can_take_a_floating_ip_but_are_no_instance_port`. Browser (test cloud,
+> writes on, 2026-11-26, a throwaway load balancer): the row offered *Associate*, allocating
+> from a pool sent one `POST /floatingips` with the VIP `port_id`, the list showed both
+> addresses and switched to *Disassociate*; disassociated from the detail header (`PUT`,
+> `port_id: null`); the free IP's *Associate* listed the load balancer by name; IP released and
+> load balancer deleted. The project also has a VIP port whose load balancer is gone
+> (`octavia-lb-9a72a052…`): it is offered under its port name; left alone.
 
 **Goal.** In Horizon, a load balancer's row menu has *Associate Floating IP*, whose dialog picks
 an existing free IP or allocates one from a pool and attaches it to the VIP port. In Moonlight
@@ -9092,6 +9115,28 @@ list row and from the detail header.
 
 > 🔗 **Issue:** [#23], [#26] (same request from a tester: port security off and several
 > security groups at creation)
+>
+> ✅ **Done.** `OsAction::PortCreate` gained `subnet_id`, `mac_address`, `device_id`,
+> `device_owner`, `vnic_type`, `port_security` and `security_group_ids` (all
+> `#[serde(default)]`, `None` = not sent). `port_create` (`src/server/actions/network.rs`) sets
+> each only when present, checks the MAC with `unicast_mac` (six hex pairs with `:` or `-`,
+> lower-cased; multicast refused) and drops the groups when port security is off (Neutron
+> refuses them). `create_port_dialog` (`src/components/ops/networks.rs`) is a two-step wizard
+> as *Edit Port*: *Info* (name, admin state, device ID and owner, MAC, *Subnet* (the network's
+> own, `Source::Of(Subnets, network)`), fixed IP, VNIC type with `binding`, port security with
+> `port-security`), then *Security Groups*, open while port security is on; none picked =
+> Neutron's `default` group. The field builders are shared with `edit_port_dialog`
+> (`vnic_type_field`, `port_security_field`, `port_groups_field`, `port_groups_on`). Horizon's
+> *Specify subnet* mode is the optional *Subnet* (with or without a fixed IP); *Binding host*
+> left out. CLI: `--fixed-ip subnet=…,ip-address=…`, `--mac-address`, `--device`,
+> `--device-owner`, `--vnic-type`, `--enable-/--disable-port-security`, `--security-group`.
+> Tests: `port_create_sends_only_the_fields_given`, `port_create_refuses_a_bad_or_multicast_mac`,
+> `create_port_sends_only_what_was_filled`, the CLI line. The gating (no `binding` /
+> `port-security`) is not unit-tested: `caps()` needs the dialog context. Browser (test cloud,
+> writes on, a throwaway network): a port with MAC `FA:16:3E:77:00:01`, a fixed IP and port
+> security off (sent lower-cased, read back on its detail page, no security group), a port
+> with only a subnet and two groups; a multicast MAC got "a multicast MAC address can't be a
+> port's" without a request. Both ports and the network deleted.
 
 **Goal.** Horizon's *Create Port* (Network › Networks › network › Ports) takes the name, admin
 state, device ID, device owner, MAC address, a fixed IP or subnet, the VNIC type, port security
@@ -9133,6 +9178,17 @@ fields, with the same defaults as Horizon (VNIC *Normal*, port security on).
 ## 141. Network detail › *Ports*: select several and delete them at once
 
 > 🔗 **Issue:** [#27]
+>
+> ✅ **Done.** `port_bulk_key` and a `Select` in `network_ports` (`src/pages/details.rs`), only
+> on the project's own networks; *Delete Ports (n)* (`K::DeletePorts`) sends one `PortDelete`
+> per port in a `Batch` (the CLI equivalent is one `openstack port delete` with every ID).
+> `ops::port_deletable` decides for the checkbox and the row menu alike: ports owned by
+> `network:*` (router interfaces and gateway, DHCP, `network:distributed`) and `Octavia` (a
+> VIP) have neither, as Horizon hides *Delete Port* for `network:*`. Test
+> `only_ports_with_a_delete_are_selectable_for_bulk_port_delete`. Browser (test cloud, writes on,
+> 2026-11-26): on a throwaway network the `network:distributed` port's checkbox is disabled and
+> its menu has only *Edit Port*; two ports ticked, the dialog listed both, two
+> `DELETE /ports/{id}`, one port left; the network was then deleted.
 
 **Goal.** As items 136 and 137, for the *Ports* tab of a network: a checkbox per row, a
 select-all header and a *Delete Ports* button that deletes the ticked ports after one
@@ -9159,6 +9215,23 @@ confirmation, like Horizon's. Today only the row menu's *Delete Port* exists
 ## 142. Load balancer detail: select several resources and delete them at once
 
 > 🔗 **Issue:** [#28]
+>
+> ✅ **Done.** Each tab of `src/pages/load_balancers.rs` (*Listeners*, *Pools*, *Members*,
+> *Health Monitors*, *L7 Policies* and its rules) has a `Select` and a bulk button next to its
+> create button (`tab_actions`), built with `ops::bulk_delete`: `K::DeleteListeners`,
+> `DeletePools`, `DeleteMembers`, `DeleteHealthMonitors`, `DeleteL7Policies`, `DeleteL7Rules`.
+> Members and rules are keyed `parent/id` (`pair_key` / `split_pair`) for `MemberDelete` and
+> `L7RuleDelete`. The lock: `batch` (`src/server/actions/mod.rs`) resends an Octavia child
+> delete answered 409 (`octavia_lock_retry`: after 1, 2, 3, then every 5 s, 14 retries, about
+> a minute), dropping the refused request from the preview; other actions and other errors are
+> not retried, nor are load balancer deletes. Tests
+> `octavia_deletes_wait_out_the_load_balancer_lock`,
+> `members_and_rules_carry_their_parent_in_the_selection_key`. Browser (test cloud, writes on,
+> 2026-11-26, a throwaway load balancer with two listeners and two pools): both listeners in
+> one go, then both pools in one go (0.56 s, two `DELETE`s each, all accepted). That cloud's
+> Octavia took the second delete at once, so **the 409 retry was not exercised live**, only by
+> the unit test. Members, monitors and L7 tabs were not tried in the browser (no members or
+> policies on the test load balancer; the pools' deletion took the monitor with it).
 
 **Goal.** Horizon's load balancer detail has checkboxes and a *Delete* button on its
 *Listeners*, *Pools*, *Members*, *Health Monitors* and *L7 Policies* tables. Moonlight's tabs

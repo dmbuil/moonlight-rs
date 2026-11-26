@@ -347,6 +347,13 @@ mod tests {
             name: id("p"),
             admin_up: true,
             fixed_ip: Some(id("10.0.0.5")),
+            subnet_id: None,
+            mac_address: None,
+            device_id: None,
+            device_owner: None,
+            vnic_type: None,
+            port_security: None,
+            security_group_ids: None,
         })
         .await;
         assert_eq!(body(&r[0])["port"]["fixed_ips"], json!([{"ip_address": "10.0.0.5"}]));
